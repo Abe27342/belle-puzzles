@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Card, Button, Dialog } from '../../fast';
-import { IPuzzlehunt, Puzzle, Round } from '../../model/puzzlehunt';
+import { IPuzzlehunt, Puzzle, Round } from '@belle-puzzles/puzzlehunt-model';
 
 export interface DeleteModalProps {
 	puzzleObj: Round | Puzzle;

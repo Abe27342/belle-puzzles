@@ -17,7 +17,7 @@ import {
 	loadExistingPuzzlehunt,
 	Puzzle,
 	Round,
-} from '../model/puzzlehunt';
+} from '@belle-puzzles/puzzlehunt-model';
 import {
 	AddModal,
 	DeleteModal,

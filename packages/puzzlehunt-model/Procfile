@@ -1,0 +1,4 @@
+web: npm run start
+# Note: This is the default value, so this config is technically unnecessary.
+# Serves as a reasonable entrypoint for those who might want to change it in the future
+# (it determines how heroku dyno types execute)

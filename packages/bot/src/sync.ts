@@ -14,13 +14,12 @@ import {
 	generateRoundEmbed,
 	getAncestorRounds,
 } from './commands/utils.js';
-import type { IPuzzlehunt, Puzzle, Round } from './fluid/puzzlehunt';
-import {
-	OverwriteResolvable,
-	PermissionsBitField,
-	PermissionOverwrites,
-	Role,
-} from 'discord.js';
+import type {
+	IPuzzlehunt,
+	Puzzle,
+	Round,
+} from '@belle-puzzles/puzzlehunt-model';
+import { PermissionsBitField, Role } from 'discord.js';
 import { PuzzlehuntContext } from './types.js';
 import { createGoogleSheet } from './integrations/google.js';
 

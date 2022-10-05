@@ -16,7 +16,12 @@ import {
 import type { PuzzlehuntContext, SerializedPuzzlehuntContext } from './types';
 import { BelleBotClient, createClient } from './client.js';
 import { createPuzzlehuntProvider } from './puzzlehunt-provider.js';
-import { IPuzzlehunt, Puzzle, Round, StringNode } from './fluid/puzzlehunt.js';
+import {
+	IPuzzlehunt,
+	Puzzle,
+	Round,
+	StringNode,
+} from '@belle-puzzles/puzzlehunt-model';
 import {
 	createDiscordAssociation,
 	syncRoles,
@@ -408,6 +413,7 @@ app.get('/guilds/:guildId/puzzlehunt', async (req, res) => {
 			res.status(404).json({
 				body: 'Puzzlehunt not found: no puzzlehunt created on that server.',
 			});
+			return;
 		}
 
 		delete context.puzzlehunt;

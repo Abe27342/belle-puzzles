@@ -1,4 +1,4 @@
-import type { IPuzzlehunt } from './fluid/puzzlehunt';
+import type { IPuzzlehunt } from '@belle-puzzles/puzzlehunt-model';
 
 // TODO: Throw a version field in here.
 export interface SerializedPuzzlehuntContext {

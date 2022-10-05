@@ -1,14 +1,16 @@
 {
 	"compilerOptions": {
-		"allowJs": true,
 		"allowSyntheticDefaultImports": true,
+		"allowJs": true,
 		"incremental": true,
-		"module": "commonjs",
+		"declaration": true,
+		"module": "ESNext",
 		"moduleResolution": "node",
 		"noImplicitAny": true,
 		"outDir": "./dist/",
+		"rootDir": "./src",
 		"sourceMap": true,
 		"target": "ESNext"
 	},
-	"include": ["mutualGuilds", "getToken"]
+	"include": ["src/**/*"]
 }

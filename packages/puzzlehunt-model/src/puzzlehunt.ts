@@ -18,14 +18,16 @@ import {
 	WriteFormat,
 } from '@fluid-experimental/tree';
 import { waitContainerToCatchUp } from '@fluidframework/container-loader';
-// TODO: Latest tag on this is wrong. Report it.
-// TODO: Docs link on sample code has two different links. One is out of date.
 import { AzureClient } from '@fluidframework/azure-client';
 import { IFluidContainer } from '@fluidframework/fluid-static';
 import { TypedEventEmitter } from '@fluidframework/common-utils';
 import { IEvent } from '@fluidframework/common-definitions';
-import { assert } from '../commands/utils.js';
-import type { Channel, Role } from 'discord.js';
+
+function assert(condition: boolean, message: string): asserts condition {
+	if (!condition) {
+		throw new Error(`Assertion failed: ${message}`);
+	}
+}
 
 class AFRSharedTree extends SharedTree {
 	public static getFactory() {
@@ -84,12 +86,12 @@ export interface IPuzzlehuntEvents extends IEvent {
 }
 
 export interface DiscordPuzzleInfo {
-	channel: Channel | string;
-	role: Role | string;
+	channel: { /* channel ID */ id: string } | string;
+	role: { /* role ID */ id: string } | string;
 }
 
 export interface DiscordRoundInfo extends DiscordPuzzleInfo {
-	indexChannel: Channel | string;
+	indexChannel: { /* channel ID */ id: string } | string;
 }
 
 export interface IPuzzlehunt extends TypedEventEmitter<IPuzzlehuntEvents> {
@@ -113,6 +115,43 @@ export interface IPuzzlehunt extends TypedEventEmitter<IPuzzlehuntEvents> {
 	get puzzles(): Iterable<Puzzle>;
 	get guildId(): string;
 	setGuildId(id: string): void;
+}
+
+export interface StringNode {
+	type: 'string';
+	value: string;
+	parentage: TraitLocation;
+}
+
+export interface Puzzle extends Omit<PuzzleObject, 'roundId'> {
+	type: 'puzzle';
+	roundId: NodeId;
+	// color: string;
+	// Google drive id
+	sheetId?: string;
+	answer?: string;
+}
+
+export interface Round extends PuzzleObject {
+	type: 'round';
+	children: (Round | Puzzle)[];
+	// color: string;
+	// idxMsgId: string; used in previous version to update discord stuff
+}
+
+export interface DiscordAssociation {
+	channelId: string;
+	// Only populated for rounds
+	indexChannelId?: string;
+	roleId: string;
+}
+
+export interface PuzzleObject {
+	id: NodeId;
+	name: string;
+	url: string;
+	discordInfo?: DiscordAssociation;
+	roundId?: NodeId; // undefined means root
 }
 
 const puzzleDef = '34edbf0a-7479-4124-ae4f-7091724dc58a';
@@ -287,12 +326,6 @@ class RoundHandle implements Round {
 			}
 		);
 	}
-}
-
-export interface StringNode {
-	type: 'string';
-	value: string;
-	parentage: TraitLocation;
 }
 
 class StringHandle implements StringNode {
@@ -589,35 +622,4 @@ class Puzzlehunt
 			yield* this.getAllDefsMatching(child, def);
 		}
 	}
-}
-
-export interface Puzzle extends Omit<PuzzleObject, 'roundId'> {
-	type: 'puzzle';
-	roundId: NodeId;
-	// color: string;
-	// Google drive id
-	sheetId?: string;
-	answer?: string;
-}
-
-interface DiscordAssociation {
-	channelId: string;
-	// Only populated for rounds
-	indexChannelId?: string;
-	roleId: string;
-}
-
-interface PuzzleObject {
-	id: NodeId;
-	name: string;
-	url: string;
-	discordInfo?: DiscordAssociation;
-	roundId?: NodeId; // undefined means root
-}
-
-export interface Round extends PuzzleObject {
-	type: 'round';
-	children: (Round | Puzzle)[];
-	// color: string;
-	// idxMsgId: string; used in previous version to update discord stuff
 }

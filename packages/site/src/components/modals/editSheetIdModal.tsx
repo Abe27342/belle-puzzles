@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Card, Button, Dialog, TextField } from '../../fast';
-import { IPuzzlehunt, Puzzle } from '../../model/puzzlehunt';
+import { IPuzzlehunt, Puzzle } from '@belle-puzzles/puzzlehunt-model';
 
 export interface EditSheeetIdModalProps {
 	puzzleObj: Puzzle;

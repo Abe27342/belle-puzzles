@@ -1,4 +1,7 @@
-import { IPuzzlehunt, loadExistingPuzzlehunt } from './fluid/puzzlehunt.js';
+import {
+	IPuzzlehunt,
+	loadExistingPuzzlehunt,
+} from '@belle-puzzles/puzzlehunt-model';
 import { makeFluidClient } from './fluid/client.js';
 
 export interface IPuzzlehuntProvider {

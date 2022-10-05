@@ -24,6 +24,7 @@
 	"license": "MIT",
 	"dependencies": {
 		"@azure/msal-browser": "^2.28.3",
+		"@belle-puzzles/puzzlehunt-model": "^0.0.1",
 		"@bity/oauth2-auth-code-pkce": "^2.13.0",
 		"@fluid-experimental/tree": "^1.2.7",
 		"@fluidframework/azure-client": "^1.0.1",

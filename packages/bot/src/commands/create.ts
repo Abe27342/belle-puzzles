@@ -8,7 +8,7 @@ import {
 } from 'discord.js';
 import { Command } from './types';
 import { PuzzlehuntContext, SerializedPuzzlehuntContext } from '../types';
-import { createNewPuzzlehunt } from '../fluid/puzzlehunt.js';
+import { createNewPuzzlehunt } from '@belle-puzzles/puzzlehunt-model';
 import { makeFluidClient } from '../fluid/client.js';
 
 const PUZZLE_ADMIN_CHANNEL = 'belle-bot-admin';

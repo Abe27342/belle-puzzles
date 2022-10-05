@@ -9,7 +9,7 @@ import {
 	ChatInputCommandInteraction,
 	CacheType,
 } from 'discord.js';
-import { IPuzzlehunt, Puzzle, Round } from '../fluid/puzzlehunt.js';
+import { IPuzzlehunt, Puzzle, Round } from '@belle-puzzles/puzzlehunt-model';
 import '../register-env.js';
 
 export function generatePuzzleEmbed(puzzle: Puzzle): EmbedContent {
