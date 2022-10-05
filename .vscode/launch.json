@@ -1,0 +1,30 @@
+{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"name": "Attach to Node Functions",
+			"type": "node",
+			"request": "attach",
+			"port": 9229,
+			"preLaunchTask": "func: host start"
+		},
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Launch Discord Bot",
+			"skipFiles": ["<node_internals>/**"],
+			"program": "${workspaceFolder}\\packages\\bot\\dist\\index.js",
+			"preLaunchTask": "tsc: build - packages/bot/tsconfig.json",
+			"outFiles": ["${workspaceFolder}/packages/**/dist/**/*.js"]
+		},
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Deploy Commands",
+			"skipFiles": ["<node_internals>/**"],
+			"program": "${workspaceFolder}\\packages\\bot\\scripts\\deploy-commands.js",
+			"preLaunchTask": "tsc: build - packages/bot/tsconfig.json",
+			"outFiles": ["${workspaceFolder}/packages/**/dist/**/*.js"]
+		}
+	]
+}

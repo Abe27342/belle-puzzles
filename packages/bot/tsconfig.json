@@ -1,0 +1,15 @@
+{
+	"compilerOptions": {
+		"allowSyntheticDefaultImports": true,
+		"allowJs": true,
+		"incremental": true,
+		"module": "ESNext",
+		"moduleResolution": "node",
+		"noImplicitAny": true,
+		"outDir": "./dist/",
+		"rootDir": "./src",
+		"sourceMap": true,
+		"target": "ESNext"
+	},
+	"include": ["src/**/*"]
+}

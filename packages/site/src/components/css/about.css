@@ -1,0 +1,6 @@
+#about > fast-card {
+	width: 80vw;
+	height: auto;
+	min-height: 80vh;
+	padding: var(--card-padding);
+}

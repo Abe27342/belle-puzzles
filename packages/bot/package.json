@@ -1,0 +1,48 @@
+{
+	"name": "@belle-puzzles/bot",
+	"version": "0.0.1",
+	"description": "Bot-side code for BelleBot (a puzzle hunt bot)",
+	"main": "src/index.ts",
+	"type": "module",
+	"engines": {
+		"node": ">=16.0.0"
+	},
+	"scripts": {
+		"build": "tsc",
+		"format": "prettier --write src",
+		"test": "npm run test",
+		"start": "node ./dist/index.js",
+		"start:localserver": "npx @fluidframework/azure-local-service",
+		"update-commands": "node ./scripts/deploy-commands",
+		"update-commands:prod": "cross-env DEPLOY_EVERYWHERE=true node ./scripts/deploy-commands"
+	},
+	"dependencies": {
+		"@discordjs/rest": "^1.1.0",
+		"@fluid-experimental/tree": "^1.2.7",
+		"@fluidframework/azure-client": "^1.0.1",
+		"@fluidframework/azure-local-service": "^0.1.38773",
+		"@fluidframework/test-client-utils": "^1.2.5",
+		"cors": "^2.8.5",
+		"discord.js": "^14.4.0",
+		"dotenv": "^16.0.2",
+		"express": "^4.18.1",
+		"fluid-framework": "^1.2.5",
+		"google-auth-library": "^8.5.1",
+		"googleapis": "^107.0.0",
+		"uuid": "^9.0.0"
+	},
+	"devDependencies": {
+		"@fluid-experimental/get-container": "^1.2.5",
+		"@fluidframework/aqueduct": "^1.2.5",
+		"@fluidframework/local-driver": "^1.2.5",
+		"@fluidframework/server-local-server": "^0.1036.5000",
+		"@types/express": "^4.17.14",
+		"@types/node": "^16.9.0",
+		"@types/uuid": "^8.3.4",
+		"cross-env": "^7.0.3",
+		"prettier": "^2.7.1",
+		"typescript": "^4.8.3"
+	},
+	"author": "Abram Sanderson",
+	"license": "MIT"
+}

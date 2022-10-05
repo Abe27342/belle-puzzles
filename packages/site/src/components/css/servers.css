@@ -1,0 +1,33 @@
+#servers h1 {
+	margin: 0px;
+}
+
+#servers > fast-card {
+	padding-left: var(--card-padding);
+	grid-column: 2 / 3;
+	padding: var(--card-padding);
+	height: 50vh;
+}
+
+#servers > fast-card > *:not(:last-child) {
+	padding-bottom: var(--card-padding);
+}
+
+#servers fast-combobox .listbox {
+	overflow-y: scroll;
+	height: 600%;
+}
+
+#servers {
+	display: grid;
+	grid-template-columns: 1fr 2fr 1fr;
+	grid-template-rows: 1fr;
+}
+
+fast-toolbar {
+	padding: 0;
+}
+
+fast-button:first-child {
+	margin-left: 0;
+}

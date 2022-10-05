@@ -1,0 +1,104 @@
+:root {
+	--header-vertical-padding: calc(var(--base-height-multiplier) / 2 * 1px);
+	--header-horizontal-padding: calc(var(--base-height-multiplier) * 1px);
+	--card-padding: 30px;
+}
+
+.link {
+	padding-left: 15px;
+	padding-right: 15px;
+}
+
+body {
+	font: 16px aktiv-grotesk, Segoe UI, Arial, Helvetica, sans-serif;
+	margin: 0;
+	list-style: none;
+}
+
+.page-body {
+	margin: 16px;
+}
+
+.page-body-no-margin {
+	margin: 0;
+}
+
+.header {
+	background: #164a41;
+	align-items: center;
+	display: grid;
+	grid-column: 1 / -1;
+	/* grid-area: 1 / 1 / auto / end; */
+	grid-template-columns: auto 1fr auto;
+	padding: 5px 0px;
+}
+
+.nav-bar-card {
+	height: calc(
+		(var(--base-height-multiplier) + var(--density)) * var(--design-unit) *
+			1px
+	);
+	display: flex;
+	align-items: center;
+	color: #ffffff;
+	background: #4d774e;
+}
+
+.header fast-card,
+.header fast-anchor,
+.header fast-button {
+	border-radius: 5px;
+	padding: 0px 5px;
+}
+
+.header li {
+	padding: 0 calc(var(--header-horizontal-padding)) 0 0;
+	display: inline-block;
+	vertical-align: middle;
+}
+
+.header > li:first-child {
+	padding: 0 calc(var(--header-horizontal-padding));
+}
+
+.account-info li {
+	position: relative;
+}
+
+.account-info {
+	display: flex;
+	align-items: center;
+}
+
+/* Can re-enable this for divider effects */
+/* .account-list-item:before {
+	content: '';
+	position: absolute;
+	border-left: 1px solid var(--accent-fill-rest);
+	left: 0;
+	top: 10%;
+	height: 80%;
+} */
+
+nav {
+	text-align: center;
+}
+
+.discord-avatar {
+	clip-path: circle(50%);
+	width: 36px;
+	height: 36px;
+}
+
+.discord-username {
+	padding-left: 5px;
+}
+
+.discord-account {
+	display: flex;
+	align-items: center;
+}
+
+:not(:defined) {
+	visibility: hidden;
+}

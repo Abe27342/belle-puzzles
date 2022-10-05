@@ -1,0 +1,53 @@
+#puzzles > fast-card {
+	width: 80vw;
+	height: auto;
+	min-height: 80vh;
+	padding: var(--card-padding);
+}
+
+#puzzles > fast-card > *:not(:last-child) {
+	padding-bottom: var(--card-padding);
+}
+
+#libralogo {
+	position: absolute;
+	right: var(--card-padding);
+	top: var(--card-padding);
+	width: 200px;
+}
+
+.puzzle-view {
+	width: 80%;
+}
+
+.puzzle-or-round-info ~ * {
+	margin: 0 5px;
+}
+
+fast-tree-item {
+	padding: 5px 0 0 0;
+}
+
+fast-tree-view p {
+	padding-right: 15px;
+}
+
+fast-dialog {
+	--dialog-width: 80%;
+	--dialog-height: 80%;
+}
+
+.modal {
+	position: fixed;
+	z-index: 1;
+	padding: 100px 5% 0 5%;
+	top: 0;
+	width: 100%;
+	height: 100%;
+	overflow: auto;
+	background-color: rgba(0, 0, 0, 0.4);
+}
+
+.modal fast-card {
+	padding: var(--card-padding);
+}

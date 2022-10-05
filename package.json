@@ -1,0 +1,27 @@
+{
+	"name": "root",
+	"version": "0.0.1",
+	"engines": {
+		"node": ">=16.9.0"
+	},
+	"scripts": {
+		"build": "lerna run build --stream",
+		"postinstall": "lerna bootstrap --strict --hoist",
+		"start:bot": "lerna run start --scope=@belle-puzzles/bot",
+		"start:localserver": "npx @fluidframework/azure-local-service",
+		"test": "npm run test"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/abe27342/belle-puzzles.git"
+	},
+	"author": "Abram Sanderson",
+	"license": "MIT",
+	"bugs": {
+		"url": "https://github.com/abe27342/belle-puzzles/issues"
+	},
+	"homepage": "https://github.com/abe27342/belle-puzzles#readme",
+	"dependencies": {
+		"lerna": "^5.5.4"
+	}
+}

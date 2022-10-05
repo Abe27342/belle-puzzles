@@ -1,0 +1,25 @@
+{
+	"name": "@belle-puzzles/site-api",
+	"version": "0.0.1",
+	"description": "",
+	"engines": {
+		"node": ">=16.9.0"
+	},
+	"scripts": {
+		"build": "tsc",
+		"watch": "tsc -w",
+		"prestart": "npm run build",
+		"start": "func start",
+		"test": "echo \"No tests yet...\""
+	},
+	"dependencies": {
+		"@fluidframework/azure-client": "^1.0.1",
+		"@fluidframework/azure-service-utils": "^1.0.1",
+		"discord.js": "^14.4.0"
+	},
+	"devDependencies": {
+		"@azure/functions": "^3.0.0",
+		"@types/node": "^16.9.0",
+		"typescript": "^4.8.3"
+	}
+}

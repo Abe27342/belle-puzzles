@@ -1,0 +1,70 @@
+{
+	"name": "@belle-puzzles/site",
+	"version": "0.0.1",
+	"description": "Website for Belle Bot",
+	"main": "src/index.ts",
+	"sideEffects": [
+		"*.css"
+	],
+	"engines": {
+		"node": ">=16.9.0"
+	},
+	"scripts": {
+		"build": "npm run webpack",
+		"build:prod": "npm run webpack -- --mode=production",
+		"format": "prettier --write src",
+		"webpack": "cross-env TS_NODE_PROJECT=\"tsconfig-for-webpack.json\" webpack",
+		"start": "npm run webpack -- serve --env FLUID_CONNECTION=local",
+		"start:azure-local": "npx @fluidframework/azure-local-service",
+		"start:swa": "npm run build && npm run start:swa-no-compile",
+		"start:swa-no-compile": "swa start static --api-location ../site-api --port=9000",
+		"start:swa-debug-api": "swa start static --api-location=http://localhost:7071 --port=9000"
+	},
+	"author": "Abram Sanderson",
+	"license": "MIT",
+	"dependencies": {
+		"@azure/msal-browser": "^2.28.3",
+		"@bity/oauth2-auth-code-pkce": "^2.13.0",
+		"@fluid-experimental/tree": "^1.2.7",
+		"@fluidframework/azure-client": "^1.0.1",
+		"@fluidframework/azure-service-utils": "^1.0.1",
+		"@microsoft/fast-components": "^2.30.6",
+		"@microsoft/fast-react-wrapper": "^0.3.14",
+		"@reduxjs/toolkit": "^1.8.5",
+		"discord.js": "^14.4.0",
+		"fluid-framework": "^1.2.5",
+		"node-polyfill-webpack-plugin": "^2.0.1",
+		"react": "^17.0.2",
+		"react-dom": "^17.0.2",
+		"react-redux": "^8.0.2",
+		"react-router": "^6.4.0",
+		"redux": "^4.2.0",
+		"redux-persist": "^6.0.0",
+		"redux-thunk": "^2.4.1",
+		"uuid": "^9.0.0"
+	},
+	"devDependencies": {
+		"@azure/static-web-apps-cli": "^1.0.2",
+		"@fluidframework/azure-local-service": "^0.1.38773",
+		"@fluidframework/test-client-utils": "^1.2.5",
+		"@types/node": "^16.9.0",
+		"@types/react": "^17.0.2",
+		"@types/react-dom": "^17.0.2",
+		"@types/uuid": "^8.3.4",
+		"@types/webpack": "^5.28.0",
+		"assert": "^2.0.0",
+		"cross-env": "^7.0.3",
+		"css-loader": "^6.7.1",
+		"dotenv": "^16.0.2",
+		"prettier": "^2.7.1",
+		"react-router-dom": "^6.4.0",
+		"style-loader": "^3.3.1",
+		"ts-loader": "^9.3.1",
+		"ts-node": "^10.9.1",
+		"typescript": "^4.8.3",
+		"webpack": "^5.74.0",
+		"webpack-bundle-analyzer": "^4.6.1",
+		"webpack-cli": "^4.10.0",
+		"webpack-dev-server": "^4.11.0"
+	}
+}
