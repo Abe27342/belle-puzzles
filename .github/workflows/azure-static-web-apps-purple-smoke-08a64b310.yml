@@ -24,6 +24,9 @@ jobs:
             - name: Bootstrap
               run: npm run bootstrap
 
+            - name: Build puzzlehunt model
+              run: npm run build -- --scope=@belle-puzzles/puzzlehunt-model
+
             - name: Build And Deploy
               id: builddeploy
               uses: Azure/static-web-apps-deploy@v1
