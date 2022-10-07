@@ -10,7 +10,7 @@ import {
 	CacheType,
 } from 'discord.js';
 import { IPuzzlehunt, Puzzle, Round } from '@belle-puzzles/puzzlehunt-model';
-import '../register-env.js';
+import '../register-env/index.js';
 
 export function generatePuzzleEmbed(puzzle: Puzzle): EmbedContent {
 	const embed = new EmbedBuilder().setTitle(puzzle.name).addFields({

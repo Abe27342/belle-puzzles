@@ -6,7 +6,7 @@ import {
 	AzureRemoteConnectionConfig,
 } from '@fluidframework/azure-client';
 import { InsecureTokenProvider } from '@fluidframework/test-client-utils';
-import '../register-env.js';
+import '../register-env/index.js';
 
 const useLocalService = !!process.env.USE_LOCAL_SERVICE;
 

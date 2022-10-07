@@ -1,6 +1,6 @@
 import { NodeId } from '@fluid-experimental/tree';
 import { SelectMenuInteraction } from 'discord.js';
-import { getAncestorRounds } from '../commands/utils.js';
+import { getAncestorRounds } from '../utils/index.js';
 import { PuzzlehuntContext } from '../types.js';
 import { InteractionHandler } from './types';
 

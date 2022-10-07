@@ -1,15 +1,10 @@
 {
-	"compilerOptions": {
-		"allowSyntheticDefaultImports": true,
-		"allowJs": true,
-		"incremental": true,
-		"module": "ESNext",
-		"moduleResolution": "node",
-		"noImplicitAny": true,
-		"outDir": "./dist/",
-		"rootDir": "./src",
-		"sourceMap": true,
-		"target": "ESNext"
-	},
-	"include": ["src/**/*"]
+	"extends": "./tsconfig.base.json",
+	"include": ["./src/**/*"],
+	"references": [
+		{ "path": "./src/integrations/" },
+		{ "path": "./src/register-env/" },
+		{ "path": "./src/utils/" },
+		{ "path": "./src/fluid/" }
+	]
 }

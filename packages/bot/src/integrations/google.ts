@@ -1,4 +1,11 @@
+import '../register-env/index.js';
 import { google } from 'googleapis';
+
+const auth = new google.auth.GoogleAuth({
+	credentials: JSON.parse(process.env.GOOGLE_API_KEY),
+	scopes: ['https://www.googleapis.com/auth/drive.file'],
+});
+google.options({ auth });
 
 export const createGoogleSheet = async (
 	name: string,
