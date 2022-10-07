@@ -25,7 +25,7 @@ const makeConfig = (
 	}
 
 	return {
-		entry: './src/index.ts',
+		entry: './src/index.tsx',
 		mode: argv.mode === 'production' ? 'production' : 'development',
 		devtool: argv.mode === 'production' ? undefined : 'inline-source-map',
 		devServer: {

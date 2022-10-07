@@ -1,14 +1,14 @@
 import * as React from 'react';
-import { Card, Button, Dialog, TextField } from '../../fast';
-import { IPuzzlehunt, Puzzle, Round } from '@belle-puzzles/puzzlehunt-model';
+import { Card, Button, Dialog, TextField } from '../../../fast';
+import { IPuzzlehunt, Puzzle } from '@belle-puzzles/puzzlehunt-model';
 
-export interface EditNameModalProps {
-	puzzleObj: Round | Puzzle;
+export interface EditSheeetIdModalProps {
+	puzzleObj: Puzzle;
 	puzzlehunt: IPuzzlehunt;
 	close: () => void;
 }
 
-export const EditNameModal: React.FC<EditNameModalProps> = ({
+export const EditSheetIdModal: React.FC<EditSheeetIdModalProps> = ({
 	puzzleObj,
 	puzzlehunt,
 	close,
@@ -44,8 +44,8 @@ export const EditNameModal: React.FC<EditNameModalProps> = ({
 				/* prevent light-dismiss */
 				onClick={(event) => event.stopPropagation()}
 			>
-				<h1>Change Name</h1>
-				<p>Enter a new name for "{puzzleObj.name}"</p>
+				<h1>Change Sheet ID</h1>
+				<p>Enter a new google sheet ID for "{puzzleObj.name}"</p>
 				<TextField
 					required={true}
 					style={{
@@ -55,7 +55,7 @@ export const EditNameModal: React.FC<EditNameModalProps> = ({
 						const content = (event.target as any).value;
 						setContent(content);
 					}}
-					placeholder={`new ${puzzleObj.type} name`}
+					placeholder={`new ${puzzleObj.type} sheet ID`}
 					{...(content ? { value: content } : {})}
 				/>
 				{errorText && (
@@ -89,14 +89,14 @@ export const EditNameModal: React.FC<EditNameModalProps> = ({
 					}}
 					onClick={() => {
 						if (!content) {
-							setErrorText('Name must be filled.');
+							setErrorText('Sheet ID must be filled.');
 							return;
 						}
-						puzzlehunt.changeName(puzzleObj, content);
+						puzzlehunt.augmentWithGoogleSheet(puzzleObj, content);
 						close();
 					}}
 				>
-					Change Name
+					Change Sheet ID
 				</Button>
 			</Card>
 		</Dialog>

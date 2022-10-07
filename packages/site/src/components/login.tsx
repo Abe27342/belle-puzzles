@@ -6,6 +6,7 @@ import { useAppSelector } from '../store/hooks';
 import { Button, Card } from '../fast';
 import { DiscordProfile } from './discordProfile';
 import { useSearchParams } from 'react-router-dom';
+import { setPostRedirectPath } from './redirect';
 
 export const Login: React.FC = () => {
 	const isLoggedIn = useIsLoggedIn();
@@ -17,7 +18,7 @@ export const Login: React.FC = () => {
 
 	const postLoginPathname = usePostLoginPathname();
 	const authenticateToAad = () => {
-		window.localStorage.setItem('REDIRECT_PATHNAME', postLoginPathname);
+		setPostRedirectPath(postLoginPathname);
 		window.location.pathname = '/.auth/login/aad';
 	};
 	return (

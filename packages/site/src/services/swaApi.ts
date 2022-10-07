@@ -3,12 +3,6 @@ import { REHYDRATE } from 'redux-persist';
 import { createFetchFn } from './createFetch';
 import { Guild } from './discordApi';
 
-export interface PuzzlehuntContext {
-	fluidFileId: string;
-	googleFolderId: string;
-	name: string;
-}
-
 export const swaApi = createApi({
 	reducerPath: 'swaApi',
 	baseQuery: fetchBaseQuery({
