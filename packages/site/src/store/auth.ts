@@ -5,7 +5,7 @@ import {
 } from '@reduxjs/toolkit';
 import type { AppThunkApiConfig, RootState } from './store';
 import { AccessContext, OAuth2AuthCodePKCE } from '@bity/oauth2-auth-code-pkce';
-import { batch } from 'react-redux';
+import { setPostRedirectPath } from '../components';
 
 export interface ClientPrincipal {
 	identityProvider: string;
@@ -97,10 +97,7 @@ const REDIRECTING_FROM_SERVICE_KEY = 'REDIRECTING_FROM_SERVICE';
 export async function authorizeToDiscord(
 	postLoginPathname?: string
 ): Promise<void> {
-	window.localStorage.setItem(
-		'REDIRECT_PATHNAME',
-		postLoginPathname ?? window.location.pathname
-	);
+	setPostRedirectPath(postLoginPathname ?? window.location.pathname);
 	window.localStorage.setItem(REDIRECTING_FROM_SERVICE_KEY, 'discord');
 	await discordOAuth.fetchAuthorizationCode({ prompt: 'none' });
 }

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import './css/puzzles.css';
+import '../css/puzzles.css';
 import type { NodeId } from '@fluid-experimental/tree';
 import { useParams } from 'react-router-dom';
 import {
@@ -11,7 +11,7 @@ import {
 	Toolbar,
 	Menu,
 	MenuItem,
-} from '../fast';
+} from '../../fast';
 import {
 	IPuzzlehunt,
 	loadExistingPuzzlehunt,
@@ -25,9 +25,9 @@ import {
 	EditSheetIdModal,
 } from './modals';
 import { useStore } from 'react-redux';
-import { AppStore } from '../store/store';
-import { useGetPuzzlehuntContextQuery } from '../services/belleBotApi';
-import { createClient } from '../model/connection';
+import type { AppStore } from '../../store/store';
+import { useGetPuzzlehuntContextQuery } from '../../services/belleBotApi';
+import { createClient } from './connection';
 
 export const Puzzles: React.FC = () => {
 	const [puzzlehunt, setPuzzlehunt] = React.useState<IPuzzlehunt>();

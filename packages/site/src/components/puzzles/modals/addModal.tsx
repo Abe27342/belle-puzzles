@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { v4 as uuid } from 'uuid';
-import { Card, TextField, Button, Dialog } from '../../fast';
+import { Card, TextField, Button, Dialog } from '../../../fast';
 import { IPuzzlehunt, Puzzle, Round } from '@belle-puzzles/puzzlehunt-model';
 
 export interface AddModalProps {

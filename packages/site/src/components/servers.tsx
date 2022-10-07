@@ -12,13 +12,13 @@ import { skipToken } from '@reduxjs/toolkit/dist/query';
 import { useGetGuildsQuery } from '../services/discordApi';
 import { useGetMutualGuildsQuery } from '../services/swaApi';
 import { useIsLoggedIn } from './login';
+import { setPostRedirectPath } from './redirect';
 
 function onAddToNew() {
-	window.localStorage.setItem('REDIRECT_PATHNAME', window.location.pathname);
+	setPostRedirectPath(window.location.pathname);
 	window.location.href = createAddBotToServerUrl();
 }
 
-const pollingInterval = 5 * 1000;
 const queryOptions = {
 	pollingInterval: 5 * 60 * 1000 /* milliseconds */,
 	refetchOnMountOrArgChange: 20 /* seconds */,
