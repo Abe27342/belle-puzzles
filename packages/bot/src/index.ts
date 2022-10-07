@@ -1,9 +1,9 @@
 // Require the necessary discord.js classes
-import './register-env.js';
+import './register-env/index.js';
 import express from 'express';
 import cors from 'cors';
 import { NodeId, TreeView } from '@fluid-experimental/tree';
-import { assert } from './commands/utils.js';
+import { assert } from './utils/index.js';
 import {
 	Collection,
 	Guild,
@@ -28,14 +28,7 @@ import {
 	syncChannel,
 	removeDiscordAssociation,
 } from './sync.js';
-import { google } from 'googleapis';
 import { createGoogleSheet } from './integrations/google.js';
-
-const auth = new google.auth.GoogleAuth({
-	credentials: JSON.parse(process.env.GOOGLE_API_KEY),
-	scopes: ['https://www.googleapis.com/auth/drive.file'],
-});
-google.options({ auth });
 
 const token = process.env.DISCORD_TOKEN;
 const client = createClient();

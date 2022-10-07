@@ -14,8 +14,11 @@
 			"name": "Launch Discord Bot",
 			"skipFiles": ["<node_internals>/**"],
 			"program": "${workspaceFolder}\\packages\\bot\\dist\\index.js",
-			"preLaunchTask": "tsc: build - packages/bot/tsconfig.json",
-			"outFiles": ["${workspaceFolder}/packages/**/dist/**/*.js"]
+			"preLaunchTask": "npm: build - packages/bot",
+			"outFiles": [
+				"${workspaceFolder}/packages/bot/dist/**/*.js",
+				"${workspaceFolder}/packages/puzzlehunt-model/dist/**/*.js"
+			]
 		},
 		{
 			"type": "node",
@@ -23,8 +26,8 @@
 			"name": "Deploy Commands",
 			"skipFiles": ["<node_internals>/**"],
 			"program": "${workspaceFolder}\\packages\\bot\\scripts\\deploy-commands.js",
-			"preLaunchTask": "tsc: build - packages/bot/tsconfig.json",
-			"outFiles": ["${workspaceFolder}/packages/**/dist/**/*.js"]
+			"preLaunchTask": "npm: build - packages/bot",
+			"outFiles": ["${workspaceFolder}/packages/bot/dist/**/*.js"]
 		}
 	]
 }

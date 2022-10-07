@@ -5,7 +5,7 @@ import {
 } from 'discord.js';
 import { Command } from './types';
 import { PuzzlehuntContext } from '../types';
-import { computeParentRound, ROUND_ARG } from './utils.js';
+import { computeParentRound, ROUND_ARG } from '../utils/index.js';
 
 const NAME_ARG = 'name';
 const URL_ARG = 'url';

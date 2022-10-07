@@ -6,7 +6,7 @@ import {
 } from 'discord.js';
 import { Command } from './types';
 import { PuzzlehuntContext } from '../types';
-import { BELLE_USER_ID } from './utils.js';
+import { BELLE_USER_ID } from '../utils/index.js';
 
 export const resetServer: Command = {
 	requiresSerializedContext: false,

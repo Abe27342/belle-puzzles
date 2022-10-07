@@ -13,7 +13,7 @@ import {
 	generatePuzzleEmbed,
 	generateRoundEmbed,
 	getAncestorRounds,
-} from './commands/utils.js';
+} from './utils/index.js';
 import type {
 	IPuzzlehunt,
 	Puzzle,
