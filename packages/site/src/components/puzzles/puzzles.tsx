@@ -84,7 +84,8 @@ export const Puzzles: React.FC = () => {
 		};
 	}, [forceRerender, fluidFileId, store]);
 
-	const rootNodes = puzzlehunt ? buildPuzzleTree(puzzlehunt) : [];
+	const rounds = Array.from(puzzlehunt?.rounds ?? []);
+	rounds.sort((a, b) => a.name.localeCompare(b.name));
 	const { onContextMenu, ui } = useEditingUI(puzzlehunt);
 	return (
 		<>
@@ -129,10 +130,10 @@ export const Puzzles: React.FC = () => {
 								className="puzzle-view"
 								onContextMenu={onContextMenu}
 							>
-								{rootNodes.map((node) => (
+								{rounds.map((round) => (
 									<PuzzleTree
-										node={node}
-										key={node.puzzleObj.id}
+										puzzleObj={round}
+										key={round.id}
 										guildId={guildId}
 									/>
 								))}
@@ -371,11 +372,11 @@ const PuzzlePageMenu: React.FC<PuzzlePageMenu> = ({
 	);
 };
 
-const PuzzleTree: React.FC<{ node: PuzzlehuntNode; guildId: string }> = ({
-	node,
+const PuzzleTree: React.FC<{ puzzleObj: Puzzle | Round; guildId: string }> = ({
+	puzzleObj,
 	guildId,
 }) => {
-	const { id, name, url, type, discordInfo } = node.puzzleObj;
+	const { id, name, url, type, discordInfo } = puzzleObj;
 	return (
 		<TreeItem id={`${type}-obj-${id}`}>
 			<div className="puzzle-or-round-info" />
@@ -397,26 +398,25 @@ const PuzzleTree: React.FC<{ node: PuzzlehuntNode; guildId: string }> = ({
 			)}
 			{type === 'puzzle' && (
 				<>
-					{node.puzzleObj.sheetId && (
+					{puzzleObj.sheetId && (
 						<Anchor
-							href={`https://docs.google.com/spreadsheets/d/${node.puzzleObj.sheetId}`}
+							href={`https://docs.google.com/spreadsheets/d/${puzzleObj.sheetId}`}
 							target="_blank"
 						>
 							Spreadsheet
 						</Anchor>
 					)}
-					{node.puzzleObj.answer && (
-						<p>Answer: {node.puzzleObj.answer}</p>
-					)}
+					{puzzleObj.answer && <p>Answer: {puzzleObj.answer}</p>}
 				</>
 			)}
-			{node.children.map((child) => (
-				<PuzzleTree
-					node={child}
-					key={child.puzzleObj.id}
-					guildId={guildId}
-				/>
-			))}
+			{type === 'round' &&
+				puzzleObj.children.map((child) => (
+					<PuzzleTree
+						puzzleObj={child}
+						key={child.id}
+						guildId={guildId}
+					/>
+				))}
 		</TreeItem>
 	);
 };
@@ -424,50 +424,4 @@ const PuzzleTree: React.FC<{ node: PuzzlehuntNode; guildId: string }> = ({
 function useForceRerender(): () => void {
 	const [, setVal] = React.useState(0);
 	return React.useCallback(() => setVal((prev) => prev + 1), []);
-}
-
-interface PuzzlehuntNode {
-	puzzleObj: Puzzle | Round;
-	children: PuzzlehuntNode[];
-}
-
-function buildPuzzleTree(puzzlehunt: IPuzzlehunt): PuzzlehuntNode[] {
-	const rootRounds: PuzzlehuntNode[] = [];
-	const lookup = new Map<NodeId, PuzzlehuntNode>();
-	const buildPuzzleNode = (puzzleObj: Round | Puzzle): void => {
-		if (lookup.has(puzzleObj.id)) {
-			return;
-		}
-		if (puzzleObj.roundId && !lookup.has(puzzleObj.roundId)) {
-			buildPuzzleNode(puzzlehunt.getRound(puzzleObj.roundId));
-		}
-
-		const puzzlehuntNode: PuzzlehuntNode = {
-			puzzleObj,
-			children: [],
-		};
-		if (puzzleObj.roundId) {
-			const parentNode = lookup.get(puzzleObj.roundId);
-			parentNode.children.push(puzzlehuntNode);
-		} else {
-			rootRounds.push(puzzlehuntNode);
-		}
-		lookup.set(puzzleObj.id, puzzlehuntNode);
-	};
-	for (const puzzle of puzzlehunt.puzzles) {
-		buildPuzzleNode(puzzle);
-	}
-
-	for (const round of puzzlehunt.rounds) {
-		buildPuzzleNode(round);
-	}
-
-	const compareByName = (a: PuzzlehuntNode, b: PuzzlehuntNode) =>
-		a.puzzleObj.name.localeCompare(b.puzzleObj.name);
-
-	for (const node of lookup.values()) {
-		node.children.sort(compareByName);
-	}
-	rootRounds.sort(compareByName);
-	return rootRounds;
 }

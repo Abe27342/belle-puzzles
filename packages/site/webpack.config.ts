@@ -3,6 +3,8 @@ import * as webpack from 'webpack';
 import { BundleAnalyzerPlugin } from 'webpack-bundle-analyzer';
 import 'webpack-dev-server';
 import * as dotenv from 'dotenv';
+import ForkTsCheckerWebpackPlugin from 'fork-ts-checker-webpack-plugin';
+
 dotenv.config({ path: `${__dirname}/../../.env` });
 
 interface StringMap<T> {
@@ -77,7 +79,12 @@ const makeConfig = (
 				},
 				{
 					test: /\.tsx?$/,
-					use: 'ts-loader',
+					use: [
+						{
+							loader: 'ts-loader',
+							options: { transpileOnly: true },
+						},
+					],
 					exclude: /node_modules/,
 				},
 			],
@@ -108,6 +115,7 @@ const makeConfig = (
 						: 'https://belle-puzzles.herokuapp.com'
 				),
 			}),
+			new ForkTsCheckerWebpackPlugin(),
 			new BundleAnalyzerPlugin({
 				analyzerMode: 'static',
 				openAnalyzer: false,
