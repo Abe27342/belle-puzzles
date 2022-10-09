@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="600px" height="480px" viewBox="0 0 600 480" version="1.1">
+    <g id="Page-2" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Artboard" fill="#f2fbf2">
+            <!-- See: -->
+            <!-- https://www.typescriptlang.org/play?#code/FAFwngDgpgBASlAxiGBeGBvYMcwB4BcMAdgK4C2ARlAE4Dc2uYRZVtDuMA7gJYAmIABYsK1eoxyCoPAOaCQItuM40A-IrEMAvsGA9iIWgDMAholgBhHjUQAbWFk6JCJUewkxEzV0o64aGu46wEakxMg8APbEMDJQIAAKJkIAFDRICvAZAJREAM4gNPoymB6I0QUwIJEQaDDpyAB0YH445cSV9kYo6A0gjXitnhUoRXI99RkDANR9jbwCgkPtlZSRINXkdXNgs1NSsvJD6SCkNDEABgCyACQYXSBaADR31RBaMAAyd2Pyz681D7fDC-R4vDBrDaRchAu4Pf4Q9abWH3KDdBFvD4ALQuwGCoXCICiMTiICsNnsKUQ1kQRHJdiguRgBSKxBKjlwKxQGE8eCenjA-JoMA+6GpNmO8TOl1uGGcswRXg+AEEYD8ETQPgAGGAARieOruzhgAFp6oqwB91eDNTAdfrDXK8DBpubwUrccF7CgCiYaBNdQA2ABMjQArAwuTAeIZyAAJaTjOoAFi1kZG0eIfCgBjqurTwCjwvQ+YYhYzfTyRAQyAA2gBdOq14AcnAuLX87wd7j8IREQNa7sHcZEZMADi1eKeLY8LmDYc7+RAfpA-IWfZgweDQ8T8iIuoX9SIYanM84c7DLsz2YMi+Zy-9V5jUHju9XPcWRC3O8OmQPQuPU9W3wL9D28X1H1dYMYAAKmjWME1-Nde2ETdt35Yc9z1Q8AhgE9njPXALyfLMc3fcCHxQV0AGZYPgl9EPGZDPzQn8R2wgC8KA2dQJIm9yKXFcr2TOjn1fJCPw3b8MLffccMAgiAHpFJgKQTGzYVXX0GMeBMWwqigPAQEItsvzvbt11Q4NqMPTDMlTbjzzMmBvAHZiN2owcZN-UdJyUlTKFIKEOhMkDNzvXV0Mk1DdVTbz2O3RyiP3NyXP3KLLP3OLVNkzc-OnYC53M9yrJs+KsIcgj610CCAwAdgLKNxQZKsYHpewGybDweQ8JwXH0fj+S8QT-SFDwCM4HrOD6r9RNI28BRGqj6PEpj6nG6dJpgXrOX6+b32G+8hKg0SELfMbOAm3Apumto5zmwbFqOyCYFouCxMY+QLtwK6cBu27nFm979qGijjpgET3rOiSaA24BqtunBlJgAAeZr7F5VAACJ8yxgVsd1Bq8ZobGxzxxSAD5tsRmBkbRmkMecAmtTxrxsesln6lJ8mqZ2pGVPpilYCZrHt1ZsB2cHYnudp3mabp9HhbwSXxfZgdpaxsnZepxGFYZpWVfx0WAE5OZJzWed0csOkiexGlsSIZBSWtGldytGnIEwIDSNAqdJJJUhobJsn5V3GkVvIPa9qkaV92J4naqAY5sYP60aAArSJ9BSAByAAdYgc+DuggA -->
+            <path d="
+                M0,0 L600,0 L600,480 L0,480 L0,0 Z
+                M25,162.5 L245,162.5 L245,177.5 L25,177.5 L25,162.5 Z
+                M35,202.5 L255,202.5 L255,217.5 L35,217.5 L35,202.5 Z
+                M25,242.5 L245,242.5 L245,257.5 L25,257.5 L25,242.5 Z
+                M35,282.5 L255,282.5 L255,297.5 L35,297.5 L35,282.5 Z
+                M35,322.5 L255,322.5 L255,337.5 L35,337.5 L35,322.5 Z
+                M2,0 L237,0 L237,40 L2,40 L2,0 Z
+                M2,60 L302,60 L302,100 L2,100 L2,60 Z
+                M2,120 L142,120 L142,140 L2,140 L2,120 Z
+                M160,120 L300,120 L300,140 L160,140 L160,120 Z
+                M2,0 L237,0 L237,40 L2,40 L2,0 Z
+                M20,170 A 10,10 0 1,0 0,170 10,10 0 1,0 20,170
+                M30,210 A 10,10 0 1,0 10,210 10,10 0 1,0 30,210
+                M20,250 A 10,10 0 1,0 0,250 10,10 0 1,0 20,250
+                M30,290 A 10,10 0 1,0 10,290 10,10 0 1,0 30,290
+                M30,330 A 10,10 0 1,0 10,330 10,10 0 1,0 30,330
+                " id="Combined-Shape" />
+        </g>
+    </g>
+</svg>

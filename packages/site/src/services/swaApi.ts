@@ -1,5 +1,6 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import { REHYDRATE } from 'redux-persist';
+import { setPostRedirectPath } from '../components';
 import { createFetchFn } from './createFetch';
 import { Guild } from './discordApi';
 
@@ -7,6 +8,7 @@ export const swaApi = createApi({
 	reducerPath: 'swaApi',
 	baseQuery: fetchBaseQuery({
 		fetchFn: createFetchFn(() => {
+			setPostRedirectPath(window.location.pathname);
 			window.location.href = `${
 				window.location.origin
 			}/.auth/login/aad?${new URLSearchParams({

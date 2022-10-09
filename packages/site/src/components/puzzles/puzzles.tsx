@@ -92,7 +92,7 @@ export const Puzzles: React.FC = () => {
 			<div id="puzzles" className="page-body">
 				<Card>
 					<img id="libralogo" src="/libralogo1.png" />
-					{isLoading && <Skeleton />}
+					{!puzzlehunt && !isError && <LoadingSkeleton />}
 					{isError && (
 						<div>
 							{(error as any).status === 404
@@ -120,7 +120,7 @@ export const Puzzles: React.FC = () => {
 									Google Drive Puzzle Folder
 								</Anchor>
 								<Anchor
-									href={`https://discord.com/channels/${guildId}`}
+									href={`discord://discord.com/channels/${guildId}`}
 									target="_blank"
 								>
 									Discord Server
@@ -386,7 +386,7 @@ const PuzzleTree: React.FC<{ puzzleObj: Puzzle | Round; guildId: string }> = ({
 			</Anchor>
 			{discordInfo && (
 				<Anchor
-					href={`https://discord.com/channels/${guildId}/${
+					href={`discord://discord.com/channels/${guildId}/${
 						type === 'puzzle'
 							? discordInfo.channelId
 							: discordInfo.indexChannelId
@@ -425,3 +425,34 @@ function useForceRerender(): () => void {
 	const [, setVal] = React.useState(0);
 	return React.useCallback(() => setVal((prev) => prev + 1), []);
 }
+
+const LoadingSkeleton: React.FC = () => {
+	const [visibility, setVisibility] = React.useState<'hidden' | undefined>(
+		'hidden'
+	);
+	React.useEffect(() => {
+		let isActive = true;
+		// Arbitrary timeout to prevent showing loading UI on fast networks / transitions.
+		// This also fixes an ugly flickering where the svg mask hasn't loaded yet.
+		setTimeout(() => {
+			if (isActive) {
+				setVisibility(undefined);
+			}
+		}, 750);
+		return () => {
+			isActive = false;
+		};
+	}, []);
+	return (
+		<Skeleton
+			className="card-pattern"
+			style={{
+				width: '600px',
+				height: '480px',
+				visibility,
+			}}
+			pattern="/loading-puzzlehunt.svg"
+			shimmer
+		/>
+	);
+};
