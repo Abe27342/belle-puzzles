@@ -8,7 +8,8 @@ export const swaApi = createApi({
 	reducerPath: 'swaApi',
 	baseQuery: fetchBaseQuery({
 		fetchFn: createFetchFn(() => {
-			setPostRedirectPath(window.location.pathname);
+			// TODO: Enabling this would be nice, but causes infinite redirect with current auth setup
+			// setPostRedirectPath(window.location.pathname);
 			window.location.href = `${
 				window.location.origin
 			}/.auth/login/aad?${new URLSearchParams({
