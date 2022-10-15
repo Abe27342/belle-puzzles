@@ -13,3 +13,5 @@ The discord bot is hosted on heroku. Build scripts are slightly customized in th
 ## Website Infrastructure
 
 The website is hosted with azure static web apps. Deployment details can be found in the github workflows folder.
+
+TODO: handle commas and other things in channel names reasonably.

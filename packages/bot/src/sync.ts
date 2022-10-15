@@ -200,7 +200,8 @@ async function syncPuzzleChannel(guild: Guild, puzzle: Puzzle): Promise<void> {
 	const updateChannelName = async () => {
 		let expectedChannelName = puzzle.name
 			.toLocaleLowerCase()
-			.replaceAll(' ', '-');
+			.replaceAll(' ', '-')
+			.replace(/[^a-z0-9\-]/g, '');
 		if (puzzle.answer !== undefined) {
 			expectedChannelName = `solved-${expectedChannelName}`;
 		}
