@@ -66,6 +66,11 @@ export const createNewPuzzlehunt = async (
 			}
 		},
 	};
+	(container as any).container.on('close', (error: any) => {
+		if (error) {
+			console.log('Container closed with error:', JSON.stringify(error));
+		}
+	});
 	return { id, puzzlehunt, disposer };
 };
 
