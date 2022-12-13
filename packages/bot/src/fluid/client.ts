@@ -2,25 +2,33 @@
 // TODO: Docs link on sample code has two different links. One is out of date.
 import {
 	AzureClient,
-	AzureConnectionConfig,
+	AzureLocalConnectionConfig,
 	AzureRemoteConnectionConfig,
+	AzureUser,
+	IUser,
 } from '@fluidframework/azure-client';
 import { InsecureTokenProvider } from '@fluidframework/test-client-utils';
 import '../register-env/index.js';
 
 const useLocalService = !!process.env.USE_LOCAL_SERVICE;
 
-const localConnection: AzureConnectionConfig = {
+const localConnection: AzureLocalConnectionConfig = {
 	type: 'local',
 	tokenProvider: new InsecureTokenProvider('', { id: 'userId ' }),
 	endpoint: 'http://localhost:7070',
 };
 
+const user: IUser & AzureUser = {
+	id: 'belle-bot',
+	name: 'belle-bot',
+};
+
 const remoteConnection: AzureRemoteConnectionConfig = {
 	tenantId: process.env.FLUID_TENANT_ID,
-	tokenProvider: new InsecureTokenProvider(process.env.FLUID_PRIMARY_KEY, {
-		id: 'belle-bot',
-	}),
+	tokenProvider: new InsecureTokenProvider(
+		process.env.FLUID_PRIMARY_KEY,
+		user
+	),
 	endpoint: 'https://us.fluidrelay.azure.com',
 	type: 'remote',
 };

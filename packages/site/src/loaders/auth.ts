@@ -10,19 +10,22 @@ import {
 } from '../store/auth';
 import { store } from '../store/store';
 
-export async function redirectIfAlreadyLoggedIn() {
+export async function redirectIfAlreadyLoggedIn(): Promise<null> {
 	if (isLoggedIn(store.getState())) {
 		throw redirect('/');
 	}
+
+	return null;
 }
 
-export async function fetchLoginInfo(): Promise<void> {
+export async function fetchLoginInfo(): Promise<null> {
 	await Promise.all([fetchDiscordLoginInfo(), fetchMicrosoftUserInfo()]);
+	return null;
 }
 
-async function fetchDiscordLoginInfo(): Promise<void> {
+async function fetchDiscordLoginInfo(): Promise<null> {
 	if (isLoggedInToDiscord(store.getState())) {
-		return;
+		return null;
 	}
 
 	if (await isReturningFromAuthServer()) {
@@ -35,11 +38,13 @@ async function fetchDiscordLoginInfo(): Promise<void> {
 		params.delete('state');
 		throw redirect(`${window.location.pathname}?${params}`);
 	}
+
+	return null;
 }
 
-async function fetchMicrosoftUserInfo(): Promise<void> {
+async function fetchMicrosoftUserInfo(): Promise<null> {
 	if (isLoggedInToMicrosoft(store.getState())) {
-		return;
+		return null;
 	}
 
 	const response = await fetch('/.auth/me');
@@ -47,4 +52,6 @@ async function fetchMicrosoftUserInfo(): Promise<void> {
 	if (clientPrincipal) {
 		store.dispatch(clientPrincipalReceived(clientPrincipal));
 	}
+
+	return null;
 }
