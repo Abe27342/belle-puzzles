@@ -30,6 +30,8 @@ fast-tree-item {
 
 fast-tree-view p {
 	padding-right: 15px;
+	min-width: min-content;
+	width: 200px;
 }
 
 fast-dialog {
