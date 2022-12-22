@@ -60,7 +60,11 @@ export const createNewPuzzlehunt = async (
 			if (!container.isDirty) {
 				container.dispose();
 			} else {
+				console.log(
+					`Delaying close of puzzlehunt ${id} due to unsaved changes.`
+				);
 				container.once('saved', () => {
+					console.log(`Completed delayed close of puzzlehunt ${id}.`);
 					container.dispose();
 				});
 			}
