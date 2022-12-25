@@ -39,6 +39,12 @@ class PuzzlehuntProvider implements IPuzzlehuntProvider {
 				makeFluidClient(),
 				id
 			);
+			// Another interaction may have attempted to load the same file. If this happened,
+			// just use the existing file (disposer/id/puzzlehunt should all be set reasonably accurately
+			// if this has happened)
+			if (this.openFiles.has(id)) {
+				return puzzlehunt;
+			}
 			onInitialLoad?.(puzzlehunt);
 			this.cacheFile(id, puzzlehunt, disposer);
 			return puzzlehunt;
