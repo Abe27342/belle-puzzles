@@ -51,8 +51,15 @@ export const authReducer = createReducer<AuthState>(
 export const getDiscordToken = (state: RootState): string | undefined =>
 	state.auth.discord?.token.value;
 
+// Note: This is a bit of a kludge as it makes the selector not a pure function.
+// This shouldn't matter in practice as:
+// - state transitions from false to true are accompanied by page redirect to discord (so react components
+// will be reloaded, and thus selectors rerun)
+// - state transitions from true to false should never happen if the app is running smoothly and able to
+// invoke refresh tokens etc. Worst-case this results in some stale data display.
 export const isLoggedInToDiscord = (state: RootState) =>
-	state.auth.discord !== undefined;
+	state.auth.discord !== undefined &&
+	new Date(state.auth.discord.token.expiry) > new Date(Date.now());
 
 export const getMicrosoftUser = (
 	state: RootState

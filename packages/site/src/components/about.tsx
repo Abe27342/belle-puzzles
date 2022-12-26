@@ -102,8 +102,8 @@ export const About: React.FC = () => {
 					dictates visibility of the associated channels. Solvers can
 					subscribe or unsubscribe to visibility of those channels
 					using round embeds that Belle generates.
-					<img src="/round-embeds.png"></img>
 				</p>
+				<img src="/round-embeds.png"></img>
 				<h3>Channel Movement</h3>
 				<p>
 					Belle listens to channel update events from discord. In the

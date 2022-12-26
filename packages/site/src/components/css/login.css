@@ -4,3 +4,8 @@
 	min-height: 80vh;
 	padding: var(--card-padding);
 }
+
+#login fast-card {
+	width: fit-content;
+	padding: 0px 5px;
+}

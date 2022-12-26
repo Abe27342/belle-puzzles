@@ -79,9 +79,11 @@ export const Servers: React.FC = () => {
 		return <Navigate to={`/login?${searchParams}`} replace />;
 	}
 
+	const errorMessage =
+		error && !isLoading ? getMessageFromError(error) : undefined;
 	const content = (
 		<Combobox>
-			{error && ((error as any).message ?? error.toString())}
+			{errorMessage}
 			{isLoading || isUninitialized ? (
 				<div>Loading...</div>
 			) : (
@@ -114,3 +116,11 @@ export const Servers: React.FC = () => {
 		</div>
 	);
 };
+
+function getMessageFromError(error: any): string {
+	const extractedMessage = error?.message ?? error?.toString();
+	const objToString = `${{}}`;
+	return extractedMessage !== objToString
+		? extractedMessage
+		: 'Something went wrong. Please try again.';
+}

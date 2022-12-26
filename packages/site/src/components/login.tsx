@@ -3,7 +3,7 @@ import './css/login.css';
 import { useLocation, useNavigate } from 'react-router';
 import { isLoggedIn, isLoggedInToMicrosoft } from '../store/auth';
 import { useAppSelector } from '../store/hooks';
-import { Button, Card } from '../fast';
+import { Button, Card, Toolbar } from '../fast';
 import { DiscordProfile } from './discordProfile';
 import { useSearchParams } from 'react-router-dom';
 import { setPostRedirectPath } from './redirect';
@@ -29,10 +29,14 @@ export const Login: React.FC = () => {
 				puzzlehunts. To get started, please log in to Discord and AAD
 				with any Microsoft account.
 			</p>
-			<DiscordProfile />
-			{!aadAccess && (
-				<Button onClick={authenticateToAad}>Login to Microsoft</Button>
-			)}
+			<Toolbar>
+				<DiscordProfile />
+				{!aadAccess && (
+					<Button onClick={authenticateToAad}>
+						Login to Microsoft
+					</Button>
+				)}
+			</Toolbar>
 		</Card>
 	);
 };
