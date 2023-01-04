@@ -351,6 +351,7 @@ app.use(
 			'https://localhost:9000',
 			'http://localhost:9000',
 			'https://purple-smoke-08a64b310.1.azurestaticapps.net',
+			'https://belle-puzzles.com',
 		],
 	})
 );
