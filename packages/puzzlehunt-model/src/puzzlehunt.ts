@@ -49,11 +49,38 @@ export const createNewPuzzlehunt = async (
 	id: string;
 	puzzlehunt: IPuzzlehunt;
 	disposer: { dispose: () => void };
-}> => {
+}> =>
+	createPuzzlehunt(client, (hunt) => {
+		hunt.setGuildId(guildId);
+	});
+
+export async function createNewPuzzlehuntFromExisting(
+	client: AzureClient,
+	existingHunt: IPuzzlehunt
+): Promise<{
+	id: string;
+	puzzlehunt: IPuzzlehunt;
+	disposer: { dispose: () => void };
+}> {
+	assert(
+		existingHunt instanceof Puzzlehunt,
+		'This API relies on internals of the tree-based Puzzlehunt implementation.'
+	);
+	return createPuzzlehunt(client, (hunt) => hunt.copyFrom(existingHunt));
+}
+
+async function createPuzzlehunt(
+	client: AzureClient,
+	editBeforeAttach: (puzzlehunt: Puzzlehunt) => void
+): Promise<{
+	id: string;
+	puzzlehunt: IPuzzlehunt;
+	disposer: { dispose: () => void };
+}> {
 	const { container } = await client.createContainer(schema);
 	// May want to initialize state here.
 	const puzzlehunt = new Puzzlehunt(container);
-	puzzlehunt.setGuildId(guildId);
+	editBeforeAttach(puzzlehunt);
 	const id = await container.attach();
 	const disposer = {
 		dispose: () => {
@@ -71,7 +98,7 @@ export const createNewPuzzlehunt = async (
 		},
 	};
 	return { id, puzzlehunt, disposer };
-};
+}
 
 export const loadExistingPuzzlehunt = async (
 	client: AzureClient,
@@ -625,5 +652,43 @@ class Puzzlehunt
 		for (const child of viewNode.traits.get(traitLabels.children) ?? []) {
 			yield* this.getAllDefsMatching(child, def);
 		}
+	}
+
+	// TODO: use this to implement debug commands.
+	public copyFrom(other: Puzzlehunt): void {
+		this.setGuildId(other.guildId);
+		const buildNodeFromHandle = (handle: TreeNodeHandle): BuildNode => {
+			const traits: {
+				[key: string]:
+					| BuildNode
+					| TreeNodeSequence<BuildNode>
+					| undefined;
+			} = {};
+			for (const [key, value] of Object.entries(handle.traits)) {
+				traits[key] = Array.from(value, buildNodeFromHandle);
+			}
+			return {
+				definition: handle.definition,
+				payload: handle.payload,
+				traits,
+			};
+		};
+		const { currentView } = other.hunt;
+		const rootHandle = new TreeNodeHandle(currentView, currentView.root);
+		const roundNodes =
+			rootHandle.traits['children' as TraitLabel].map(
+				buildNodeFromHandle
+			);
+
+		const parentNodeId = this.hunt.convertToNodeId(initialTree.identifier);
+		this.checkout.applyEdit(
+			...Change.insertTree(
+				roundNodes,
+				StablePlace.atEndOf({
+					parent: parentNodeId,
+					label: 'children' as TraitLabel,
+				})
+			)
+		);
 	}
 }

@@ -12,15 +12,15 @@ import '../register-env/index.js';
 
 const useLocalService = !!process.env.USE_LOCAL_SERVICE;
 
-const localConnection: AzureLocalConnectionConfig = {
-	type: 'local',
-	tokenProvider: new InsecureTokenProvider('', { id: 'userId ' }),
-	endpoint: 'http://localhost:7070',
-};
-
 const user: IUser & AzureUser = {
 	id: 'belle-bot',
 	name: 'belle-bot',
+};
+
+const localConnection: AzureLocalConnectionConfig = {
+	type: 'local',
+	tokenProvider: new InsecureTokenProvider('', user),
+	endpoint: 'http://localhost:7070',
 };
 
 const remoteConnection: AzureRemoteConnectionConfig = {

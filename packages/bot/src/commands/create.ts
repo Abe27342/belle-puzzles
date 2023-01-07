@@ -59,7 +59,7 @@ export const create: Command = {
 		const match = interaction.options
 			.getString(FOLDER_LINK_ARG)
 			.match(
-				/https\:\/\/drive\.google\.com\/drive\/folders\/(.*?)\?usp=sharing/
+				/https\:\/\/drive\.google\.com\/drive\/folders\/(.*?)\?usp=(sharing|share_link)/
 			);
 		if (!match) {
 			await interaction.editReply(

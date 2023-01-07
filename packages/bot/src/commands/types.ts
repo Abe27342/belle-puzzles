@@ -8,6 +8,7 @@ export interface Command {
 	requiresSerializedContext?: boolean; // defaults to true
 	data: SlashCommandBuilder;
 	testServerOnly?: boolean; // defaults to false
+	adminOnly?: boolean; // defaults to false
 	execute: (
 		context: PuzzlehuntContext,
 		interaction: ChatInputCommandInteraction

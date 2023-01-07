@@ -1,13 +1,18 @@
 import {
-	CategoryChannel,
-	EmbedBuilder,
-	TextBasedChannel,
 	ActionRowBuilder,
-	SelectMenuBuilder,
 	ButtonBuilder,
 	ButtonStyle,
-	ChatInputCommandInteraction,
 	CacheType,
+	CategoryChannel,
+	ChatInputCommandInteraction,
+	Collection,
+	EmbedBuilder,
+	Guild,
+	Interaction,
+	Message,
+	MessageManager,
+	SelectMenuBuilder,
+	TextBasedChannel,
 } from 'discord.js';
 import { IPuzzlehunt, Puzzle, Round } from '@belle-puzzles/puzzlehunt-model';
 import '../register-env/index.js';
@@ -200,4 +205,49 @@ export function getAncestorRounds(
 		ancestorRounds.push(ancestorRound);
 	}
 	return ancestorRounds;
+}
+
+const PUZZLE_ADMIN_CHANNEL = 'belle-bot-admin';
+
+export async function getHuntContextMessage(
+	guild: Guild,
+	interaction?: Interaction
+): Promise<Message<true> | undefined> {
+	const metadataChannels = guild.channels.cache.filter(
+		(value) => value.name === PUZZLE_ADMIN_CHANNEL && value.isTextBased()
+	) as Collection<string, TextBasedChannel>;
+	if (metadataChannels.size === 0) {
+		if (interaction?.isRepliable()) {
+			await interaction.reply(
+				'No puzzle hunt was found on this server. Create one with "/create".'
+			);
+		}
+		return;
+	}
+	if (metadataChannels.size > 1) {
+		if (interaction?.isRepliable()) {
+			await interaction.reply(
+				`Multiple candidate admin channels were found. Please delete any excess channels named "${PUZZLE_ADMIN_CHANNEL}.`
+			);
+		}
+		return;
+	}
+	const channel = metadataChannels.first();
+	const getAdminMessage = () =>
+		// cast is necessary due to bad typescript expansion of boolean type.
+		(channel.messages as MessageManager<true>).cache.find(
+			(message) =>
+				message.author.id === process.env.CLIENT_ID && message.pinned
+		);
+	let adminMessage = getAdminMessage();
+	if (!adminMessage) {
+		await Promise.all([
+			interaction?.isRepliable()
+				? interaction.deferReply({ ephemeral: true })
+				: Promise.resolve(),
+			channel.messages.fetchPinned(),
+		]);
+		adminMessage = getAdminMessage();
+	}
+	return adminMessage;
 }

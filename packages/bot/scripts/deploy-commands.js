@@ -23,7 +23,12 @@ console.log(
 
 const commands = Object.values(commandsModule)
 	.filter((command) => (isProdDeploy ? !command.testServerOnly : true))
-	.map((command) => command.data);
+	.map((command) => {
+		if (command.adminOnly) {
+			return command.data.setDefaultMemberPermissions('0');
+		}
+		return command.data;
+	});
 const rest = new REST({ version: '10' }).setToken(token);
 
 console.log(

@@ -3,16 +3,8 @@ import './register-env/index.js';
 import express from 'express';
 import cors from 'cors';
 import { NodeId, TreeView } from '@fluid-experimental/tree';
-import { assert } from './utils/index.js';
-import {
-	Collection,
-	Guild,
-	Interaction,
-	MessageManager,
-	Routes,
-	TextBasedChannel,
-	REST,
-} from 'discord.js';
+import { assert, getHuntContextMessage } from './utils/index.js';
+import { Guild, Interaction, Routes, REST } from 'discord.js';
 import type { PuzzlehuntContext, SerializedPuzzlehuntContext } from './types';
 import { BelleBotClient, createClient } from './client.js';
 import { createPuzzlehuntProvider } from './puzzlehunt-provider.js';
@@ -38,8 +30,6 @@ const puzzlehuntProvider = createPuzzlehuntProvider();
 client.once('ready', async () => {
 	console.log('Ready!');
 });
-
-const PUZZLE_ADMIN_CHANNEL = 'belle-bot-admin';
 
 client.on('channelUpdate', async (oldChannel, newChannel) => {
 	console.log(`processing channel update for ${newChannel.id}`);
@@ -154,42 +144,7 @@ async function getHuntContext(
 	guild: Guild,
 	interaction?: Interaction
 ): Promise<PuzzlehuntContext | undefined> {
-	const metadataChannels = guild.channels.cache.filter(
-		(value) => value.name === PUZZLE_ADMIN_CHANNEL && value.isTextBased()
-	) as Collection<string, TextBasedChannel>;
-	if (metadataChannels.size === 0) {
-		if (interaction?.isRepliable()) {
-			await interaction.reply(
-				'No puzzle hunt was found on this server. Create one with "/create".'
-			);
-		}
-		return;
-	}
-	if (metadataChannels.size > 1) {
-		if (interaction?.isRepliable()) {
-			await interaction.reply(
-				`Multiple candidate admin channels were found. Please delete any excess channels named "${PUZZLE_ADMIN_CHANNEL}.`
-			);
-		}
-		return;
-	}
-	const channel = metadataChannels.first();
-	const getAdminMessage = () =>
-		// cast is necessary due to bad typescript expansion of boolean type.
-		(channel.messages as MessageManager<true>).cache.find(
-			(message) =>
-				message.author.id === process.env.CLIENT_ID && message.pinned
-		);
-	let adminMessage = getAdminMessage();
-	if (!adminMessage) {
-		await Promise.all([
-			interaction?.isRepliable()
-				? interaction.deferReply({ ephemeral: true })
-				: Promise.resolve(),
-			channel.messages.fetchPinned(),
-		]);
-		adminMessage = getAdminMessage();
-	}
+	const adminMessage = await getHuntContextMessage(guild, interaction);
 	const context: SerializedPuzzlehuntContext = JSON.parse(
 		adminMessage.content
 	);
@@ -205,13 +160,13 @@ async function getHuntContext(
 			);
 			const getGuild = () => client.guilds.cache.get(puzzlehunt.guildId);
 			const viewChangeHandler = makeViewChangeHandler(
-				{ ...context, puzzlehunt },
+				{ ...context, puzzlehunt, huntContextMessage: adminMessage },
 				getGuild
 			);
 			puzzlehunt.on('viewChange', viewChangeHandler);
 		}
 	);
-	return { ...context, puzzlehunt };
+	return { ...context, puzzlehunt, huntContextMessage: adminMessage };
 }
 
 function makeViewChangeHandler(

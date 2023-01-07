@@ -8,6 +8,7 @@ import { PuzzlehuntContext } from '../types';
 import { resyncServerFull } from '../sync.js';
 
 export const syncAll: Command = {
+	adminOnly: true,
 	data: new SlashCommandBuilder()
 		.setName('sync_all')
 		.setDescription(
@@ -17,6 +18,13 @@ export const syncAll: Command = {
 		context: PuzzlehuntContext,
 		interaction: ChatInputCommandInteraction<CacheType>
 	) {
+		if (context.huntContextMessage.channelId !== interaction.channelId) {
+			await interaction.reply({
+				content: 'This command can only be run from the admin channel.',
+				ephemeral: true,
+			});
+			return;
+		}
 		if (!interaction.deferred) {
 			await interaction.deferReply({ ephemeral: true });
 		}
