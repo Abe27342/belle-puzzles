@@ -50,25 +50,41 @@ export function generateRoundEmbed(
 		(puzzle) =>
 			puzzle.roundId === round.id && puzzle.discordInfo !== undefined
 	);
-	const embed = new EmbedBuilder().setTitle('List of Puzzles').setDescription(
-		[
-			'You may select which puzzle channels to join using the drop-down menu below.',
-			'',
-			// TODO: Paginate past puzzle limit, since that was an issue last hunt
-			...puzzles.map(
-				(puzzle) =>
-					`**${puzzle.name}** | [Puzzle Link](${puzzle.url}) | ${
-						puzzle.sheetId
-							? `[Spreadsheet](https://docs.google.com/spreadsheets/d/${puzzle.sheetId})`
-							: 'No spreadsheet'
-					} | <#${puzzle.discordInfo.channelId}>${
-						puzzle.answer === undefined
-							? ''
-							: ` | SOLVED: ${puzzle.answer}`
-					}`
-			),
-		].join('\n')
-	);
+
+	const descriptionLines = [
+		'You may select which puzzle channels to join using the drop-down menu below.',
+		'',
+		// TODO: Paginate past puzzle limit, since that was an issue last hunt
+		...puzzles.map(
+			(puzzle) =>
+				`**${puzzle.name}** | [Puzzle Link](${puzzle.url}) | ${
+					puzzle.sheetId
+						? `[Spreadsheet](https://docs.google.com/spreadsheets/d/${puzzle.sheetId})`
+						: 'No spreadsheet'
+				} | <#${puzzle.discordInfo.channelId}>${
+					puzzle.answer === undefined
+						? ''
+						: ` | SOLVED: ${puzzle.answer}`
+				}`
+		),
+	];
+
+	let description = descriptionLines.join('\n');
+	if (description.length > 4096) {
+		description =
+			'**Warning: max embed size reached, some data is not displayed. Consider reorganizing this round into sub-rounds.**\n';
+		for (
+			let i = 0;
+			description.length + descriptionLines[i].length + 1 <= 4096;
+			i++
+		) {
+			description += `${descriptionLines[i]}\n`;
+		}
+	}
+
+	const embed = new EmbedBuilder()
+		.setTitle('List of Puzzles')
+		.setDescription(description);
 	if (round.roundId) {
 		embed.addFields({
 			name: 'Parent Round',

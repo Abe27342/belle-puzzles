@@ -4,6 +4,7 @@ import {
 	Message,
 	OverwriteData,
 	OverwriteType,
+	StringSelectMenuComponent,
 	TextChannel,
 } from 'discord.js';
 import {
@@ -269,7 +270,17 @@ const updateEmbedFactory =
 		await channel.messages.fetchPinned();
 		const message = findEmbed(channel);
 		if (message !== undefined) {
+			const component = message.resolveComponent('makePuzzleVisible');
+			// Note: ideally this check would be better, but for now it's only necessary for it to be good
+			// enough to detect edits need to happen after exceeding capacity. If no component found,
+			const puzzleOptionsAreDifferent =
+				component instanceof StringSelectMenuComponent &&
+				component.options.length !==
+					(embedData.components[0].components[0] as any).options
+						?.length;
+
 			if (
+				puzzleOptionsAreDifferent ||
 				message.embeds.length !== embedData.embeds.length ||
 				message.embeds
 					.map((embed, i) => ({
@@ -301,6 +312,7 @@ const updateEmbedFactory =
 								}
 							}
 						}
+
 						// TODO: Need some kind of batched write to make sure we only POST most recent data.
 						// Alternatively use really fine-grained inval.
 						return (
