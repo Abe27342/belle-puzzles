@@ -760,6 +760,7 @@ class Puzzlehunt
 	// TODO: use this to implement debug commands.
 	public copyFrom(other: Puzzlehunt): void {
 		this.setGuildId(other.guildId);
+		this.setLoggingChannelIds(other.loggingChannelIds);
 		const buildNodeFromHandle = (handle: TreeNodeHandle): BuildNode => {
 			const traits: {
 				[key: string]:
