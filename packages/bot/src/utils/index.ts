@@ -33,6 +33,9 @@ export function generatePuzzleEmbed(puzzle: Puzzle): EmbedContent {
 	if (puzzle.answer) {
 		embed.addFields({ name: 'Answer', value: puzzle.answer, inline: true });
 	}
+	if (puzzle.status) {
+		embed.addFields({ name: 'Status', value: puzzle.status, inline: true });
+	}
 	return { embeds: [embed] };
 }
 
