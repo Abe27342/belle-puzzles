@@ -490,7 +490,7 @@ const MostRecentlyUsed: React.FC<{
 }> = ({ puzzlehunt, guildId }) => {
 	const sortedPuzzles = Array.from(puzzlehunt.puzzles)
 		.filter((puzzle) => puzzle.status !== undefined)
-		.sort((a, b) => a.lastStatusUpdate - b.lastStatusUpdate);
+		.sort((a, b) => b.lastStatusUpdate - a.lastStatusUpdate);
 	return (
 		<>
 			{sortedPuzzles.map((puzzle) => {
