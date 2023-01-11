@@ -7,3 +7,4 @@ export * from './resync-all.js';
 export * from './reset-server.js';
 export * from './change-backing-fluid-file.js';
 export * from './copy-to-new-fluid-file.js';
+export * from './update-status.js';

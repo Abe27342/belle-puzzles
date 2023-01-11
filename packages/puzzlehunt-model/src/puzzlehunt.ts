@@ -44,7 +44,8 @@ const schema = {
 
 export const createNewPuzzlehunt = async (
 	client: AzureClient,
-	guildId: string
+	guildId: string,
+	logChannelIds?: LoggingChannelIds
 ): Promise<{
 	id: string;
 	puzzlehunt: IPuzzlehunt;
@@ -52,6 +53,9 @@ export const createNewPuzzlehunt = async (
 }> =>
 	createPuzzlehunt(client, (hunt) => {
 		hunt.setGuildId(guildId);
+		if (logChannelIds) {
+			hunt.setLoggingChannelIds(logChannelIds);
+		}
 	});
 
 export async function createNewPuzzlehuntFromExisting(
@@ -136,6 +140,8 @@ export interface IPuzzlehunt extends TypedEventEmitter<IPuzzlehuntEvents> {
 		parentRound: Round
 	): void;
 	solve(id: NodeId, answer: string): Puzzle;
+	updateStatus(puzzle: Puzzle, status: string): void;
+	clearStatus(puzzle: Puzzle): void;
 	move(obj: Puzzle | Round, newParent: Round): void;
 	augmentWithDiscord(puzzle: Puzzle, discordInfo: DiscordPuzzleInfo): void;
 	augmentWithDiscord(round: Round, discordInfo: DiscordRoundInfo): void;
@@ -146,11 +152,25 @@ export interface IPuzzlehunt extends TypedEventEmitter<IPuzzlehuntEvents> {
 	get puzzles(): Iterable<Puzzle>;
 	get guildId(): string;
 	setGuildId(id: string): void;
+	get loggingChannelIds(): LoggingChannelIds | undefined;
+	setLoggingChannelIds(ids: LoggingChannelIds): void;
+}
+
+export interface LoggingChannelIds {
+	puzzleAdd: string;
+	puzzleSolve: string;
+	puzzleStatusUpdate: string;
 }
 
 export interface StringNode {
 	type: 'string';
 	value: string;
+	parentage: TraitLocation;
+}
+
+export interface NumberNode {
+	type: 'number';
+	value: number;
 	parentage: TraitLocation;
 }
 
@@ -161,6 +181,9 @@ export interface Puzzle extends Omit<PuzzleObject, 'roundId'> {
 	// Google drive id
 	sheetId?: string;
 	answer?: string;
+	status?: string;
+	// Note: client-side timestamp. It would be great to leverage platform-provided attribution for this prop.
+	lastStatusUpdate?: number;
 }
 
 export interface Round extends PuzzleObject {
@@ -188,6 +211,7 @@ export interface PuzzleObject {
 const puzzleDef = '34edbf0a-7479-4124-ae4f-7091724dc58a';
 const roundDef = '81cfc8eb-fd54-4071-b991-fea6db4456d7';
 const stringDef = '13574b71-cd65-4672-98bd-e0c045f04f6a';
+const numberDef = 'f13ac46f-a39d-4124-a327-abdadcc57f10';
 
 const traitLabels = {} as unknown as {
 	name: TraitLabel;
@@ -198,6 +222,8 @@ const traitLabels = {} as unknown as {
 	roleId: TraitLabel;
 	channelId: TraitLabel;
 	indexChannelId: TraitLabel;
+	status: TraitLabel;
+	lastStatusUpdate: TraitLabel;
 };
 
 [
@@ -209,12 +235,19 @@ const traitLabels = {} as unknown as {
 	'roleId',
 	'channelId',
 	'indexChannelId',
+	'status',
+	'lastStatusUpdate',
 ].forEach((val) => {
 	(traitLabels as any)[val] = val as TraitLabel;
 });
 
 const makeString = (content: string): BuildNode => ({
 	definition: stringDef,
+	payload: content,
+});
+
+const makeNumber = (content: number): BuildNode => ({
+	definition: numberDef,
 	payload: content,
 });
 
@@ -306,6 +339,11 @@ function str(content: any): string {
 	return content;
 }
 
+function number(content: any): number {
+	assert(typeof content === 'number', 'Content should have been a number.');
+	return content;
+}
+
 class RoundHandle implements Round {
 	private readonly handle: TreeNodeHandle;
 	private readonly traits: TraitMap<TreeNodeHandle>;
@@ -376,6 +414,23 @@ class StringHandle implements StringNode {
 	}
 }
 
+class NumberHandle implements NumberNode {
+	private readonly handle: TreeNodeHandle;
+	private readonly traits: TraitMap<TreeNodeHandle>;
+	public readonly type = 'number';
+	constructor(private readonly view: TreeView, public readonly id: NodeId) {
+		this.handle = new TreeNodeHandle(view, id);
+	}
+
+	public get value(): number {
+		return this.handle.payload;
+	}
+
+	public get parentage(): TraitLocation {
+		return this.handle.node.parentage;
+	}
+}
+
 class PuzzleHandle implements Puzzle {
 	private readonly handle: TreeNodeHandle;
 	private readonly traits: TraitMap<TreeNodeHandle>;
@@ -415,6 +470,14 @@ class PuzzleHandle implements Puzzle {
 	public get answer(): string | undefined {
 		return readOptional(this.traits.answer)?.payload;
 	}
+
+	public get status(): string | undefined {
+		return readOptional(this.traits.status)?.payload;
+	}
+
+	public get lastStatusUpdate(): number | undefined {
+		return readOptional(this.traits.lastStatusUpdate)?.payload;
+	}
 }
 
 function replace(
@@ -430,7 +493,7 @@ function replace(
 const getHandle = (
 	view: TreeView,
 	id: NodeId
-): Puzzle | Round | StringHandle | undefined => {
+): Puzzle | Round | StringHandle | NumberNode | undefined => {
 	const viewNode = view.getViewNode(id);
 	switch (viewNode.definition) {
 		case roundDef:
@@ -439,6 +502,8 @@ const getHandle = (
 			return new PuzzleHandle(view, id);
 		case stringDef:
 			return new StringHandle(view, id);
+		case numberDef:
+			return new NumberHandle(view, id);
 	}
 };
 
@@ -474,6 +539,14 @@ class Puzzlehunt
 
 	public get guildId(): string {
 		return this.guildInfoMap.get('id');
+	}
+
+	public get loggingChannelIds(): LoggingChannelIds | undefined {
+		return this.guildInfoMap.get('logChannelIds');
+	}
+
+	public setLoggingChannelIds(ids: LoggingChannelIds): void {
+		this.guildInfoMap.set('logChannelIds', ids);
 	}
 
 	public addPuzzle(name: string, url: string, round: Round): Puzzle {
@@ -556,6 +629,36 @@ class Puzzlehunt
 			...replace(makeString(answer), answerTraitLocation)
 		);
 		return new PuzzleHandle(this.checkout.currentView, id);
+	}
+
+	public updateStatus(puzzle: Puzzle, status: string): void {
+		this.checkout.applyEdit(
+			...replace(makeString(status), {
+				parent: puzzle.id,
+				label: traitLabels.status,
+			}),
+			...replace(makeNumber(Date.now()), {
+				parent: puzzle.id,
+				label: traitLabels.lastStatusUpdate,
+			})
+		);
+	}
+
+	public clearStatus(puzzle: Puzzle): void {
+		this.checkout.applyEdit(
+			Change.delete(
+				StableRange.all({
+					parent: puzzle.id,
+					label: traitLabels.status,
+				})
+			),
+			Change.delete(
+				StableRange.all({
+					parent: puzzle.id,
+					label: traitLabels.lastStatusUpdate,
+				})
+			)
+		);
 	}
 
 	public move(obj: Puzzle | Round, newParent: Round): void {

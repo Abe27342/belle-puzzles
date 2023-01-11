@@ -69,35 +69,80 @@ export const create: Command = {
 		}
 		const [, googleFolderId] = match;
 
-		const [adminChannel, indexChannel, allPuzzlesRole] = await Promise.all([
+		const [adminChannel, indexChannel, logCategory, allPuzzlesRole] =
+			await Promise.all([
+				guild.channels.create({
+					name: PUZZLE_ADMIN_CHANNEL,
+					permissionOverwrites: [
+						{
+							id: interaction.guild.id,
+							deny: [PermissionsBitField.Flags.ViewChannel],
+							type: OverwriteType.Role,
+						},
+						{
+							id: interaction.client.user,
+							allow: [PermissionsBitField.Flags.ViewChannel],
+							type: OverwriteType.Member,
+						},
+					],
+				}),
+				guild.channels.create({
+					type: ChannelType.GuildCategory,
+					name: 'Puzzle Index',
+				}),
+				guild.channels.create({
+					type: ChannelType.GuildCategory,
+					name: 'Logs',
+				}),
+				guild.roles.create({
+					name: 'All Puzzles',
+					mentionable: false,
+				}),
+			]);
+
+		const [addSolveChannel, updateChannel] = await Promise.all([
 			guild.channels.create({
-				name: PUZZLE_ADMIN_CHANNEL,
+				name: 'puzzle-add-solves',
 				permissionOverwrites: [
 					{
 						id: interaction.guild.id,
-						deny: [PermissionsBitField.Flags.ViewChannel],
+						deny: [PermissionsBitField.Flags.SendMessages],
 						type: OverwriteType.Role,
 					},
 					{
 						id: interaction.client.user,
-						allow: [PermissionsBitField.Flags.ViewChannel],
+						allow: [PermissionsBitField.Flags.SendMessages],
 						type: OverwriteType.Member,
 					},
 				],
+				parent: logCategory,
 			}),
 			guild.channels.create({
-				type: ChannelType.GuildCategory,
-				name: 'Puzzle Index',
-			}),
-			guild.roles.create({
-				name: 'All Puzzles',
-				mentionable: false,
+				name: 'puzzle-updates',
+				permissionOverwrites: [
+					{
+						id: interaction.guild.id,
+						deny: [PermissionsBitField.Flags.SendMessages],
+						type: OverwriteType.Role,
+					},
+					{
+						id: interaction.client.user,
+						allow: [PermissionsBitField.Flags.SendMessages],
+						type: OverwriteType.Member,
+					},
+				],
+				parent: logCategory,
 			}),
 		]);
 
 		const { id, disposer } = await createNewPuzzlehunt(
 			makeFluidClient(),
-			interaction.guild.id
+			interaction.guild.id,
+			{
+				puzzleAdd: addSolveChannel.id,
+				puzzleSolve: addSolveChannel.id,
+				puzzleStatusUpdate: updateChannel.id,
+			}
 		);
 
 		const context: SerializedPuzzlehuntContext = {

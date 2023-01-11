@@ -6,18 +6,19 @@ import {
 import { PuzzlehuntContext } from '../types';
 import { Command } from './types';
 
-const ANSWER_ARG = 'answer';
+const STATUS_ARG = 'status';
 
-export const solve: Command = {
+export const updateStatus: Command = {
 	data: new SlashCommandBuilder()
-		.setName('solve')
+		.setName('update_status')
 		.addStringOption((builder) =>
 			builder
-				.setDescription('Answer to the puzzle')
-				.setName(ANSWER_ARG)
-				.setRequired(true)
+				.setDescription(
+					'Current status for this puzzle. Leave empty to clear status. Status will be auto-cleared on solve.'
+				)
+				.setName(STATUS_ARG)
 		)
-		.setDescription('Marks a puzzle as solved with the provided answer.'),
+		.setDescription("Updates a puzzle's status."),
 	async execute(
 		{ puzzlehunt }: PuzzlehuntContext,
 		interaction: ChatInputCommandInteraction<CacheType>
@@ -38,22 +39,26 @@ export const solve: Command = {
 		}
 
 		let [puzzle] = matchingPuzzles;
-		const answer = interaction.options.getString(ANSWER_ARG);
-		puzzlehunt.solve(puzzle.id, answer);
-		if (puzzle.status !== undefined) {
+		const status = interaction.options.getString(STATUS_ARG);
+		if (!!status) {
+			puzzlehunt.updateStatus(puzzle, status);
+		} else {
 			puzzlehunt.clearStatus(puzzle);
 		}
 
 		if (puzzlehunt.loggingChannelIds) {
-			const { puzzleSolve } = puzzlehunt.loggingChannelIds;
-			const channel = interaction.guild.channels.cache.get(puzzleSolve);
+			const { puzzleStatusUpdate } = puzzlehunt.loggingChannelIds;
+			const channel =
+				interaction.guild.channels.cache.get(puzzleStatusUpdate);
 			if (channel?.isTextBased()) {
 				await channel.send(
-					`${puzzle.name} solved! Answer: "${answer}".`
+					!!status
+						? `Status updated for ${puzzle.name}: "${status}".`
+						: `Status cleared for ${puzzle.name}.`
 				);
 			}
 		}
 
-		await interaction.editReply(`Puzzle solved with "${answer}".`);
+		await interaction.editReply('Puzzle status updated.');
 	},
 };

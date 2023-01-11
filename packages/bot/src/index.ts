@@ -13,6 +13,7 @@ import {
 	Puzzle,
 	Round,
 	StringNode,
+	NumberNode,
 } from '@belle-puzzles/puzzlehunt-model';
 import {
 	createDiscordAssociation,
@@ -181,7 +182,7 @@ function makeViewChangeHandler(
 		getHandle: (
 			view: TreeView,
 			id: NodeId
-		) => StringNode | Puzzle | Round | undefined
+		) => StringNode | NumberNode | Puzzle | Round | undefined
 	) => {
 		const guild = getGuild();
 		const delta = before.delta(after);
@@ -235,10 +236,10 @@ function makeViewChangeHandler(
 				continue;
 			}
 
-			if (node.type === 'string') {
+			if (node.type === 'string' || node.type === 'number') {
 				// Note: I guess this could reasonably fire for re-solving a puzzle with an existing answer
 				// if we went for setPayload instead. But it shouldn't happen now.
-				console.log('Unexpected change fired for string handle.');
+				console.log(`Unexpected change fired for ${node.type} handle.`);
 			} else if (node.discordInfo) {
 				discordObjectsToSync.add(node.id);
 				if (node.roundId) {
@@ -288,7 +289,7 @@ function makeViewChangeHandler(
 		getHandle: (
 			view: TreeView,
 			id: NodeId
-		) => StringNode | Puzzle | Round | undefined
+		) => StringNode | NumberNode | Puzzle | Round | undefined
 	) => {
 		try {
 			await viewChangeHandler(before, after, getHandle);

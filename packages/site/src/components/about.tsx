@@ -79,6 +79,14 @@ export const About: React.FC = () => {
 					round relative to the channel the command is run in.
 				</p>
 				<img src="/add-puzzle-example.png" />
+				<h3>Update Status</h3>
+				<p>
+					Updates the current status of solving a puzzle. This causes
+					a message to be sent to "status updates" log and causes the
+					puzzle to be displayed closer to the top of the "most
+					recently updated" view in the puzzlehunt viewer.
+				</p>
+				<img src="/update-status.png" />
 				<h3>Solve</h3>
 				<p>Solves a puzzle with the provided answer.</p>
 				<img src="/solve-example.png" />

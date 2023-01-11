@@ -11,6 +11,7 @@ import {
 	Toolbar,
 	Menu,
 	MenuItem,
+	Button,
 } from '../../fast';
 import {
 	IPuzzlehunt,
@@ -28,6 +29,7 @@ import { useStore } from 'react-redux';
 import type { AppStore } from '../../store/store';
 import { useGetPuzzlehuntContextQuery } from '../../services/belleBotApi';
 import { createClient } from './connection';
+import TimeAgo from './timeAgo';
 
 export const Puzzles: React.FC = () => {
 	const [puzzlehunt, setPuzzlehunt] = React.useState<IPuzzlehunt>();
@@ -84,6 +86,8 @@ export const Puzzles: React.FC = () => {
 		};
 	}, [forceRerender, fluidFileId, store]);
 
+	const [sortByStatus, setSortByStatus] = React.useState(false);
+
 	const rounds = Array.from(puzzlehunt?.rounds ?? []);
 	rounds.sort((a, b) => a.name.localeCompare(b.name));
 	const { onContextMenu, ui } = useEditingUI(puzzlehunt);
@@ -125,18 +129,35 @@ export const Puzzles: React.FC = () => {
 								>
 									Discord Server
 								</Anchor>
+								<Button
+									onClick={() => {
+										setSortByStatus((status) => !status);
+									}}
+								>
+									{sortByStatus
+										? 'Switch to tree view'
+										: 'Switch to most recent status change view'}
+								</Button>
 							</Toolbar>
 							<TreeView
 								className="puzzle-view"
 								onContextMenu={onContextMenu}
 							>
-								{rounds.map((round) => (
-									<PuzzleTree
-										puzzleObj={round}
-										key={round.id}
+								{!sortByStatus &&
+									rounds.map((round) => (
+										<PuzzleTree
+											puzzleObj={round}
+											key={round.id}
+											guildId={guildId}
+										/>
+									))}
+								{/* The abstractions around MRU here are tech debt and should be revisited before doing much more */}
+								{sortByStatus && (
+									<MostRecentlyUsed
+										puzzlehunt={puzzlehunt}
 										guildId={guildId}
 									/>
-								))}
+								)}
 							</TreeView>
 						</>
 					)}
@@ -372,13 +393,13 @@ const PuzzlePageMenu: React.FC<PuzzlePageMenu> = ({
 	);
 };
 
-const PuzzleTree: React.FC<{ puzzleObj: Puzzle | Round; guildId: string }> = ({
-	puzzleObj,
-	guildId,
-}) => {
-	const { id, name, url, type, discordInfo } = puzzleObj;
+const PuzzleObjCommonListItems: React.FC<{
+	puzzleObj: Puzzle | Round;
+	guildId: string;
+}> = ({ puzzleObj, guildId }) => {
+	const { name, url, type, discordInfo } = puzzleObj;
 	return (
-		<TreeItem id={`${type}-obj-${id}`}>
+		<>
 			<div className="puzzle-or-round-info" />
 			<p>{name}</p>
 			<Anchor href={url} target="_blank">
@@ -396,28 +417,91 @@ const PuzzleTree: React.FC<{ puzzleObj: Puzzle | Round; guildId: string }> = ({
 					Discord
 				</Anchor>
 			)}
-			{type === 'puzzle' && (
-				<>
-					{puzzleObj.sheetId && (
-						<Anchor
-							href={`https://docs.google.com/spreadsheets/d/${puzzleObj.sheetId}`}
-							target="_blank"
-						>
-							Spreadsheet
-						</Anchor>
-					)}
-					{puzzleObj.answer && <p>Answer: {puzzleObj.answer}</p>}
-				</>
+		</>
+	);
+};
+
+const PuzzleListItems: React.FC<{
+	puzzleObj: Puzzle;
+	guildId: string;
+}> = ({ puzzleObj, guildId }) => {
+	return (
+		<>
+			<PuzzleObjCommonListItems puzzleObj={puzzleObj} guildId={guildId} />
+			{puzzleObj.sheetId && (
+				<Anchor
+					href={`https://docs.google.com/spreadsheets/d/${puzzleObj.sheetId}`}
+					target="_blank"
+				>
+					Spreadsheet
+				</Anchor>
 			)}
-			{type === 'round' &&
-				puzzleObj.children.map((child) => (
-					<PuzzleTree
-						puzzleObj={child}
-						key={child.id}
-						guildId={guildId}
-					/>
-				))}
+			{puzzleObj.answer && <p>Answer: {puzzleObj.answer}</p>}
+			{puzzleObj.status &&
+				puzzleObj.lastStatusUpdate &&
+				!puzzleObj.answer && (
+					<p>
+						Status: "{puzzleObj.status}"{' '}
+						<TimeAgo date={puzzleObj.lastStatusUpdate} />
+					</p>
+				)}
+		</>
+	);
+};
+
+const RoundListItems: React.FC<{
+	puzzleObj: Round;
+	guildId: string;
+}> = ({ puzzleObj, guildId }) => {
+	return (
+		<>
+			<PuzzleObjCommonListItems puzzleObj={puzzleObj} guildId={guildId} />
+			{puzzleObj.children.map((child) => (
+				<PuzzleTree
+					puzzleObj={child}
+					key={child.id}
+					guildId={guildId}
+				/>
+			))}
+		</>
+	);
+};
+
+const PuzzleTree: React.FC<{ puzzleObj: Puzzle | Round; guildId: string }> = ({
+	puzzleObj,
+	guildId,
+}) => {
+	const { id, type } = puzzleObj;
+	return (
+		<TreeItem id={`${type}-obj-${id}`}>
+			{type === 'puzzle' && (
+				<PuzzleListItems puzzleObj={puzzleObj} guildId={guildId} />
+			)}
+			{type === 'round' && (
+				<RoundListItems puzzleObj={puzzleObj} guildId={guildId} />
+			)}
 		</TreeItem>
+	);
+};
+
+const MostRecentlyUsed: React.FC<{
+	puzzlehunt: IPuzzlehunt;
+	guildId: string;
+}> = ({ puzzlehunt, guildId }) => {
+	const sortedPuzzles = Array.from(puzzlehunt.puzzles)
+		.filter((puzzle) => puzzle.status !== undefined)
+		.sort((puzzle) => -puzzle.lastStatusUpdate);
+	return (
+		<>
+			{sortedPuzzles.map((puzzle) => {
+				const { id, type } = puzzle;
+				return (
+					<TreeItem id={`${type}-obj-${id}`} key={id}>
+						<PuzzleListItems puzzleObj={puzzle} guildId={guildId} />
+					</TreeItem>
+				);
+			})}
+		</>
 	);
 };
 
