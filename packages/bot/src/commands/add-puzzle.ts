@@ -58,21 +58,11 @@ export const addPuzzle: Command = {
 		}
 
 		const name = interaction.options.getString(NAME_ARG);
-		const puzzle = puzzlehunt.addPuzzle(
+		puzzlehunt.addPuzzle(
 			name,
 			interaction.options.getString(URL_ARG),
 			parentRound
 		);
-
-		if (puzzlehunt.loggingChannelIds) {
-			const { puzzleAdd } = puzzlehunt.loggingChannelIds;
-			const channel = interaction.guild.channels.cache.get(puzzleAdd);
-			if (channel?.isTextBased()) {
-				await channel.send(
-					`New puzzle unlocked in round ${parentRound.name}: ${puzzle.name}.`
-				);
-			}
-		}
 
 		await interaction.editReply(`Puzzle "${name}" added.`);
 	},

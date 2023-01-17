@@ -72,6 +72,19 @@ const createPuzzleChannel = async (
 		parent: parent.discordInfo.channelId,
 		permissionOverwrites: getViewPermissions(context, puzzle, role),
 	});
+
+	if (puzzlehunt.loggingChannelIds) {
+		const { puzzleAdd } = puzzlehunt.loggingChannelIds;
+		const channel = guild.channels.cache.get(puzzleAdd);
+		if (channel?.isTextBased()) {
+			await channel.send(
+				`New puzzle unlocked in round ${
+					puzzlehunt.getRound(puzzle.roundId).name
+				}: ${puzzle.name}.`
+			);
+		}
+	}
+
 	puzzlehunt.augmentWithDiscord(puzzle, { role, channel });
 };
 
