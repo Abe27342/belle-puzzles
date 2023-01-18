@@ -6,8 +6,8 @@
 	},
 	"scripts": {
 		"build": "lerna run build --stream",
-		"bootstrap": "lerna bootstrap --strict --hoist",
 		"heroku-postbuild": "echo Skipping build in nodejs pack",
+		"postinstall": "lerna bootstrap --strict --hoist",
 		"start:bot": "lerna run start --scope=@belle-puzzles/bot",
 		"start:localserver": "npx @fluidframework/azure-local-service",
 		"test": "npm run test"

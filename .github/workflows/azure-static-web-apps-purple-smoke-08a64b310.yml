@@ -22,14 +22,8 @@ jobs:
             - name: Install root dependencies
               run: npm ci
 
-            - name: Bootstrap
-              run: npm run bootstrap
-
             - name: Build project
               run: npm run build
-
-            - name: Build production site
-              run: npx lerna run build:prod -- --scope=@belle-puzzles/site
 
             - name: Build And Deploy
               id: builddeploy
@@ -43,6 +37,5 @@ jobs:
                   app_location: '/packages/site'
                   api_location: '/packages/site-api'
                   output_location: '/static'
-                  skip_app_build: true
-                  skip_api_build: true
+                  app_build_command: 'npm run build:prod'
                   ###### End of Repository/Build Configurations ######
