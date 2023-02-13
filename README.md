@@ -4,6 +4,8 @@ This repository hosts packages for the [Belle Puzzles bot and website](https://a
 
 ## Bot Infrastructure
 
+TODO: Elaborate on this with pnpm update.
+
 The discord bot is hosted on heroku. Build scripts are slightly customized in the root package.json to accomodate the monorepo structure:
 
 -   [heroku-buildpack-lerna](https://github.com/Abe27342/heroku-buildpack-lerna.git) is used after the standard heroku/nodejs buildpack.

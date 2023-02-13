@@ -4,14 +4,6 @@
 	"engines": {
 		"node": ">=16.9.0"
 	},
-	"scripts": {
-		"build": "lerna run build --stream",
-		"heroku-postbuild": "echo Skipping build in nodejs pack",
-		"postinstall": "lerna bootstrap --strict --hoist",
-		"start:bot": "lerna run start --scope=@belle-puzzles/bot",
-		"start:localserver": "npx @fluidframework/azure-local-service",
-		"test": "npm run test"
-	},
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/abe27342/belle-puzzles.git"
@@ -22,7 +14,15 @@
 		"url": "https://github.com/abe27342/belle-puzzles/issues"
 	},
 	"homepage": "https://github.com/abe27342/belle-puzzles#readme",
-	"dependencies": {
-		"lerna": "^5.5.4"
+	"scripts": {
+		"build": "pnpm --stream --filter @belle-puzzles/* run build",
+		"heroku-postbuild": "echo Skipping build in nodejs pack",
+		"start:bot": "pnpm --filter @belle-puzzles/bot run start",
+		"start:localserver": "npx @fluidframework/azure-local-service",
+		"test": "pnpm --stream --filter @belle-puzzles/* run test"
+	},
+	"devDependencies": {
+		"mocha": "^10.2.0",
+		"pnpm": ">=7.27.0"
 	}
 }

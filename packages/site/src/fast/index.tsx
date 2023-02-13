@@ -31,7 +31,6 @@ import {
 } from '@microsoft/fast-components';
 import { provideReactWrapper } from '@microsoft/fast-react-wrapper';
 import { css } from '@microsoft/fast-element';
-// import {  } from '@microsoft/fast-foundation';
 import {
 	neutralColor,
 	accentColor,
