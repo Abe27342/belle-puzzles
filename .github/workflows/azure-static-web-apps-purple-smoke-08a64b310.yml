@@ -20,7 +20,7 @@ jobs:
               with:
                   submodules: true
             - name: Install root dependencies
-              run: pnpm i --frozen-lockfile
+              run: npm i -g pnpm@7.27.0 && pnpm i --frozen-lockfile
 
             - name: Build project
               run: npm run build
