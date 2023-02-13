@@ -2,15 +2,18 @@
 
 This repository hosts packages for the [Belle Puzzles bot and website](https://aka.ms/libracomplexity).
 
+It uses [pnpm](https://pnpm.io/).
+
+## Setup
+
+1. Install [node 16](https://nodejs.org/en/download/) or later. I recommend using [nvm](https://github.com/nvm-sh/nvm) ([windows link](https://github.com/coreybutler/nvm-windows)) to manage node versions.
+2. Install pnpm globally: `npm i -g pnpm`
+3. Install repo dependencies: `pnpm i`
+4. Build: `npm run build`
+
 ## Bot Infrastructure
 
-TODO: Elaborate on this with pnpm update.
-
-The discord bot is hosted on heroku. Build scripts are slightly customized in the root package.json to accomodate the monorepo structure:
-
--   [heroku-buildpack-lerna](https://github.com/Abe27342/heroku-buildpack-lerna.git) is used after the standard heroku/nodejs buildpack.
-    As such, the [heroku-postbuild](https://devcenter.heroku.com/articles/nodejs-support#customizing-the-build-process) script is used to cancel the
-    standard package build, since heroku-buildpack-lerna runs a more scoped install/build command.
+The discord bot is hosted on heroku. As heroku doesn't support pnpm natively, [heroku-buildpack-npm](https://github.com/unfold/heroku-buildpack-pnpm) is explicitly set for deployment.
 
 ## Website Infrastructure
 
