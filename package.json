@@ -16,6 +16,7 @@
 	"homepage": "https://github.com/abe27342/belle-puzzles#readme",
 	"scripts": {
 		"build": "pnpm --stream --filter @belle-puzzles/* run build",
+		"build:prod": "pnpm --stream --filter @belle-puzzles/* run build:prod",
 		"start:bot": "pnpm --filter @belle-puzzles/bot run start",
 		"start:localserver": "npx @fluidframework/azure-local-service",
 		"test": "pnpm --stream --filter @belle-puzzles/* run test"
