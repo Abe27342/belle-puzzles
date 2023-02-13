@@ -9,6 +9,7 @@
 	},
 	"scripts": {
 		"build": "tsc --build",
+		"build:prod": "npm run build",
 		"clean": "rimraf dist & rimraf **/*.tsbuildinfo",
 		"format": "prettier --write src",
 		"test": "npm run test",
