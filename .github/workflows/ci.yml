@@ -9,7 +9,7 @@ on:
 
 jobs:
     install-build-test:
-        name: CI
+        name: Install, Build, and Test
         runs-on: ubuntu-latest
 
         steps:
