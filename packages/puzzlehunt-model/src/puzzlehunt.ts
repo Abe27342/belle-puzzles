@@ -42,15 +42,20 @@ const schema = {
 	},
 };
 
+interface PuzzlehuntLoadResult {
+	puzzlehunt: IPuzzlehunt;
+	id: string;
+	disposer: { dispose: () => void };
+	// TODO: There may be a better thing to expose. But right now, container.close events aren't properly surfaced
+	// to users of this model. This could be a bug source in the future.
+	container: IFluidContainer;
+}
+
 export const createNewPuzzlehunt = async (
 	client: AzureClient,
 	guildId: string,
 	logChannelIds?: LoggingChannelIds
-): Promise<{
-	id: string;
-	puzzlehunt: IPuzzlehunt;
-	disposer: { dispose: () => void };
-}> =>
+): Promise<PuzzlehuntLoadResult> =>
 	createPuzzlehunt(client, (hunt) => {
 		hunt.setGuildId(guildId);
 		if (logChannelIds) {
@@ -61,11 +66,7 @@ export const createNewPuzzlehunt = async (
 export async function createNewPuzzlehuntFromExisting(
 	client: AzureClient,
 	existingHunt: IPuzzlehunt
-): Promise<{
-	id: string;
-	puzzlehunt: IPuzzlehunt;
-	disposer: { dispose: () => void };
-}> {
+): Promise<PuzzlehuntLoadResult> {
 	assert(
 		existingHunt instanceof Puzzlehunt,
 		'This API relies on internals of the tree-based Puzzlehunt implementation.'
@@ -76,11 +77,7 @@ export async function createNewPuzzlehuntFromExisting(
 async function createPuzzlehunt(
 	client: AzureClient,
 	editBeforeAttach: (puzzlehunt: Puzzlehunt) => void
-): Promise<{
-	id: string;
-	puzzlehunt: IPuzzlehunt;
-	disposer: { dispose: () => void };
-}> {
+): Promise<PuzzlehuntLoadResult> {
 	const { container } = await client.createContainer(schema);
 	// May want to initialize state here.
 	const puzzlehunt = new Puzzlehunt(container);
@@ -101,16 +98,21 @@ async function createPuzzlehunt(
 			}
 		},
 	};
-	return { id, puzzlehunt, disposer };
+	return { id, puzzlehunt, disposer, container };
 }
 
 export const loadExistingPuzzlehunt = async (
 	client: AzureClient,
 	id: string
-): Promise<{ puzzlehunt: IPuzzlehunt; disposer: { dispose: () => void } }> => {
+): Promise<PuzzlehuntLoadResult> => {
 	const { container } = await client.getContainer(id, schema);
 	await waitContainerToCatchUp((container as any).container);
-	return { puzzlehunt: new Puzzlehunt(container), disposer: container };
+	return {
+		puzzlehunt: new Puzzlehunt(container),
+		disposer: container,
+		id,
+		container,
+	};
 };
 
 export interface IPuzzlehuntEvents extends IEvent {

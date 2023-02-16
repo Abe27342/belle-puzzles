@@ -28,6 +28,60 @@
 			"program": "${workspaceFolder}\\packages\\bot\\scripts\\deploy-commands.js",
 			"preLaunchTask": "npm: build - packages/bot",
 			"outFiles": ["${workspaceFolder}/packages/bot/dist/**/*.js"]
+		},
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "azure-local-service",
+			"runtimeExecutable": "${workspaceFolder}/node_modules/.bin/azure-local-service",
+			"windows": {
+				"runtimeExecutable": "${workspaceFolder}/node_modules/.bin/azure-local-service.cmd"
+			},
+			"presentation": {
+				"hidden": true
+			}
+		},
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Debug Puzzlehunt Model Tests (no server)",
+			"runtimeExecutable": "${workspaceFolder}/node_modules/.bin/mocha",
+			"windows": {
+				"runtimeExecutable": "${workspaceFolder}/node_modules/.bin/mocha.cmd"
+			},
+			"sourceMaps": true,
+			"stopOnEntry": false,
+			"pauseForSourceMap": false,
+			"args": [
+				"--no-timeouts",
+				"${workspaceFolder}/packages/puzzlehunt-model/dist/test"
+			],
+			"skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+			"resolveSourceMapLocations": [
+				"${workspaceFolder}/**/dist/**",
+				"!**/node_modules/**"
+			],
+			"outFiles": [
+				"${workspaceFolder}/**/dist/**/*.js",
+				"!**/node_modules/**"
+			],
+			"preLaunchTask": "npm: build - packages/puzzlehunt-model",
+			"presentation": {
+				"hidden": true
+			},
+			"internalConsoleOptions": "openOnSessionStart"
+		}
+	],
+	"compounds": [
+		{
+			"name": "Debug Puzzlehunt Model Tests",
+			"configurations": [
+				"azure-local-service",
+				"Debug Puzzlehunt Model Tests (no server)"
+			],
+			"presentation": {
+				"group": "tests"
+			}
 		}
 	]
 }

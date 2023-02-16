@@ -22,6 +22,7 @@
 		"test": "pnpm --stream --filter @belle-puzzles/* run test"
 	},
 	"devDependencies": {
+		"@fluidframework/azure-local-service": "^1.1.1",
 		"mocha": "^10.2.0",
 		"pnpm": ">=7.27.0"
 	}

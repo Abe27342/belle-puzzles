@@ -50,7 +50,7 @@
 	},
 	"devDependencies": {
 		"@azure/static-web-apps-cli": "^1.0.2",
-		"@fluidframework/azure-local-service": "^0.1.38773",
+		"@fluidframework/azure-local-service": "^1.1.1",
 		"@fluidframework/test-client-utils": "^1.2.5",
 		"@types/debug": "^4.1.5",
 		"@types/node": "^16.9.0",

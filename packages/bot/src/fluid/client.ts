@@ -40,5 +40,14 @@ const remoteConnection: AzureRemoteConnectionConfig = {
 export const makeFluidClient = () => {
 	return new AzureClient({
 		connection: useLocalService ? localConnection : remoteConnection,
+		logger: {
+			send: (event) => {
+				if (event.category === 'error') {
+					try {
+						console.error(JSON.stringify(event));
+					} catch (err) {}
+				}
+			},
+		},
 	});
 };
