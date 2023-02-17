@@ -6,7 +6,7 @@ import { useAppSelector } from '../store/hooks';
 import { Button, Card, Toolbar } from '../fast';
 import { DiscordProfile } from './discordProfile';
 import { useSearchParams } from 'react-router-dom';
-import { setPostRedirectPath } from './redirect';
+import { setPostRedirectPath } from '../redirect';
 
 export const Login: React.FC = () => {
 	const isLoggedIn = useIsLoggedIn();

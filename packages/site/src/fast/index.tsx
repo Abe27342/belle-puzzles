@@ -1,19 +1,25 @@
 import * as React from 'react';
 import {
+	anchorTemplate,
+	AnchorOptions,
+	buttonTemplate,
+	ButtonOptions,
 	DesignToken,
 	treeItemTemplate,
 	TreeItem as FastTreeItem,
 	TreeItemOptions,
 } from '@microsoft/fast-foundation';
 import {
+	Anchor as FastAnchor,
+	Button as FastButton,
 	provideFASTDesignSystem,
 	fastCombobox,
 	fastOption,
 	fastTreeView,
+	anchorStyles,
+	buttonStyles,
 	treeItemStyles,
-	fastAnchor,
 	fastToolbar,
-	fastButton,
 	fastCard,
 	fastHorizontalScroll,
 	baseLayerLuminance,
@@ -30,7 +36,7 @@ import {
 	fastDialog,
 } from '@microsoft/fast-components';
 import { provideReactWrapper } from '@microsoft/fast-react-wrapper';
-import { css } from '@microsoft/fast-element';
+import { Constructable, css } from '@microsoft/fast-element';
 import {
 	neutralColor,
 	accentColor,
@@ -77,7 +83,10 @@ accentColor.withDefault(
 const treeItemPadding = DesignToken.create<string>('tree-item-padding');
 treeItemPadding.withDefault('5px');
 
-const fastTreeItem = FastTreeItem.compose<TreeItemOptions>({
+const fastTreeItem = FastTreeItem.compose<
+	TreeItemOptions,
+	Constructable<FastTreeItem>
+>({
 	baseName: 'tree-item',
 	template: treeItemTemplate,
 	styles: (ctx, def) => css`
@@ -120,6 +129,32 @@ const fastTreeItem = FastTreeItem.compose<TreeItemOptions>({
 	</svg>
 `,
 });
+
+const fastAnchor = FastAnchor.compose<AnchorOptions, Constructable<FastAnchor>>(
+	{
+		baseName: 'anchor',
+		template: anchorTemplate,
+		styles: (ctx, def) => css`
+			${anchorStyles(ctx, def)}
+			.control {
+				align-items: center !important;
+			}
+		`,
+	}
+);
+
+const fastButton = FastButton.compose<ButtonOptions, Constructable<FastButton>>(
+	{
+		baseName: 'button',
+		template: buttonTemplate,
+		styles: (ctx, def) => css`
+			${buttonStyles(ctx, def)}
+			.control {
+				align-items: center !important;
+			}
+		`,
+	}
+);
 
 baseLayerLuminance.withDefault(StandardLuminance.LightMode);
 const anchor = fastAnchor();

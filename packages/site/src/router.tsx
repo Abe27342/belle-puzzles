@@ -4,6 +4,7 @@ import {
 	RouterProvider,
 	Route,
 	createRoutesFromElements,
+	useRouteError,
 } from 'react-router-dom';
 import {
 	About,
@@ -26,8 +27,8 @@ export const Router: React.FC = () => {
 				createRoutesFromElements([
 					<Route path="/logout" element={<Logout />} />,
 					<Route element={<NavBar />} loader={fetchLoginInfo}>
-						<Route path="/home" element={<Home />} />
-						<Route path="/about" element={<About />} />
+						<Route path="/home" element={<Home />} />,
+						<Route path="/about" element={<About />} />,
 						<Route
 							path="/login"
 							element={<Login />}

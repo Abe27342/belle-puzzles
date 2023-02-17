@@ -1,7 +1,8 @@
 import * as React from 'react';
-import './css/home.css';
-import { Button, Card } from '../fast';
-import { createAddBotToServerUrl } from '../store/auth';
+import './home.css';
+import { Button, Card } from '../../fast';
+import { createAddBotToServerUrl } from '../../store/auth';
+import belleUrl from './assets/belle.jpg';
 
 export const Home: React.FC = () => {
 	const onClick = () => {
@@ -20,7 +21,7 @@ export const Home: React.FC = () => {
 				</Card>
 			</div>
 			<div>
-				<LazyImage src="/belle.jpg" />
+				<LazyImage src={belleUrl} />
 			</div>
 		</div>
 	);

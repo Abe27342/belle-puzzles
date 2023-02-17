@@ -1,6 +1,6 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import { REHYDRATE } from 'redux-persist';
-import { setPostRedirectPath } from '../components';
+// import { setPostRedirectPath } from '../../redirect';
 import { createFetchFn } from './createFetch';
 import { Guild } from './discordApi';
 

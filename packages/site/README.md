@@ -1,6 +1,8 @@
 # Belle Puzzles Website
 
-## Running Locally
+## Running against a local belle-bot
+
+TODO: restore this flow
 
 First, add the bot to a test server and create a new puzzlehunt (TODO: Make an easy workflow for the bot
 to create a local file; don't want the deployed bot responding to commands run on that server)
@@ -14,7 +16,7 @@ Once complete, you can run the app against a local routerlicious server by runni
 
 `npm run start:azure-local`
 
-in one terminal, then starting the webpack dev server with
+in one terminal, then starting the dev server with
 
 `npm run start`
 
@@ -23,7 +25,7 @@ If you need to use this workflow with the discord bot, you'll also need to add t
 The discord bot still needs a mechanism for the deployed bot to ignore commands on local servers, however (or you can just deploy
 the commands to a specific server).
 
-## Running against Azure Fluid Relay
+## Running against deployed belle-bot
 
 [This guide](https://learn.microsoft.com/en-us/azure/static-web-apps/add-api?tabs=vanilla-javascript) is generally helpful.
 
@@ -31,7 +33,7 @@ Short version of relevant steps:
 
 -   Install the Azure Functions and Azure Static Websites extensions from VS Code
 -   Run `npm i -g @azure/static-web-apps-cli`
--   Run `npm run start:swa`
+-   Run `npm run start`
 -   Open a browser to `http://localhost:9000`.
 
 This project uses an azure function to fetch tokens for the fluid relay service.
@@ -44,4 +46,3 @@ For additional debugging tips such as how to debug the API, [this doc may be use
 -   Improve puzzle page TreeView performance, right now rerendering behavior is quite egregious (and now that backing data format is tree-based, could actually get pretty efficient incremental inval without too much work)
 -   Improve tab navigation on modal editor. May want to use dialog FAST component instead.
 -   Improve overall setup running against local server + local bot instance.
--   Follow the doc above to get a better local development setup.

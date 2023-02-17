@@ -12,7 +12,7 @@ import { skipToken } from '@reduxjs/toolkit/dist/query';
 import { useGetGuildsQuery } from '../services/discordApi';
 import { useGetMutualGuildsQuery } from '../services/swaApi';
 import { useIsLoggedIn } from './login';
-import { setPostRedirectPath } from './redirect';
+import { setPostRedirectPath } from '../redirect';
 
 function onAddToNew() {
 	setPostRedirectPath(window.location.pathname);

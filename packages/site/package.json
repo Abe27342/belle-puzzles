@@ -2,6 +2,7 @@
 	"name": "@belle-puzzles/site",
 	"version": "0.0.1",
 	"description": "Website for Belle Bot",
+	"type": "module",
 	"main": "src/index.ts",
 	"sideEffects": [
 		"*.css"
@@ -10,15 +11,13 @@
 		"node": ">=16.9.0"
 	},
 	"scripts": {
-		"build": "npm run webpack",
-		"build:prod": "npm run webpack -- --mode=production",
+		"build": "tsc && vite build",
+		"preview": "swa start http://localhost:5173 --api-location ../site-api --port 9000 --run \"vite preview\"",
 		"format": "prettier --write src",
-		"webpack": "cross-env TS_NODE_PROJECT=\"tsconfig-for-webpack.json\" webpack",
-		"start": "npm run webpack -- serve --env FLUID_CONNECTION=local",
+		"start": "swa start http://localhost:5173 --api-location ../site-api --port 9000 --run \"vite --mode remote-bot\"",
 		"start:azure-local": "npx @fluidframework/azure-local-service",
-		"start:swa": "npm run build && npm run start:swa-no-compile",
-		"start:swa-no-compile": "swa start static --api-location ../site-api --port=9000",
-		"start:swa-debug-api": "swa start static --api-location=http://localhost:7071 --port=9000"
+		"start:local-bot": "swa start http://localhost:5173 --api-location ../site-api --port 9000 --run \"vite --mode local-bot\"",
+		"start:debug-api": "swa start HTTP://localhost:5173 --api-location=http://localhost:7071 --run \"vite --mode remote-bot\""
 	},
 	"author": "Abram Sanderson",
 	"license": "MIT",
@@ -36,7 +35,6 @@
 		"@reduxjs/toolkit": "^1.8.5",
 		"discord.js": "^14.4.0",
 		"fluid-framework": "^1.2.5",
-		"node-polyfill-webpack-plugin": "^2.0.1",
 		"react": "^17.0.2",
 		"react-time-ago": "^7.2.1",
 		"javascript-time-ago": "^2.5.9",
@@ -57,21 +55,15 @@
 		"@types/react": "^17.0.2",
 		"@types/react-dom": "^17.0.2",
 		"@types/uuid": "^8.3.4",
-		"@types/webpack": "^5.28.0",
+		"@vitejs/plugin-react": "^3.1.0",
 		"assert": "^2.0.0",
 		"cross-env": "^7.0.3",
-		"css-loader": "^6.7.1",
 		"dotenv": "^16.0.2",
-		"fork-ts-checker-webpack-plugin": "^7.2.13",
+		"express": "^4.18.2",
 		"prettier": "^2.7.1",
 		"react-router-dom": "^6.4.0",
-		"style-loader": "^3.3.1",
-		"ts-loader": "^9.3.1",
 		"ts-node": "^10.9.1",
 		"typescript": "^4.8.3",
-		"webpack": "^5.74.0",
-		"webpack-bundle-analyzer": "^4.6.1",
-		"webpack-cli": "^4.10.0",
-		"webpack-dev-server": "^4.11.0"
+		"vite": "^4.1.1"
 	}
 }

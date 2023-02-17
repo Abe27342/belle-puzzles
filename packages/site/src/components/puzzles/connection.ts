@@ -5,17 +5,14 @@ import {
 	AzureMember,
 	AzureRemoteConnectionConfig,
 } from '@fluidframework/azure-client';
-import { InsecureTokenProvider } from '@fluidframework/test-client-utils';
-
-declare const FLUID_CONNECTION_TYPE: string;
 
 export async function getConnection(
 	user?: Pick<AzureMember, 'userId' | 'userName' | 'additionalDetails'>
 ): Promise<AzureLocalConnectionConfig | AzureRemoteConnectionConfig> {
-	// Note: This doesn't actually tree shake correctly. I confirmed that local code imported here
-	// is tree shaking correctly, so it might be related to output format of test-runtime-utils.
-	// This structure at least has a chance of doing so, though.
-	if (FLUID_CONNECTION_TYPE === 'local') {
+	if (import.meta.env.VITE_FLUID_CONNECTION_TYPE === 'local') {
+		const { InsecureTokenProvider } = await import(
+			'@fluidframework/test-client-utils'
+		);
 		const localConnection: AzureLocalConnectionConfig = {
 			type: 'local',
 			tokenProvider: new InsecureTokenProvider('', {
@@ -25,7 +22,7 @@ export async function getConnection(
 		};
 
 		return localConnection;
-	} else if (FLUID_CONNECTION_TYPE === 'remote') {
+	} else if (import.meta.env.VITE_FLUID_CONNECTION_TYPE === 'remote') {
 		return {
 			type: 'remote',
 			tenantId: '3ba404d1-7aff-4082-b3f8-794e6c6ae63e',
