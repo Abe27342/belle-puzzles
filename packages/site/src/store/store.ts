@@ -57,8 +57,9 @@ export type AppThunkApiConfig = {
 };
 
 if (import.meta.hot) {
+	// Note: this code is unvetted. It's very possible HMR doesn't quite work yet. However, this is basically
+	// what's suggested by https://github.com/rt2zz/redux-persist/blob/master/docs/hot-module-replacement.md
 	import.meta.hot?.accept('./reducer', () => {
-		// This fetch the new state of the above reducers.
 		const nextRootReducer = require('./reducer').rootReducer;
 		store.replaceReducer(persistReducer(persistConfig, nextRootReducer));
 	});
