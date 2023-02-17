@@ -1,17 +1,20 @@
 import * as React from 'react';
 import {
+	anchorTemplate,
+	AnchorOptions,
 	DesignToken,
 	treeItemTemplate,
 	TreeItem as FastTreeItem,
 	TreeItemOptions,
 } from '@microsoft/fast-foundation';
 import {
+	Anchor as FastAnchor,
 	provideFASTDesignSystem,
 	fastCombobox,
 	fastOption,
 	fastTreeView,
+	anchorStyles,
 	treeItemStyles,
-	fastAnchor,
 	fastToolbar,
 	fastButton,
 	fastCard,
@@ -119,6 +122,17 @@ const fastTreeItem = FastTreeItem.compose<TreeItemOptions>({
 		/>
 	</svg>
 `,
+});
+
+const fastAnchor = FastAnchor.compose<AnchorOptions>({
+	baseName: 'anchor',
+	template: anchorTemplate,
+	styles: (ctx, def) => css`
+		${anchorStyles(ctx, def)}
+		.control {
+			align-items: center !important;
+		}
+	`,
 });
 
 baseLayerLuminance.withDefault(StandardLuminance.LightMode);

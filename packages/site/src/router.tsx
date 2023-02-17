@@ -4,6 +4,7 @@ import {
 	RouterProvider,
 	Route,
 	createRoutesFromElements,
+	useRouteError,
 } from 'react-router-dom';
 import {
 	About,
@@ -25,9 +26,13 @@ export const Router: React.FC = () => {
 			createBrowserRouter(
 				createRoutesFromElements([
 					<Route path="/logout" element={<Logout />} />,
-					<Route element={<NavBar />} loader={fetchLoginInfo}>
-						<Route path="/home" element={<Home />} />
-						<Route path="/about" element={<About />} />
+					<Route
+						element={<NavBar />}
+						loader={fetchLoginInfo}
+						errorElement={<ErrorBoundary />}
+					>
+						<Route path="/home" element={<Home />} />,
+						<Route path="/about" element={<About />} />,
 						<Route
 							path="/login"
 							element={<Login />}
@@ -44,5 +49,12 @@ export const Router: React.FC = () => {
 
 	return <RouterProvider router={router} />;
 };
+
+function ErrorBoundary() {
+	let error = useRouteError();
+	console.error(error);
+	// Uncaught ReferenceError: path is not defined
+	return <div>Something went wrong!</div>;
+}
 
 // TODO: Error element

@@ -20,7 +20,7 @@ export const Home: React.FC = () => {
 				</Card>
 			</div>
 			<div>
-				<LazyImage src="/belle.jpg" />
+				<LazyImage src="/static/belle.jpg" />
 			</div>
 		</div>
 	);

@@ -5,7 +5,7 @@ import {
 } from '@reduxjs/toolkit';
 import type { AppThunkApiConfig, RootState } from './store';
 import { AccessContext, OAuth2AuthCodePKCE } from '@bity/oauth2-auth-code-pkce';
-import { setPostRedirectPath } from '../components';
+import { setPostRedirectPath } from '../redirect';
 
 export interface ClientPrincipal {
 	identityProvider: string;

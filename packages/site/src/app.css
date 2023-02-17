@@ -102,3 +102,7 @@ nav {
 :not(:defined) {
 	visibility: hidden;
 }
+
+:host() .control {
+	align-items: center;
+}

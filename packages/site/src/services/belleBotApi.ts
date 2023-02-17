@@ -9,8 +9,6 @@ export interface PuzzlehuntContext {
 	name: string;
 }
 
-declare const BELLE_BOT_BASE_URL: string;
-
 export const belleBotApi = createApi({
 	reducerPath: 'belleBotApi',
 	baseQuery: fetchBaseQuery({
@@ -20,7 +18,7 @@ export const belleBotApi = createApi({
 			headers.set('authorization', `Bearer ${token}`);
 			return headers;
 		},
-		baseUrl: BELLE_BOT_BASE_URL,
+		baseUrl: import.meta.env.VITE_BELLE_BOT_BASE_URL,
 	}),
 	endpoints: (builder) => ({
 		getPuzzlehuntContext: builder.query<

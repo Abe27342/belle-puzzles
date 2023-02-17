@@ -95,7 +95,7 @@ export const Puzzles: React.FC = () => {
 		<>
 			<div id="puzzles" className="page-body">
 				<Card>
-					<img id="libralogo" src="/libralogo1.png" />
+					<img id="libralogo" src="/static/libralogo1.png" />
 					{!puzzlehunt && !isError && <LoadingSkeleton />}
 					{isError && (
 						<div>
@@ -535,7 +535,7 @@ const LoadingSkeleton: React.FC = () => {
 				height: '480px',
 				visibility,
 			}}
-			pattern="/loading-puzzlehunt.svg"
+			pattern="/static/loading-puzzlehunt.svg"
 			shimmer
 		/>
 	);

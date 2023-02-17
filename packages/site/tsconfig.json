@@ -1,16 +1,37 @@
+// {
+// 	"compilerOptions": {
+// 		"allowJs": true,
+// 		"allowSyntheticDefaultImports": true,
+// 		"incremental": true,
+// 		"jsx": "react",
+// 		"module": "es6",
+// 		"moduleResolution": "node",
+// 		"noImplicitAny": true,
+// 		"outDir": "./dist/",
+// 		"rootDir": "./src",
+// 		"sourceMap": true,
+// 		"target": "ESNext"
+// 	},
+// 	"include": ["src/**/*"]
+// }
 {
 	"compilerOptions": {
-		"allowJs": true,
+		"target": "ESNext",
+		"useDefineForClassFields": true,
+		"lib": ["DOM", "DOM.Iterable", "ESNext"],
+		"allowJs": false,
+		"skipLibCheck": true,
+		"esModuleInterop": false,
 		"allowSyntheticDefaultImports": true,
-		"incremental": true,
-		"jsx": "react",
-		"module": "es6",
-		"moduleResolution": "node",
-		"noImplicitAny": true,
-		"outDir": "./dist/",
-		"rootDir": "./src",
-		"sourceMap": true,
-		"target": "ESNext"
+		"strict": true,
+		"forceConsistentCasingInFileNames": true,
+		"module": "ESNext",
+		"moduleResolution": "Node",
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"noEmit": true,
+		"jsx": "react-jsx"
 	},
-	"include": ["src/**/*"]
+	"include": ["src"],
+	"references": [{ "path": "./tsconfig.node.json" }]
 }

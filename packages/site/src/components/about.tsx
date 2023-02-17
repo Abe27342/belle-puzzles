@@ -53,7 +53,7 @@ export const About: React.FC = () => {
 					creating a folder for puzzles, you should copy the link via
 					Google Drive's share UI.
 				</p>
-				<img src="/google-drive-example.png" />
+				<img src="/static/google-drive-example.png" />
 				<h3>Add Round</h3>
 				<p>
 					Adds a round to the puzzlehunt. If the{' '}
@@ -69,7 +69,7 @@ export const About: React.FC = () => {
 					discord's autocomplete UI for channels: type "#" and find
 					the channel.
 				</p>
-				<img src="/add-round-example.png" />
+				<img src="/static/add-round-example.png" />
 				<h3>Add Puzzle</h3>
 				<p>
 					Adds a puzzle to the puzzlehunt. Puzzles{' '}
@@ -78,7 +78,7 @@ export const About: React.FC = () => {
 					puzzle defaults to being a child of the nearest ancestor
 					round relative to the channel the command is run in.
 				</p>
-				<img src="/add-puzzle-example.png" />
+				<img src="/static/add-puzzle-example.png" />
 				<h3>Update Status</h3>
 				<p>
 					Updates the current status of solving a puzzle. This causes
@@ -86,10 +86,10 @@ export const About: React.FC = () => {
 					puzzle to be displayed closer to the top of the "most
 					recently updated" view in the puzzlehunt viewer.
 				</p>
-				<img src="/update-status.png" />
+				<img src="/static/update-status.png" />
 				<h3>Solve</h3>
 				<p>Solves a puzzle with the provided answer.</p>
-				<img src="/solve-example.png" />
+				<img src="/static/solve-example.png" />
 				<h3>Unsolve</h3>
 				<p>Can be used to undo an erroneous solve.</p>
 				<h3>Sync All</h3>
@@ -111,7 +111,7 @@ export const About: React.FC = () => {
 					subscribe or unsubscribe to visibility of those channels
 					using round embeds that Belle generates.
 				</p>
-				<img src="/round-embeds.png"></img>
+				<img src="/static/round-embeds.png"></img>
 				<h3>Channel Movement</h3>
 				<p>
 					Belle listens to channel update events from discord. In the
