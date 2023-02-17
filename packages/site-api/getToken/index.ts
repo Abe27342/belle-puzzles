@@ -53,8 +53,6 @@ const httpTrigger: AzureFunction = async function (
 		user
 	);
 
-	context.log(key, token);
-
 	context.res = {
 		status: 200,
 		body: token,

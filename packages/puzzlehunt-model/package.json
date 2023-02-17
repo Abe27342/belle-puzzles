@@ -10,7 +10,6 @@
 	"sideEffects": false,
 	"scripts": {
 		"build": "tsc",
-		"build:prod": "npm run build",
 		"format": "prettier --write src",
 		"start:localserver": "npx @fluidframework/azure-local-service > azure-local-service.log 2>&1",
 		"test": "start-server-and-test start:localserver 7070 test:run",

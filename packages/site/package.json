@@ -11,17 +11,13 @@
 		"node": ">=16.9.0"
 	},
 	"scripts": {
-		"dev": "vite",
 		"build": "tsc && vite build",
-		"preview": "vite preview",
-		"build:prod": "npm run webpack -- --mode=production",
+		"preview": "swa start http://localhost:5173 --api-location ../site-api --port 9000 --run \"vite preview\"",
 		"format": "prettier --write src",
-		"webpack": "cross-env TS_NODE_PROJECT=\"tsconfig-for-webpack.json\" webpack",
-		"start": "npm run webpack -- serve --env FLUID_CONNECTION=local",
+		"start": "swa start http://localhost:5173 --api-location ../site-api --port 9000 --run \"vite --mode remote-bot\"",
 		"start:azure-local": "npx @fluidframework/azure-local-service",
-		"start:swa": "npm run build && npm run start:swa-no-compile",
-		"start:swa-no-compile": "swa start static --api-location ../site-api --port=9000",
-		"start:swa-debug-api": "swa start static --api-location=http://localhost:7071 --port=9000"
+		"start:local-bot": "swa start http://localhost:5173 --api-location ../site-api --port 9000 --run \"vite --mode local-bot\"",
+		"start:debug-api": "swa start HTTP://localhost:5173 --api-location=http://localhost:7071 --run \"vite --mode remote-bot\""
 	},
 	"author": "Abram Sanderson",
 	"license": "MIT",

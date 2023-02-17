@@ -3,12 +3,16 @@ import react from '@vitejs/plugin-react';
 
 // https://vitejs.dev/config/
 export default defineConfig({
+	build: {
+		sourcemap: true,
+	},
 	plugins: [react()],
 	server: {
-		port: 9000,
-		proxy: {
-			'/.auth/me': 'http://localhost:4012',
-			'/api/discord/userId/mutualGuilds': 'http://localhost:4012',
-		},
+		port: 5173,
+		strictPort: true,
+	},
+	preview: {
+		port: 5173,
+		strictPort: true,
 	},
 });

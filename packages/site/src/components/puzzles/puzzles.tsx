@@ -30,6 +30,8 @@ import type { AppStore } from '../../store/store';
 import { useGetPuzzlehuntContextQuery } from '../../services/belleBotApi';
 import { createClient } from './connection';
 import TimeAgo from './timeAgo';
+import loadingPuzzlehuntUrl from './assets/loading-puzzlehunt.svg';
+import libraLogoUrl from './assets/libralogo.png';
 
 export const Puzzles: React.FC = () => {
 	const [puzzlehunt, setPuzzlehunt] = React.useState<IPuzzlehunt>();
@@ -58,7 +60,7 @@ export const Puzzles: React.FC = () => {
 	React.useEffect(() => {
 		let isActive = true;
 		let disposeFn: () => void;
-		const loadPuzzlehunt = async () => {
+		const loadPuzzlehunt = async (fileId: string) => {
 			const authInfo = store.getState().auth.aad;
 			const client = await createClient({
 				userId: authInfo.userId,
@@ -66,7 +68,7 @@ export const Puzzles: React.FC = () => {
 			});
 			const { puzzlehunt, disposer } = await loadExistingPuzzlehunt(
 				client,
-				fluidFileId
+				fileId
 			);
 			disposeFn = () => disposer.dispose();
 			if (isActive) {
@@ -78,7 +80,7 @@ export const Puzzles: React.FC = () => {
 		};
 
 		if (fluidFileId) {
-			loadPuzzlehunt().catch((err) => console.log(err));
+			loadPuzzlehunt(fluidFileId).catch((err) => console.log(err));
 		}
 		return () => {
 			isActive = false;
@@ -95,7 +97,7 @@ export const Puzzles: React.FC = () => {
 		<>
 			<div id="puzzles" className="page-body">
 				<Card>
-					<img id="libralogo" src="/static/libralogo1.png" />
+					<img id="libralogo" src={libraLogoUrl} />
 					{!puzzlehunt && !isError && <LoadingSkeleton />}
 					{isError && (
 						<div>
@@ -535,7 +537,7 @@ const LoadingSkeleton: React.FC = () => {
 				height: '480px',
 				visibility,
 			}}
-			pattern="/static/loading-puzzlehunt.svg"
+			pattern={loadingPuzzlehuntUrl}
 			shimmer
 		/>
 	);

@@ -39,7 +39,7 @@ jobs:
                   # For more information regarding Static Web App workflow configurations, please visit: https://aka.ms/swaworkflowconfig
                   app_location: '/packages/site'
                   api_location: '/packages/site-api'
-                  output_location: '/static'
+                  output_location: '/dist'
                   ###### End of Repository/Build Configurations ######
               env:
-                  CUSTOM_BUILD_COMMAND: npm run build:prod
+                  CUSTOM_BUILD_COMMAND: npm run build

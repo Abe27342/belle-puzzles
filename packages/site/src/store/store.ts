@@ -1,5 +1,4 @@
-import { combineReducers, configureStore } from '@reduxjs/toolkit';
-import { authReducer } from './auth';
+import { configureStore } from '@reduxjs/toolkit';
 import {
 	FLUSH,
 	REHYDRATE,
@@ -12,6 +11,7 @@ import {
 } from 'redux-persist';
 // Default value here is localStorage, which should be fine as we're persisting a small amount of data (mostly just auth tokens)
 import storage from 'redux-persist/lib/storage';
+import { rootReducer } from './reducer';
 import { discordApi } from '../services/discordApi';
 import { swaApi } from '../services/swaApi';
 import { belleBotApi } from '../services/belleBotApi';
@@ -24,13 +24,6 @@ const persistConfig = {
 	// values are reasonable enough to assume infrequent updates to). Generally using RTK-query's hook additional options suffices.
 	storage,
 };
-
-const rootReducer = combineReducers({
-	auth: authReducer,
-	[discordApi.reducerPath]: discordApi.reducer,
-	[swaApi.reducerPath]: swaApi.reducer,
-	[belleBotApi.reducerPath]: belleBotApi.reducer,
-});
 
 export const store = configureStore({
 	reducer: persistReducer(persistConfig, rootReducer),
@@ -62,3 +55,11 @@ export type AppThunkApiConfig = {
 	dispatch: AppDispatch;
 	state: RootState;
 };
+
+if (import.meta.hot) {
+	import.meta.hot?.accept('./reducer', () => {
+		// This fetch the new state of the above reducers.
+		const nextRootReducer = require('./reducer').rootReducer;
+		store.replaceReducer(persistReducer(persistConfig, nextRootReducer));
+	});
+}
