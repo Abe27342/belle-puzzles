@@ -22,7 +22,6 @@ export const logout = createAction('auth/logout');
 
 export const clientPrincipalReceived = createAction<ClientPrincipal>('aadAuth');
 
-const discordClientId = '1019695303026290698';
 const discordOauthApi = 'https://discord.com/api/oauth2';
 
 interface AuthState {
@@ -71,8 +70,6 @@ export const isLoggedInToMicrosoft = (state: RootState) =>
 export const isLoggedIn = (state: RootState): boolean =>
 	isLoggedInToMicrosoft(state) && isLoggedInToDiscord(state);
 
-const client_id = '1019695303026290698';
-
 // https://discord.com/developers/docs/topics/oauth2#shared-resources-oauth2-scopes
 const scopes = ['identify', 'guilds'];
 
@@ -80,7 +77,7 @@ const scopes = ['identify', 'guilds'];
 const discordOAuth = new OAuth2AuthCodePKCE({
 	authorizationUrl: `${discordOauthApi}/authorize`,
 	tokenUrl: `${discordOauthApi}/token`,
-	clientId: discordClientId,
+	clientId: import.meta.env.VITE_BELLE_BOT_CLIENT_ID,
 	redirectUrl: window.location.origin,
 	scopes,
 	onAccessTokenExpiry: (refreshAccessToken) => {
@@ -111,7 +108,7 @@ export async function authorizeToDiscord(
 
 export function createAddBotToServerUrl(): string {
 	const params = new URLSearchParams({
-		client_id,
+		client_id: import.meta.env.VITE_BELLE_BOT_CLIENT_ID,
 		/* This is a bit flag constant derived with discord's application website. If we want more fancy things, we may want to adjust it to
 		 * actually do the logic. Right now it has:
 		 * - Manage Roles
