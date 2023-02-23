@@ -70,6 +70,18 @@
 				"hidden": true
 			},
 			"internalConsoleOptions": "openOnSessionStart"
+		},
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Website: Debug Current Test File",
+			"autoAttachChildProcesses": true,
+			"skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+			"program": "${workspaceRoot}/packages/site/node_modules/vitest/vitest.mjs",
+			"cwd": "${workspaceRoot}/packages/site",
+			"args": ["run", "${relativeFile}"],
+			"smartStep": true,
+			"console": "integratedTerminal"
 		}
 	],
 	"compounds": [

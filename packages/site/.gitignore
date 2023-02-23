@@ -1,3 +1,2 @@
-static/*.js
-static/*.LICENSE.txt
-static/report.html
+# Coverage artifacts
+coverage/
