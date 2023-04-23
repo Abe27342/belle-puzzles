@@ -44,7 +44,7 @@ fast-dialog {
 	--dialog-height: 80%;
 }
 
-#puzzles .modal {
+.modal {
 	position: fixed;
 	z-index: 1;
 	padding: 100px 5% 0 5%;
@@ -55,7 +55,7 @@ fast-dialog {
 	background-color: rgba(0, 0, 0, 0.4);
 }
 
-#puzzles .modal fast-card {
+.modal fast-card {
 	padding: var(--card-padding);
 }
 
