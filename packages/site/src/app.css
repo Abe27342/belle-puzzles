@@ -19,6 +19,12 @@ body {
 	margin: 16px;
 }
 
+@media screen and (max-width: 1200px) {
+	.page-body {
+		margin: 0;
+	}
+}
+
 .page-body-no-margin {
 	margin: 0;
 }

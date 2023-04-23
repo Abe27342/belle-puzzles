@@ -3,10 +3,15 @@
 	height: auto;
 	min-height: 80vh;
 	padding: var(--card-padding);
+	overflow: scroll;
 }
 
 #puzzles > fast-card > *:not(:last-child) {
 	padding-bottom: var(--card-padding);
+}
+
+#puzzles > fast-toolbar > * {
+	display: hidden;
 }
 
 #libralogo {
@@ -52,4 +57,14 @@ fast-dialog {
 
 .modal fast-card {
 	padding: var(--card-padding);
+}
+
+@media screen and (max-width: 1200px) {
+	#libralogo {
+		visibility: hidden;
+	}
+
+	#puzzles > fast-card {
+		width: 100%;
+	}
 }

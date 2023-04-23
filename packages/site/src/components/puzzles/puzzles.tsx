@@ -249,11 +249,15 @@ function useEditingUI(puzzlehunt: IPuzzlehunt): {
 		};
 	}, [showMenu, showModal]);
 
-	const openModal = React.useCallback((args: ModalSpec) => {
-		setShowMenu(false);
-		setShowModal(true);
-		setModalArgs(args);
-	}, []);
+	const openModal = React.useCallback(
+		(event: React.MouseEvent, args: ModalSpec) => {
+			setShowMenu(false);
+			setShowModal(true);
+			setModalArgs(args);
+			event.stopPropagation();
+		},
+		[]
+	);
 
 	const closeModal = React.useCallback(() => {
 		setShowModal(false);
@@ -333,7 +337,7 @@ interface PuzzlePageMenu {
 	puzzlehunt: IPuzzlehunt;
 	pageX: number;
 	pageY: number;
-	openModal: (args: ModalSpec) => void;
+	openModal: (event: React.MouseEvent, args: ModalSpec) => void;
 }
 
 const PuzzlePageMenu: React.FC<PuzzlePageMenu> = ({
@@ -347,8 +351,8 @@ const PuzzlePageMenu: React.FC<PuzzlePageMenu> = ({
 			{puzzleObj.type === 'round' && (
 				<>
 					<MenuItem
-						onClick={() =>
-							openModal({
+						onClick={(event) =>
+							openModal(event, {
 								modalType: 'add',
 								createType: 'puzzle',
 							})
@@ -357,8 +361,11 @@ const PuzzlePageMenu: React.FC<PuzzlePageMenu> = ({
 						Add a puzzle
 					</MenuItem>
 					<MenuItem
-						onClick={() =>
-							openModal({ modalType: 'add', createType: 'round' })
+						onClick={(event) =>
+							openModal(event, {
+								modalType: 'add',
+								createType: 'round',
+							})
 						}
 					>
 						Add a round
@@ -367,19 +374,26 @@ const PuzzlePageMenu: React.FC<PuzzlePageMenu> = ({
 			)}
 			{puzzleObj.type === 'puzzle' && (
 				<MenuItem
-					onClick={() =>
-						openModal({ modalType: 'add', createType: 'puzzle' })
+					onClick={(event) =>
+						openModal(event, {
+							modalType: 'add',
+							createType: 'puzzle',
+						})
 					}
 				>
 					Add a sibling puzzle
 				</MenuItem>
 			)}
-			<MenuItem onClick={() => openModal({ modalType: 'editName' })}>
+			<MenuItem
+				onClick={(event) => openModal(event, { modalType: 'editName' })}
+			>
 				Change name
 			</MenuItem>
 			{puzzleObj.type === 'puzzle' && (
 				<MenuItem
-					onClick={() => openModal({ modalType: 'editSheetId' })}
+					onClick={(event) =>
+						openModal(event, { modalType: 'editSheetId' })
+					}
 				>
 					Change sheet ID
 				</MenuItem>
@@ -387,7 +401,11 @@ const PuzzlePageMenu: React.FC<PuzzlePageMenu> = ({
 			{(puzzleObj.type === 'puzzle' ||
 				(puzzleObj.type === 'round' &&
 					puzzleObj.children.length === 0)) && (
-				<MenuItem onClick={() => openModal({ modalType: 'delete' })}>
+				<MenuItem
+					onClick={(event) =>
+						openModal(event, { modalType: 'delete' })
+					}
+				>
 					Delete this {puzzleObj.type}
 				</MenuItem>
 			)}
