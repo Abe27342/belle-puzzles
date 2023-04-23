@@ -1,12 +1,4 @@
-body {
-	display: grid;
-	/* place-items: center; */
-	height: 100vh;
-	margin: 0;
-	padding: 0;
-}
-
-label {
+.hamburger label {
 	display: flex;
 	flex-direction: column;
 	width: 50px;
@@ -14,7 +6,7 @@ label {
 	scale: 50%;
 }
 
-label span {
+.hamburger label span {
 	background: var(--neutral-fill-rest);
 	border-radius: 10px;
 	height: 5px;
@@ -23,37 +15,37 @@ label span {
 	transition-property: width, transform;
 }
 
-label:hover span {
+.hamburger label:hover span {
 	background: var(--accent-fill-hover);
 }
 
-span:nth-of-type(1) {
+.hamburger span:nth-of-type(1) {
 	width: 50%;
 }
 
-span:nth-of-type(2) {
+.hamburger span:nth-of-type(2) {
 	width: 100%;
 }
 
-span:nth-of-type(3) {
+.hamburger span:nth-of-type(3) {
 	width: 75%;
 }
 
-input[type='checkbox'] {
+.hamburger input[type='checkbox'] {
 	display: none;
 }
 
-input[type='checkbox']:checked ~ span:nth-of-type(1) {
+.hamburger input[type='checkbox']:checked ~ span:nth-of-type(1) {
 	transform-origin: bottom;
 	transform: rotatez(45deg) translate(8px, 0px);
 }
 
-input[type='checkbox']:checked ~ span:nth-of-type(2) {
+.hamburger input[type='checkbox']:checked ~ span:nth-of-type(2) {
 	transform-origin: top;
 	transform: rotatez(-45deg);
 }
 
-input[type='checkbox']:checked ~ span:nth-of-type(3) {
+.hamburger input[type='checkbox']:checked ~ span:nth-of-type(3) {
 	transform-origin: bottom;
 	width: 50%;
 	transform: translate(23px, -8px) rotatez(45deg);
