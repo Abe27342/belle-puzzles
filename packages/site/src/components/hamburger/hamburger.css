@@ -1,0 +1,52 @@
+.hamburger label {
+	display: flex;
+	flex-direction: column;
+	width: 50px;
+	cursor: pointer;
+	scale: 50%;
+}
+
+.hamburger label span {
+	background: var(--neutral-fill-rest);
+	border-radius: 10px;
+	height: 5px;
+	margin: 5px 0;
+	transition: 0.4s cubic-bezier(0.68, -0.6, 0.32, 1.6);
+	transition-property: width, transform;
+}
+
+.hamburger label:hover span {
+	background: var(--accent-fill-hover);
+}
+
+.hamburger span:nth-of-type(1) {
+	width: 50%;
+}
+
+.hamburger span:nth-of-type(2) {
+	width: 100%;
+}
+
+.hamburger span:nth-of-type(3) {
+	width: 75%;
+}
+
+.hamburger input[type='checkbox'] {
+	display: none;
+}
+
+.hamburger input[type='checkbox']:checked ~ span:nth-of-type(1) {
+	transform-origin: bottom;
+	transform: rotatez(45deg) translate(8px, 0px);
+}
+
+.hamburger input[type='checkbox']:checked ~ span:nth-of-type(2) {
+	transform-origin: top;
+	transform: rotatez(-45deg);
+}
+
+.hamburger input[type='checkbox']:checked ~ span:nth-of-type(3) {
+	transform-origin: bottom;
+	width: 50%;
+	transform: translate(23px, -8px) rotatez(45deg);
+}

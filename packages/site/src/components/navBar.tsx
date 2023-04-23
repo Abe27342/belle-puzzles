@@ -1,26 +1,137 @@
 import * as React from 'react';
 import { Outlet, useNavigate } from 'react-router';
-import { NavLink } from 'react-router-dom';
-import { Anchor, Card, Toolbar } from '../fast';
-import { useGetUserQuery } from '../services/discordApi';
-import { getMicrosoftUser } from '../store/auth';
+import { Anchor, Card, Menu, MenuItem } from '../fast';
+import { getMicrosoftUser, isLoggedIn } from '../store/auth';
 import { useAppSelector } from '../store/hooks';
 import { DiscordProfile } from './discordProfile';
+import { RootState } from '../store/store';
+import { HamburgerIcon } from './hamburger';
+
+function isSmallScreen(state: RootState): boolean {
+	return state.windowSize.width < 1200;
+}
 
 export const NavBar: React.FC = () => {
+	const useHamburgerMenu = useAppSelector(isSmallScreen);
 	return (
 		<>
 			<header className="header nav-header">
-				<li>
-					<Card className="nav-bar-card">Belle Puzzles Bot</Card>
-				</li>
-				<PageNavigation />
-				<AccountInfo />
+				{useHamburgerMenu ? (
+					<SmallScreenNavBar />
+				) : (
+					<LargeScreenNavBar />
+				)}
 			</header>
 			<Outlet />
 		</>
 	);
 };
+
+const LargeScreenNavBar: React.FC = () => (
+	<>
+		<Logo />
+		<PageNavigation />
+		<AccountInfo />
+	</>
+);
+
+const SmallScreenNavBar: React.FC = () => {
+	return (
+		<>
+			<Logo />
+			<HamburgerMenu />
+		</>
+	);
+};
+
+const Logo = () => (
+	<li>
+		<Card className="nav-bar-card">Belle Puzzles Bot</Card>
+	</li>
+);
+
+const HamburgerMenu: React.FC = () => {
+	const [open, setOpen] = React.useState(false);
+	useSoftDismiss(open, setOpen);
+
+	const onChange: React.ChangeEventHandler<HTMLInputElement> =
+		React.useCallback((event) => {
+			setOpen((prev) => !prev);
+			event.stopPropagation();
+		}, []);
+
+	const loggedIn = useAppSelector(isLoggedIn);
+	const navigate = useNavigate();
+	const options = React.useMemo(() => {
+		const options = [
+			{ label: 'Home', path: '/home' },
+			{ label: 'About', path: '/about' },
+			{ label: 'Puzzlehunt Viewer', path: '/servers' },
+		];
+		options.push(
+			loggedIn
+				? { label: 'Logout', path: '/logout' }
+				: { label: 'Login', path: '/login' }
+		);
+		return options;
+	}, [loggedIn]);
+	return (
+		<>
+			{open && (
+				<Menu className="hamburger-dropdown">
+					{...options.map(({ label, path }) => {
+						return (
+							<MenuItem
+								key={label}
+								onClick={(event) => {
+									navigate(path);
+									setOpen(false);
+									event.stopPropagation();
+								}}
+							>
+								{label}
+							</MenuItem>
+						);
+					})}
+				</Menu>
+			)}
+			<div className="hamburger">
+				<HamburgerIcon open={open} onChange={onChange} />
+			</div>
+		</>
+	);
+};
+
+function useSoftDismiss(open: boolean, setOpen: (open: boolean) => void) {
+	React.useEffect(() => {
+		if (!open) {
+			return () => {};
+		}
+
+		const onClick = (event: MouseEvent) => {
+			if (
+				event.target instanceof HTMLElement &&
+				event.target.matches('.hamburger *')
+			) {
+				// Let this be handled by explicit dismiss logic.
+				return;
+			}
+			setOpen(false);
+		};
+		const onKeyUp = (event: KeyboardEvent) => {
+			if (event.key === 'Escape') {
+				setOpen(false);
+			}
+		};
+
+		window.document.addEventListener('keyup', onKeyUp);
+		window.document.addEventListener('click', onClick);
+		return () => {
+			window.document.addEventListener('keyup', onKeyUp);
+			window.document.removeEventListener('click', onClick);
+		};
+	}, [open, setOpen]);
+}
 
 const AccountInfo: React.FC = () => {
 	const currentMicrosoftUser = useAppSelector(getMicrosoftUser);

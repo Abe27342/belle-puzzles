@@ -13,8 +13,10 @@
 	overflow: hidden;
 }
 
-.home fast-card {
+.home .home-card {
 	border-radius: 0;
+	grid-column: 1 / 1;
+	grid-row: 1 / 1;
 }
 
 .home img {
@@ -27,4 +29,28 @@
 	width: 100%;
 	height: 100%;
 	background: var(--neutral-layer-3);
+}
+
+/* Display image behind text */
+@media screen and (max-width: 1200px) {
+	.home {
+		grid-template-columns: 1fr;
+	}
+
+	.home > * {
+		grid-row: 1 / 1;
+		grid-column: 1 / 1;
+	}
+
+	.home-card-background {
+		opacity: 0.8;
+	}
+
+	#libralogo {
+		visibility: hidden;
+	}
+
+	#puzzles > fast-card {
+		width: 100%;
+	}
 }

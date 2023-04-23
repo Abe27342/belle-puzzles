@@ -9,7 +9,6 @@ import {
 	fastMenu,
 	fastMenuItem,
 	fastTextField,
-	fastDialog,
 } from '@microsoft/fast-components';
 
 export const horizontalScroll = fastHorizontalScroll();
@@ -22,4 +21,3 @@ export const card = fastCard();
 export const menu = fastMenu();
 export const menuItem = fastMenuItem();
 export const textField = fastTextField();
-export const dialog = fastDialog();
