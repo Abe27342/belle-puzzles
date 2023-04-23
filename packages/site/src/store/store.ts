@@ -23,6 +23,7 @@ const persistConfig = {
 	// is from the fluid file and user's profile / discord servers, the invalidation model isn't too complex (and all of those
 	// values are reasonable enough to assume infrequent updates to). Generally using RTK-query's hook additional options suffices.
 	storage,
+	blacklist: ['windowSize'],
 };
 
 export const store = configureStore({

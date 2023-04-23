@@ -3,7 +3,7 @@
 	height: auto;
 	min-height: 80vh;
 	padding: var(--card-padding);
-	overflow: scroll;
+	overflow-x: scroll;
 }
 
 #puzzles > fast-card > *:not(:last-child) {
@@ -44,7 +44,7 @@ fast-dialog {
 	--dialog-height: 80%;
 }
 
-.modal {
+#puzzles .modal {
 	position: fixed;
 	z-index: 1;
 	padding: 100px 5% 0 5%;
@@ -55,7 +55,7 @@ fast-dialog {
 	background-color: rgba(0, 0, 0, 0.4);
 }
 
-.modal fast-card {
+#puzzles .modal fast-card {
 	padding: var(--card-padding);
 }
 

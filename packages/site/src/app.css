@@ -2,6 +2,7 @@
 	--header-vertical-padding: calc(var(--base-height-multiplier) / 2 * 1px);
 	--header-horizontal-padding: calc(var(--base-height-multiplier) * 1px);
 	--card-padding: 30px;
+	--page-margin: 16px;
 }
 
 .link {
@@ -16,7 +17,7 @@ body {
 }
 
 .page-body {
-	margin: 16px;
+	margin: var(--page-margin);
 }
 
 @media screen and (max-width: 1200px) {
@@ -33,10 +34,9 @@ body {
 	background: #164a41;
 	align-items: center;
 	display: grid;
+	height: var(--header-height);
 	grid-column: 1 / -1;
-	/* grid-area: 1 / 1 / auto / end; */
 	grid-template-columns: auto 1fr auto;
-	padding: 5px 0px;
 }
 
 .nav-bar-card {
@@ -107,4 +107,20 @@ nav {
 
 :not(:defined) {
 	visibility: hidden;
+}
+
+.hamburger {
+	display: flex;
+	align-items: center;
+	grid-column: 3 / 3;
+}
+
+.hamburger-dropdown {
+	position: absolute;
+	top: var(--header-height);
+	width: calc(100vw);
+	max-width: calc(100vw);
+	z-index: 5;
+	border-radius: 0;
+	border: none;
 }
