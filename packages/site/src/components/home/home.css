@@ -22,7 +22,21 @@
 .home img {
 	max-width: 100%;
 	width: 100%;
+	min-height: 100%;
+	object-fit: cover;
 	height: auto;
+}
+
+.home h1 {
+	font-size: 96px;
+}
+
+.home fast-button {
+	padding: 20px 15%;
+}
+
+.home span {
+	font-size: 32px;
 }
 
 .unloaded-home-image {
@@ -46,8 +60,16 @@
 		opacity: 0.8;
 	}
 
-	#libralogo {
-		visibility: hidden;
+	.home h1 {
+		font-size: 64px;
+	}
+
+	.home fast-button {
+		padding: 12px 7%;
+	}
+
+	.home span {
+		font-size: 22px;
 	}
 
 	#puzzles > fast-card {

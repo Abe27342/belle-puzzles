@@ -7,19 +7,34 @@ import { DiscordProfile } from './discordProfile';
 import { RootState } from '../store/store';
 import { HamburgerIcon } from './hamburger';
 
-function isSmallScreen(state: RootState): boolean {
-	return state.windowSize.width < 1200;
+enum ScreenSize {
+	// Hamburger menu
+	Small,
+	// Expanded menu without login info
+	Medium,
+	// Expanded menu with login info
+	Large,
+}
+
+function getScreenSize(state: RootState): ScreenSize {
+	if (state.windowSize.width < 600) {
+		return ScreenSize.Small;
+	} else if (state.windowSize.width < 1200) {
+		return ScreenSize.Medium;
+	} else {
+		return ScreenSize.Large;
+	}
 }
 
 export const NavBar: React.FC = () => {
-	const useHamburgerMenu = useAppSelector(isSmallScreen);
+	const size = useAppSelector(getScreenSize);
 	return (
 		<>
 			<header className="header nav-header">
-				{useHamburgerMenu ? (
-					<SmallScreenNavBar />
+				{size === ScreenSize.Small ? (
+					<CollapsedNavBar />
 				) : (
-					<LargeScreenNavBar />
+					<LargerNavBar includeAvatars={size === ScreenSize.Large} />
 				)}
 			</header>
 			<Outlet />
@@ -27,15 +42,17 @@ export const NavBar: React.FC = () => {
 	);
 };
 
-const LargeScreenNavBar: React.FC = () => (
+const LargerNavBar: React.FC<{ includeAvatars: boolean }> = ({
+	includeAvatars,
+}) => (
 	<>
 		<Logo />
 		<PageNavigation />
-		<AccountInfo />
+		<AccountInfo includeAvatars={includeAvatars} />
 	</>
 );
 
-const SmallScreenNavBar: React.FC = () => {
+const CollapsedNavBar: React.FC = () => {
 	return (
 		<>
 			<Logo />
@@ -133,7 +150,9 @@ function useSoftDismiss(open: boolean, setOpen: (open: boolean) => void) {
 	}, [open, setOpen]);
 }
 
-const AccountInfo: React.FC = () => {
+const AccountInfo: React.FC<{ includeAvatars: boolean }> = ({
+	includeAvatars,
+}) => {
 	const currentMicrosoftUser = useAppSelector(getMicrosoftUser);
 	// https://techcommunity.microsoft.com/t5/apps-on-azure-blog/adding-user-profiles-to-static-web-apps/ba-p/2855234
 	// could be useful for more useful microsoft info
@@ -143,12 +162,16 @@ const AccountInfo: React.FC = () => {
 
 	return (
 		<div className="account-info">
-			<li className="account-list-item">
-				<DiscordProfile />
-			</li>
-			<li className="account-list-item">
-				<Card className="nav-bar-card">{msftContent}</Card>
-			</li>
+			{includeAvatars && (
+				<>
+					<li className="account-list-item">
+						<DiscordProfile />
+					</li>
+					<li className="account-list-item">
+						<Card className="nav-bar-card">{msftContent}</Card>
+					</li>
+				</>
+			)}
 			<li className="account-list-item">
 				<Anchor href="/logout">Logout</Anchor>
 			</li>

@@ -23,11 +23,11 @@ export const Home: React.FC = () => {
 					background: 'rgba(255, 255, 255, 0)',
 				}}
 			>
-				<h1 style={{ fontSize: 96, margin: '0 0 20px' }}>
+				<h1 style={{ margin: '0 0 20px' }}>
 					Puzzlehunt Collab Made Easy
 				</h1>
-				<Button onClick={onClick} style={{ padding: '20px 15%' }}>
-					<span style={{ fontSize: 32 }}>Install on Discord</span>
+				<Button onClick={onClick}>
+					<span>Install on Discord</span>
 				</Button>
 			</Card>
 
