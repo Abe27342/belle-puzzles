@@ -159,7 +159,12 @@ export const About: React.FC = () => {
 					to store documents. This enables viewing the puzzlehunt in
 					other environments, such as the{' '}
 					<NavLink to="/servers">puzzlehunt viewer</NavLink> on this
-					website.
+					website. All code is available on{' '}
+					<NavLink to="https://github.com/Abe27342/belle-puzzles">
+						GitHub
+					</NavLink>
+					. Contributions/requests/issues are welcome, though
+					documentation is currently quite sparse.
 				</p>
 			</Card>
 		</div>
