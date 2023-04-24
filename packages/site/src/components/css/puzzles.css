@@ -59,6 +59,12 @@ fast-dialog {
 	padding: var(--card-padding);
 }
 
+.unselectable {
+	-webkit-user-select: none; /* Safari */
+	-ms-user-select: none; /* IE 10+ */
+	user-select: none;
+}
+
 @media screen and (max-width: 1200px) {
 	#libralogo {
 		visibility: hidden;
