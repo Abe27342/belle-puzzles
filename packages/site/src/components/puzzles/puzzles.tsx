@@ -421,7 +421,7 @@ const PuzzleObjCommonListItems: React.FC<{
 	return (
 		<>
 			<div className="puzzle-or-round-info" />
-			<p>{name}</p>
+			<p className="unselectable">{name}</p>
 			<Anchor href={url} target="_blank">
 				{type === 'puzzle' ? 'Puzzle' : 'Round'} Link
 			</Anchor>
@@ -456,7 +456,9 @@ const PuzzleListItems: React.FC<{
 					Spreadsheet
 				</Anchor>
 			)}
-			{puzzleObj.answer && <p>Answer: {puzzleObj.answer}</p>}
+			{puzzleObj.answer && (
+				<p className="unselectable">Answer: {puzzleObj.answer}</p>
+			)}
 			{puzzleObj.status &&
 				puzzleObj.lastStatusUpdate &&
 				!puzzleObj.answer && (
