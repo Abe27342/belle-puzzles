@@ -18,8 +18,6 @@ export const Home: React.FC = () => {
 			<Card
 				className="home-card"
 				style={{
-					textAlign: 'center',
-					paddingTop: '30%',
 					background: 'rgba(255, 255, 255, 0)',
 				}}
 			>
