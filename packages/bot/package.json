@@ -25,7 +25,7 @@
 		"@fluidframework/azure-local-service": "^1.1.1",
 		"@fluidframework/test-client-utils": "^1.2.5",
 		"cors": "^2.8.5",
-		"discord.js": "^14.4.0",
+		"discord.js": "^14.8.0",
 		"dotenv": "^16.0.2",
 		"express": "^4.18.1",
 		"fluid-framework": "^1.2.5",
