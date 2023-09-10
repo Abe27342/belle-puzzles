@@ -32,6 +32,7 @@ import { createClient } from './connection';
 import TimeAgo from './timeAgo';
 import loadingPuzzlehuntUrl from './assets/loading-puzzlehunt.svg';
 import libraLogoUrl from './assets/libralogo.png';
+import { SolveModal } from './modals/solveModal';
 
 export const Puzzles: React.FC = () => {
 	const [puzzlehunt, setPuzzlehunt] = React.useState<IPuzzlehunt>();
@@ -300,6 +301,14 @@ function useEditingUI(puzzlehunt: IPuzzlehunt): {
 					close={closeModal}
 				/>
 			);
+		} else if (modalArgs.modalType === 'solve') {
+			ui = (
+				<SolveModal
+					puzzleObj={puzzleObj}
+					puzzlehunt={puzzlehunt}
+					close={closeModal}
+				/>
+			);
 		} else if (
 			modalArgs.modalType === 'editSheetId' &&
 			puzzleObj.type === 'puzzle'
@@ -330,6 +339,9 @@ type ModalSpec =
 	  }
 	| {
 			modalType: 'delete';
+	  }
+	| {
+			modalType: 'solve';
 	  };
 
 interface PuzzlePageMenu {
@@ -407,6 +419,15 @@ const PuzzlePageMenu: React.FC<PuzzlePageMenu> = ({
 					}
 				>
 					Delete this {puzzleObj.type}
+				</MenuItem>
+			)}
+			{puzzleObj.type === 'puzzle' && (
+				<MenuItem
+					onClick={(event) =>
+						openModal(event, { modalType: 'solve' })
+					}
+				>
+					Solve
 				</MenuItem>
 			)}
 		</Menu>

@@ -3,7 +3,7 @@
 	height: auto;
 	min-height: 80vh;
 	padding: var(--card-padding);
-	overflow-x: scroll;
+	overflow-x: auto;
 }
 
 #puzzles > fast-card > *:not(:last-child) {

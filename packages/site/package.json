@@ -35,7 +35,7 @@
 		"@microsoft/fast-foundation": "^2.47.0",
 		"@microsoft/fast-react-wrapper": "^0.3.14",
 		"@reduxjs/toolkit": "^1.8.5",
-		"discord.js": "^14.4.0",
+		"discord.js": "^14.8.0",
 		"fluid-framework": "^1.2.5",
 		"javascript-time-ago": "^2.5.9",
 		"react": "^18.0.0",
