@@ -19,4 +19,4 @@ RUN npm run build
 # TODO: Need to determine mechanism for secret injection.
 EXPOSE 8080
 EXPOSE 3000
-RUN npm run start:bot
+CMD npm run start:bot
