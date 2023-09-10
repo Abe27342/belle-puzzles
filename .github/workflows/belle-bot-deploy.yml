@@ -1,4 +1,4 @@
-name: Trigger auto deployment for belle-bot
+name: belle-bot CI/CD
 
 # When this action will be executed
 on:
