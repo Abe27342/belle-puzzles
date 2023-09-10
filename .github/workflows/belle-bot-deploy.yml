@@ -4,8 +4,7 @@ name: Trigger auto deployment for belle-bot
 on:
     # Automatically trigger it when detected changes in repo
     push:
-        # TODO: Update to `main`!
-        branches: [azure-bot]
+        branches: [main]
         paths:
             - '**'
             - '.github/workflows/belle-bot-deploy.yml'

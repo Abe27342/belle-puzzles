@@ -13,7 +13,7 @@ It uses [pnpm](https://pnpm.io/).
 
 ## Bot Infrastructure
 
-The discord bot is hosted on heroku. As heroku doesn't support pnpm natively, [heroku-buildpack-npm](https://github.com/unfold/heroku-buildpack-pnpm) is explicitly set for deployment.
+The discord bot is hosted on Azure using a container app. Deployment details can be found in the github workflows folder.
 
 ## Website Infrastructure
 
