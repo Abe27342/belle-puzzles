@@ -4,7 +4,7 @@
 		"exclude": ["/*.{png,jpg,gif,svg,ico,webmanifest}"]
 	},
 	"platform": {
-		"apiRuntime": "node:16"
+		"apiRuntime": "node:18"
 	},
 	"routes": [{ "route": "/api/*", "allowedRoles": ["authenticated"] }]
 }
