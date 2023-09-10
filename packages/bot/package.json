@@ -42,7 +42,7 @@
 		"cross-env": "^7.0.3",
 		"mocha": "^10.2.0",
 		"prettier": "^2.7.1",
-		"typescript": "^4.8.3"
+		"typescript": "^5.2.2"
 	},
 	"author": "Abram Sanderson",
 	"license": "MIT"

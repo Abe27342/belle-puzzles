@@ -315,6 +315,11 @@ app.listen(port, () => {
 	console.log(`Belle-puzzle API listening on port ${port}.`);
 });
 
+// See https://learn.microsoft.com/en-us/azure/container-apps/health-probes?tabs=arm-template
+app.get('/liveness', (_, res) => {
+	res.status(200);
+});
+
 app.get('/guilds/:guildId/puzzlehunt', async (req, res) => {
 	const guild = client.guilds.cache.get(req.params.guildId);
 	const authHeader = req.headers.authorization;
