@@ -16,7 +16,5 @@ RUN pnpm install --frozen-lockfile -r --offline
 
 RUN npm run build
 
-# TODO: Need to determine mechanism for secret injection.
-EXPOSE 8080
 EXPOSE 3000
 CMD npm run start:bot
