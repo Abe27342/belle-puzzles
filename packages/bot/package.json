@@ -13,7 +13,7 @@
 		"format": "prettier --write src",
 		"test": "echo \"no tests yet\"",
 		"start": "node ./dist/index.js",
-		"start:localserver": "npx @fluidframework/azure-local-service",
+		"start:localserver": "azure-local-service",
 		"update-commands": "node ./scripts/deploy-commands",
 		"update-commands:prod": "cross-env DEPLOY_EVERYWHERE=true node ./scripts/deploy-commands"
 	},
@@ -40,9 +40,10 @@
 		"@types/node": "^16.9.0",
 		"@types/uuid": "^8.3.4",
 		"cross-env": "^7.0.3",
-		"mocha": "^10.2.0",
 		"prettier": "^2.7.1",
-		"typescript": "^5.2.2"
+		"typescript": "^5.2.2",
+		"vite": "^4.1.1",
+		"vitest": "^0.28.5"
 	},
 	"author": "Abram Sanderson",
 	"license": "MIT"

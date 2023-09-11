@@ -44,52 +44,40 @@
 		{
 			"type": "node",
 			"request": "launch",
-			"name": "Debug Puzzlehunt Model Tests (no server)",
-			"runtimeExecutable": "${workspaceFolder}/node_modules/.bin/mocha",
-			"windows": {
-				"runtimeExecutable": "${workspaceFolder}/node_modules/.bin/mocha.cmd"
-			},
-			"sourceMaps": true,
-			"stopOnEntry": false,
-			"pauseForSourceMap": false,
-			"args": [
-				"--no-timeouts",
-				"${workspaceFolder}/packages/puzzlehunt-model/dist/test"
-			],
+			"name": "Puzzlehunt Model: Debug Current Test File (no server)",
+			"autoAttachChildProcesses": true,
 			"skipFiles": ["<node_internals>/**", "**/node_modules/**"],
-			"resolveSourceMapLocations": [
-				"${workspaceFolder}/**/dist/**",
-				"!**/node_modules/**"
-			],
-			"outFiles": [
-				"${workspaceFolder}/**/dist/**/*.js",
-				"!**/node_modules/**"
-			],
-			"preLaunchTask": "npm: build - packages/puzzlehunt-model",
+			"program": "${workspaceRoot}/packages/puzzlehunt-model/node_modules/vitest/vitest.mjs",
+			"cwd": "${workspaceRoot}/packages/puzzlehunt-model",
+			"args": ["run", "${relativeFile}"],
+			"smartStep": true,
+			"console": "integratedTerminal",
 			"presentation": {
 				"hidden": true
-			},
-			"internalConsoleOptions": "openOnSessionStart"
+			}
 		},
 		{
 			"type": "node",
 			"request": "launch",
-			"name": "Website: Debug Current Test File",
+			"name": "Debug Current Test File (site)",
 			"autoAttachChildProcesses": true,
 			"skipFiles": ["<node_internals>/**", "**/node_modules/**"],
 			"program": "${workspaceRoot}/packages/site/node_modules/vitest/vitest.mjs",
 			"cwd": "${workspaceRoot}/packages/site",
 			"args": ["run", "${relativeFile}"],
 			"smartStep": true,
-			"console": "integratedTerminal"
+			"console": "integratedTerminal",
+			"presentation": {
+				"group": "tests"
+			}
 		}
 	],
 	"compounds": [
 		{
-			"name": "Debug Puzzlehunt Model Tests",
+			"name": "Debug Current Test File (puzzlehunt-model)",
 			"configurations": [
 				"azure-local-service",
-				"Debug Puzzlehunt Model Tests (no server)"
+				"Puzzlehunt Model: Debug Current Test File (no server)"
 			],
 			"presentation": {
 				"group": "tests"

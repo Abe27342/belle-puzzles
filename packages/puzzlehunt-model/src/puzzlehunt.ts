@@ -341,11 +341,6 @@ function str(content: any): string {
 	return content;
 }
 
-function number(content: any): number {
-	assert(typeof content === 'number', 'Content should have been a number.');
-	return content;
-}
-
 class RoundHandle implements Round {
 	private readonly handle: TreeNodeHandle;
 	private readonly traits: TraitMap<TreeNodeHandle>;
@@ -759,7 +754,6 @@ class Puzzlehunt
 		}
 	}
 
-	// TODO: use this to implement debug commands.
 	public copyFrom(other: Puzzlehunt): void {
 		this.setGuildId(other.guildId);
 		this.setLoggingChannelIds(other.loggingChannelIds);
