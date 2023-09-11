@@ -11,9 +11,11 @@
 	"scripts": {
 		"build": "tsc",
 		"format": "prettier --write src",
-		"start:localserver": "npx @fluidframework/azure-local-service > azure-local-service.log 2>&1",
+		"start:localserver": "azure-local-service > azure-local-service.log 2>&1",
 		"test": "start-server-and-test start:localserver 7070 test:run",
-		"test:run": "mocha dist/test",
+		"test:coverage": "start-server-and-test start:localserver 7070 test:coverage:run",
+		"test:run": "vitest run",
+		"test:coverage:run": "vitest run --coverage",
 		"start": "node ./dist/index.js"
 	},
 	"dependencies": {
@@ -29,13 +31,12 @@
 		"@fluidframework/azure-local-service": "^1.1.1",
 		"@fluidframework/test-client-utils": "^1.3.5",
 		"@types/debug": "^4.1.5",
-		"@types/mocha": "^10.0.1",
 		"@types/node": "^16.9.0",
-		"cross-env": "^7.0.3",
-		"mocha": "^10.2.0",
 		"prettier": "^2.7.1",
 		"start-server-and-test": "^1.11.7",
-		"typescript": "^5.2.2"
+		"typescript": "^5.2.2",
+		"vite": "^4.1.1",
+		"vitest": "^0.28.5"
 	},
 	"author": "Abram Sanderson",
 	"license": "MIT"

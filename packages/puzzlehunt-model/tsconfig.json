@@ -3,6 +3,7 @@
 		"allowSyntheticDefaultImports": true,
 		"allowJs": true,
 		"incremental": true,
+		"composite": true,
 		"declaration": true,
 		"module": "ESNext",
 		"moduleResolution": "node",

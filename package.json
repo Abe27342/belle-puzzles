@@ -23,7 +23,8 @@
 	},
 	"devDependencies": {
 		"@fluidframework/azure-local-service": "^1.1.1",
-		"mocha": "^10.2.0",
-		"pnpm": ">=8.7.4"
+		"pnpm": ">=8.7.4",
+		"vite": "^4.1.1",
+		"vitest": "^0.28.5"
 	}
 }
