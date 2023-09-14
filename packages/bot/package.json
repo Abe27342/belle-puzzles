@@ -16,7 +16,7 @@
 		"test:run": "vitest run",
 		"test:coverage:run": "vitest run --coverage",
 		"start": "node ./dist/index.js",
-		"start:localserver": "azure-local-service",
+		"start:localserver": "azure-local-service > tinylicious.log 2>&1",
 		"update-commands": "node ./scripts/deploy-commands",
 		"update-commands:prod": "cross-env DEPLOY_EVERYWHERE=true node ./scripts/deploy-commands"
 	},
