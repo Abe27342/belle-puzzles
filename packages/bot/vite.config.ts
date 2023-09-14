@@ -8,6 +8,7 @@ export default defineConfig({
 		hookTimeout: process.env.DEBUGGING ? 999_999_999 : 10_000,
 		env: {
 			USE_LOCAL_SERVICE: 'true',
+			CLIENT_ID: '1019695303026290698',
 		},
 	},
 });
