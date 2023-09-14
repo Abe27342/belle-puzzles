@@ -7,7 +7,10 @@ import {
 	SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from './types';
-import { PuzzlehuntContext, SerializedPuzzlehuntContext } from '../types';
+import {
+	PuzzlehuntContext,
+	SerializedPuzzlehuntContext,
+} from '../puzzlehunt-context';
 import { createNewPuzzlehunt } from '@belle-puzzles/puzzlehunt-model';
 import { makeFluidClient } from '../fluid/client.js';
 
@@ -49,11 +52,10 @@ export const create: Command = {
 			(value) => value.name === PUZZLE_ADMIN_CHANNEL
 		);
 		if (metadataChannels.size !== 0) {
-			await interaction.editReply({
-				content:
-					'Existing puzzle hunt was found on this server.\n' +
-					`If this was a mistake, delete the channel ${PUZZLE_ADMIN_CHANNEL} and rerun.`,
-			});
+			await interaction.editReply(
+				'Existing puzzle hunt was found on this server.\n' +
+					`If this was a mistake, delete the channel ${PUZZLE_ADMIN_CHANNEL} and rerun.`
+			);
 			return;
 		}
 		const match = interaction.options

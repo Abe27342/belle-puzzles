@@ -4,7 +4,7 @@ import {
 	SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from './types';
-import { PuzzlehuntContext } from '../types';
+import { PuzzlehuntContext } from '../puzzlehunt-context';
 import { computeParentRound, ROUND_ARG } from '../utils/index.js';
 
 const NAME_ARG = 'name';

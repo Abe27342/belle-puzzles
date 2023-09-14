@@ -4,14 +4,12 @@ import {
 	SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from './types';
-import { PuzzlehuntContext } from '../types';
+import { PuzzlehuntContext } from '../puzzlehunt-context';
 import { computeParentRound, ROUND_ARG } from '../utils/index.js';
 
 const NAME_ARG = 'name';
 const URL_ARG = 'url';
 
-// TODO: Might be nice to support a flow where creator explicitly specifies existing channel / sheet.
-// This could be nice for disaster scenarios.
 export const addPuzzle: Command = {
 	data: new SlashCommandBuilder()
 		.setName('add_puzzle')

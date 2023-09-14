@@ -1,5 +1,5 @@
 import { ButtonInteraction } from 'discord.js';
-import { PuzzlehuntContext } from '../types.js';
+import { PuzzlehuntContext } from '../puzzlehunt-context.js';
 import { InteractionHandler } from './types';
 
 export const toggleAll: InteractionHandler = {

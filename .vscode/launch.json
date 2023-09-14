@@ -44,7 +44,7 @@
 		{
 			"type": "node",
 			"request": "launch",
-			"name": "Puzzlehunt Model: Debug Current Test File (no server)",
+			"name": "Serverless: Debug Current Test File (puzzlehunt-model)",
 			"autoAttachChildProcesses": true,
 			"skipFiles": ["<node_internals>/**", "**/node_modules/**"],
 			"program": "${workspaceRoot}/packages/puzzlehunt-model/node_modules/vitest/vitest.mjs",
@@ -53,7 +53,27 @@
 			"smartStep": true,
 			"console": "integratedTerminal",
 			"presentation": {
-				"hidden": true
+				// "hidden": true,
+				"group": "no-server-tests"
+			}
+		},
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Serverless: Debug Current Test File (bot)",
+			"autoAttachChildProcesses": true,
+			"skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+			"program": "${workspaceRoot}/packages/bot/node_modules/vitest/vitest.mjs",
+			"cwd": "${workspaceRoot}/packages/bot",
+			"args": ["run", "${relativeFile}"],
+			"smartStep": true,
+			"console": "integratedTerminal",
+			"env": {
+				"DEBUGGING": "true"
+			},
+			"presentation": {
+				// "hidden": true,
+				"group": "no-server-tests"
 			}
 		},
 		{
@@ -77,7 +97,17 @@
 			"name": "Debug Current Test File (puzzlehunt-model)",
 			"configurations": [
 				"azure-local-service",
-				"Puzzlehunt Model: Debug Current Test File (no server)"
+				"Serverless: Debug Current Test File (puzzlehunt-model)"
+			],
+			"presentation": {
+				"group": "tests"
+			}
+		},
+		{
+			"name": "Debug Current Test File (bot)",
+			"configurations": [
+				"azure-local-service",
+				"Serverless: Debug Current Test File (bot)"
 			],
 			"presentation": {
 				"group": "tests"

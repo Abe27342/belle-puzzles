@@ -176,7 +176,7 @@ export async function computeParentRound(
 		const match = parentRoundArg.match(/^<#(\d*)>$/);
 		if (!match) {
 			await interaction.editReply(
-				'parentRound should be a discord channel.'
+				'parent_round should be a discord channel.'
 			);
 			return { valid: false };
 		}
@@ -186,7 +186,7 @@ export async function computeParentRound(
 		);
 		if (!parentRound) {
 			await interaction.editReply(
-				'parentRound should be one of the round index channels.'
+				'parent_round should be one of the round index channels.'
 			);
 			return { valid: false };
 		}
