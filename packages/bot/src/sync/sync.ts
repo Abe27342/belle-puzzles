@@ -14,15 +14,15 @@ import {
 	generatePuzzleEmbed,
 	generateRoundEmbed,
 	getAncestorRounds,
-} from './utils/index.js';
+} from '../utils/index.js';
 import type {
 	IPuzzlehunt,
 	Puzzle,
 	Round,
 } from '@belle-puzzles/puzzlehunt-model';
 import { PermissionsBitField, Role } from 'discord.js';
-import { PuzzlehuntContext } from './types.js';
-import { createGoogleSheet } from './integrations/google.js';
+import { PuzzlehuntContext } from '../puzzlehunt-context.js';
+import { createGoogleSheet } from '../integrations/google.js';
 
 export const createDiscordAssociation = (
 	context: PuzzlehuntContext,
@@ -78,9 +78,9 @@ const createPuzzleChannel = async (
 		const channel = guild.channels.cache.get(puzzleAdd);
 		if (channel?.isTextBased()) {
 			await channel.send(
-				`New puzzle unlocked in round ${
+				`New puzzle unlocked in round "${
 					puzzlehunt.getRound(puzzle.roundId).name
-				}: ${puzzle.name}.`
+				}": "${puzzle.name}".`
 			);
 		}
 	}

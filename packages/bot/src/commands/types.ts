@@ -2,7 +2,7 @@ import type {
 	SlashCommandBuilder,
 	ChatInputCommandInteraction,
 } from 'discord.js';
-import type { PuzzlehuntContext } from '../types';
+import type { PuzzlehuntContext } from '../puzzlehunt-context';
 
 export interface Command {
 	requiresSerializedContext?: boolean; // defaults to true

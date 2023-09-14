@@ -4,7 +4,7 @@ import {
 	SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from './types';
-import { PuzzlehuntContext } from '../types';
+import { PuzzlehuntContext } from '../puzzlehunt-context';
 import { createNewPuzzlehuntFromExisting } from '@belle-puzzles/puzzlehunt-model';
 import { makeFluidClient } from '../fluid/client.js';
 

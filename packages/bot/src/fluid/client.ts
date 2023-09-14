@@ -1,5 +1,3 @@
-// TODO: Latest tag on this is wrong. Report it.
-// TODO: Docs link on sample code has two different links. One is out of date.
 import {
 	AzureClient,
 	AzureLocalConnectionConfig,
@@ -36,7 +34,7 @@ const remoteConnection: AzureRemoteConnectionConfig = {
 // Using the same AzureClient for multiple documents encounters the bug fixed in this PR
 // and causes document corruption:
 // https://github.com/microsoft/FluidFramework/pull/12060
-// Once that fix is in, this could be simplified to just an expored client.
+// Once that fix is in, this could be simplified to just an exported client.
 export const makeFluidClient = () => {
 	return new AzureClient({
 		connection: useLocalService ? localConnection : remoteConnection,

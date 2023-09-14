@@ -1,7 +1,7 @@
 import { NodeId } from '@fluid-experimental/tree';
 import { SelectMenuInteraction } from 'discord.js';
 import { getAncestorRounds } from '../utils/index.js';
-import { PuzzlehuntContext } from '../types.js';
+import { PuzzlehuntContext } from '../puzzlehunt-context.js';
 import { InteractionHandler } from './types';
 
 export const makePuzzleInvisible: InteractionHandler = {

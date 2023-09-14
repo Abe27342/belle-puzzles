@@ -4,7 +4,10 @@ import {
 	SlashCommandBuilder,
 } from 'discord.js';
 import type { Command } from './types';
-import type { PuzzlehuntContext, SerializedPuzzlehuntContext } from '../types';
+import type {
+	PuzzlehuntContext,
+	SerializedPuzzlehuntContext,
+} from '../puzzlehunt-context';
 
 const ID_ARG = 'id';
 

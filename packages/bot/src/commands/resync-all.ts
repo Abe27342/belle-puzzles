@@ -4,8 +4,8 @@ import {
 	SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from './types';
-import { PuzzlehuntContext } from '../types';
-import { resyncServerFull } from '../sync.js';
+import { PuzzlehuntContext } from '../puzzlehunt-context';
+import { resyncServerFull } from '../sync/sync.js';
 
 export const syncAll: Command = {
 	adminOnly: true,

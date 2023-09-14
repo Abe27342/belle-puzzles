@@ -5,7 +5,7 @@ import {
 	SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from './types';
-import { PuzzlehuntContext } from '../types';
+import { PuzzlehuntContext } from '../puzzlehunt-context';
 import { BELLE_USER_ID } from '../utils/index.js';
 
 export const resetServer: Command = {

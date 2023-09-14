@@ -3,7 +3,7 @@ import {
 	ChatInputCommandInteraction,
 	SlashCommandBuilder,
 } from 'discord.js';
-import { PuzzlehuntContext } from '../types';
+import { PuzzlehuntContext } from '../puzzlehunt-context';
 import { Command } from './types';
 
 export const unsolve: Command = {
