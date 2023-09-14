@@ -3,9 +3,7 @@ import registerDebug from 'debug';
 import {
 	Client,
 	Collection,
-	DMChannel,
 	GatewayIntentBits,
-	GuildBasedChannel,
 	Interaction,
 	NonThreadGuildBasedChannel,
 } from 'discord.js';
@@ -18,7 +16,6 @@ import {
 	type PuzzlehuntContext,
 } from './puzzlehunt-context.js';
 import { IPuzzlehuntProvider } from './puzzlehunt-provider.js';
-import { error } from 'console';
 
 const debugTaskqueue = registerDebug('belle-bot:taskqueue');
 
