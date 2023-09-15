@@ -1,11 +1,20 @@
 import { describe, it, beforeAll, afterEach, expect, vi } from 'vitest';
-import { ChannelType } from 'discord.js';
+import {
+	ChannelType,
+	OverwriteType,
+	PermissionFlagsBits,
+	PermissionsBitField,
+} from 'discord.js';
 import { BelleBotClient, createClient } from '../client';
 import {
 	IPuzzlehuntProvider,
 	createPuzzlehuntProvider,
 } from '../puzzlehunt-provider';
-import { IServerState, MockDiscord } from './mockDiscord';
+import {
+	IServerState,
+	MockDiscord,
+	PermissionOverwriteData,
+} from './mockDiscord';
 import { loadPuzzlehunt, runCommand } from './testUtils';
 import {
 	IPuzzlehunt,
@@ -13,6 +22,7 @@ import {
 } from '@belle-puzzles/puzzlehunt-model';
 import { makeFluidClient } from '../fluid/client';
 import { getHuntContext } from '../puzzlehunt-context';
+import { BELLE_USER_ID } from '../utils';
 vi.mock('../integrations/google.js');
 
 // This file tests various aspects of the bot's synchronization of the discord server with the fluid file.
@@ -54,7 +64,7 @@ describe('Sync', () => {
 	let serverState: IServerState;
 	let client: BelleBotClient;
 	const webPuzzlehuntProvider = useSimplePuzzlehuntProvider();
-	let botPuzzlehunt, webPuzzlehunt: IPuzzlehunt;
+	let webPuzzlehunt: IPuzzlehunt;
 
 	const initializePuzzlehunt = async () => {
 		botPuzzlehuntProvider = createPuzzlehuntProvider();
@@ -134,6 +144,19 @@ describe('Sync', () => {
 					(channel) => channel.name === 'puzzle-1d1d1'
 				).length > 0;
 		}
+
+		// We need to wait for the bot to create associated discord channels and round-trip that back to the fluid file
+		// before this is reflected in the web puzzlehunt, which is used for some of the structural checks below.
+		let puzzle111DiscordExists = false;
+		while (!puzzle111DiscordExists) {
+			expect(asyncErrors).toEqual([]);
+			await client.ensurePendingWorkProcessed();
+			await delay(0);
+			puzzle111DiscordExists =
+				Array.from(webPuzzlehunt.puzzles).find(
+					(puzzle) => puzzle.name === 'puzzle 1d1d1'
+				)?.discordInfo?.channelId !== undefined;
+		}
 	};
 
 	afterEach(() => {
@@ -152,7 +175,7 @@ describe('Sync', () => {
 			'puzzle-2',
 			'solved-puzzle-3',
 			'puzzle-1d1d1',
-		])('for puzzle "%i"', (name) => {
+		])('for puzzle "%s"', (name) => {
 			const channel = serverState.channels.find(
 				(channel) => channel.name === name
 			);
@@ -162,7 +185,7 @@ describe('Sync', () => {
 		});
 
 		it.each(['round-1', 'round-1d1', 'round-1d2'])(
-			'for puzzle index for round "%i"',
+			'for puzzle index for round "%s"',
 			(roundName) => {
 				const channel = serverState.channels.find(
 					(channel) => channel.name === `${roundName}-puzzles`
@@ -173,16 +196,29 @@ describe('Sync', () => {
 		);
 
 		it.each(['round-1', 'round-1d1', 'round-1d2'])(
-			'for category for round "%i"',
+			'for category for round "%s"',
 			(roundName) => {
-				// TODO: Verify that child puzzles are in the right category--requires increasing mock fidelity to track
-				// that info in the REST API.
 				const channel = serverState.channels.find(
 					(channel) => channel.name === roundName
 				);
 				expect(channel).toBeDefined();
 
 				expect(channel.type).toBe(ChannelType.GuildCategory);
+				// Additionally verify that child puzzles are in the right category channel.
+				const roundObj = Array.from(webPuzzlehunt.rounds).find(
+					(round) => round.discordInfo?.channelId === channel.id
+				);
+				expect(roundObj).toBeDefined();
+				for (const puzzle of roundObj.children) {
+					if (puzzle.type === 'round') {
+						continue;
+					}
+					const puzzleChannel = serverState.findChannelBy(
+						'id',
+						puzzle.discordInfo?.channelId
+					);
+					expect(puzzleChannel.parent_id).toBe(channel.id);
+				}
 			}
 		);
 	});
@@ -324,7 +360,125 @@ describe('Sync', () => {
 		});
 	});
 
-	describe.skip('updates permissions', () => {
-		// TODO: Test permissions for puzzles and rounds. This requires increasing mock fidelity.
+	describe('updates permissions', () => {
+		const compareIds = (
+			a: PermissionOverwriteData,
+			b: PermissionOverwriteData
+		) => a.id.localeCompare(b.id);
+
+		const viewChannel = `${PermissionsBitField.Flags.ViewChannel}`;
+		const sendMessages = `${PermissionsBitField.Flags.SendMessages}`;
+		const none = '0';
+		const allowPermissionsForRole = (name: string) => {
+			expect(serverState.roles.map((role) => role.name)).toContain(name);
+			const role = serverState.roles.find((role) => role.name === name);
+			return {
+				id: role.id,
+				type: OverwriteType.Role,
+				allow: viewChannel,
+				deny: none,
+			};
+		};
+
+		it('on a root round category channel', () => {
+			const channel = serverState.findChannelBy('name', 'round-1');
+			expect(
+				channel.permission_overwrites?.sort(compareIds)
+			).toMatchObject(
+				[
+					{
+						id: 'guild-id',
+						type: OverwriteType.Role,
+						allow: none,
+						deny: viewChannel,
+					},
+					{
+						id: BELLE_USER_ID,
+						type: OverwriteType.Member,
+						allow: viewChannel,
+						deny: none,
+					},
+					allowPermissionsForRole('round 1'),
+					allowPermissionsForRole('All Puzzles'),
+				].sort(compareIds)
+			);
+		});
+
+		it('on a round index channel', () => {
+			const channel = serverState.findChannelBy(
+				'name',
+				'round-1-puzzles'
+			);
+
+			expect(
+				channel.permission_overwrites?.sort(compareIds)
+			).toMatchObject(
+				[
+					{
+						id: 'guild-id',
+						type: OverwriteType.Role,
+						allow: none,
+						deny: sendMessages,
+					},
+					{
+						id: BELLE_USER_ID,
+						type: OverwriteType.Member,
+						allow: sendMessages,
+						deny: none,
+					},
+				].sort(compareIds)
+			);
+		});
+
+		it('on a non-root round category channel', () => {
+			const channel = serverState.findChannelBy('name', 'round-1d1');
+			expect(
+				channel.permission_overwrites?.sort(compareIds)
+			).toMatchObject(
+				[
+					{
+						id: 'guild-id',
+						type: OverwriteType.Role,
+						allow: none,
+						deny: viewChannel,
+					},
+					{
+						id: BELLE_USER_ID,
+						type: OverwriteType.Member,
+						allow: viewChannel,
+						deny: none,
+					},
+					allowPermissionsForRole('round 1'),
+					allowPermissionsForRole('round 1d1'),
+					allowPermissionsForRole('All Puzzles'),
+				].sort(compareIds)
+			);
+		});
+
+		it('on a puzzle channel', () => {
+			const channel = serverState.findChannelBy('name', 'puzzle-1d1d1');
+			expect(
+				channel.permission_overwrites?.sort(compareIds)
+			).toMatchObject(
+				[
+					{
+						id: 'guild-id',
+						type: OverwriteType.Role,
+						allow: none,
+						deny: viewChannel,
+					},
+					{
+						id: BELLE_USER_ID,
+						type: OverwriteType.Member,
+						allow: viewChannel,
+						deny: none,
+					},
+					allowPermissionsForRole('round 1'),
+					allowPermissionsForRole('round 1d1'),
+					allowPermissionsForRole('puzzle 1d1d1'),
+					allowPermissionsForRole('All Puzzles'),
+				].sort(compareIds)
+			);
+		});
 	});
 });
