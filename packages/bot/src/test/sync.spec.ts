@@ -1,4 +1,5 @@
 import { describe, it, beforeAll, afterEach, expect, vi } from 'vitest';
+import { ChannelType } from 'discord.js';
 import { BelleBotClient, createClient } from '../client';
 import {
 	IPuzzlehuntProvider,
@@ -18,9 +19,6 @@ vi.mock('../integrations/google.js');
 // These flows are important for ensuring that the bot is able to handle web users making changes to the backing file.
 // Testing some of these things by editing the fluid file directly and not going through a bot command can also be
 // more natural, so we do that here.
-
-// TODO: Test permissions for puzzles and rounds
-// TODO: Test nesting of puzzles within parent round's category channel
 
 function useSimplePuzzlehuntProvider(): IPuzzlehuntProvider {
 	const disposers: { dispose: () => void }[] = [];
@@ -136,8 +134,6 @@ describe('Sync', () => {
 					(channel) => channel.name === 'puzzle-1d1d1'
 				).length > 0;
 		}
-
-		console.log(serverState);
 	};
 
 	afterEach(() => {
@@ -150,12 +146,45 @@ describe('Sync', () => {
 	// the server ends up in a reasonable state.
 	beforeAll(initializePuzzlehunt);
 
-	it('initializes a sample hunt to a reasonable state', async () => {
-		for (const name of ['round-1', 'round-1d1', 'round-1d2']) {
-			expect(
-				serverState.channels.find((channel) => channel.name === name)
-			).toBeDefined();
-		}
+	describe('creates appropriate channels', () => {
+		it.each([
+			'solved-puzzle-1',
+			'puzzle-2',
+			'solved-puzzle-3',
+			'puzzle-1d1d1',
+		])('for puzzle "%i"', (name) => {
+			const channel = serverState.channels.find(
+				(channel) => channel.name === name
+			);
+
+			expect(channel).toBeDefined();
+			expect(channel.type).toBe(ChannelType.GuildText);
+		});
+
+		it.each(['round-1', 'round-1d1', 'round-1d2'])(
+			'for puzzle index for round "%i"',
+			(roundName) => {
+				const channel = serverState.channels.find(
+					(channel) => channel.name === `${roundName}-puzzles`
+				);
+				expect(channel).toBeDefined();
+				expect(channel.type).toBe(ChannelType.GuildText);
+			}
+		);
+
+		it.each(['round-1', 'round-1d1', 'round-1d2'])(
+			'for category for round "%i"',
+			(roundName) => {
+				// TODO: Verify that child puzzles are in the right category--requires increasing mock fidelity to track
+				// that info in the REST API.
+				const channel = serverState.channels.find(
+					(channel) => channel.name === roundName
+				);
+				expect(channel).toBeDefined();
+
+				expect(channel.type).toBe(ChannelType.GuildCategory);
+			}
+		);
 	});
 
 	// Assert that embeds for the above scenario are all in a reasonable state after executing
@@ -293,5 +322,9 @@ describe('Sync', () => {
 				},
 			]);
 		});
+	});
+
+	describe.skip('updates permissions', () => {
+		// TODO: Test permissions for puzzles and rounds. This requires increasing mock fidelity.
 	});
 });
