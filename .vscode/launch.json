@@ -37,6 +37,9 @@
 			"windows": {
 				"runtimeExecutable": "${workspaceFolder}/node_modules/.bin/azure-local-service.cmd"
 			},
+			// Notably this excludes node_modules. If debugging into azure-local-service, add this back
+			// and set breakpoints in JS.
+			// "skipFiles": ["<node_internals>/**"],
 			"presentation": {
 				"hidden": true
 			}
@@ -46,7 +49,11 @@
 			"request": "launch",
 			"name": "Serverless: Debug Current Test File (puzzlehunt-model)",
 			"autoAttachChildProcesses": true,
-			"skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+			"skipFiles": [
+				"<node_internals>/**",
+				// Disable this to debug in FF or discord.js code.
+				"**/node_modules/**"
+			],
 			"program": "${workspaceRoot}/packages/puzzlehunt-model/node_modules/vitest/vitest.mjs",
 			"cwd": "${workspaceRoot}/packages/puzzlehunt-model",
 			"args": ["run", "${relativeFile}"],
