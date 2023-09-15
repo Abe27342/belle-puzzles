@@ -5,6 +5,7 @@ import type {
 	Round,
 	StringNode,
 } from '@belle-puzzles/puzzlehunt-model';
+import { queue } from 'async';
 import type { Message } from 'discord.js';
 import { Guild, Interaction } from 'discord.js';
 import { assert, getHuntContextMessage } from './utils/index.js';
@@ -56,6 +57,21 @@ export async function getHuntContext(
 				},
 				getGuild
 			);
+
+			// TODO: Verify error surfacing works here--I believe it does, but didn't explicitly test
+			// after using this task queue.
+			const viewUpdateQ = queue<() => Promise<unknown>, Error>(
+				async (task, callback) => {
+					try {
+						await task();
+						callback();
+					} catch (error) {
+						callback(error);
+					}
+				},
+				1
+			);
+
 			puzzlehunt.on(
 				'viewChange',
 				(
@@ -66,10 +82,23 @@ export async function getHuntContext(
 						id: NodeId
 					) => StringNode | NumberNode | Puzzle | Round | undefined
 				) => {
-					client.pushAsyncWork(
-						'viewChange',
-						viewChangeHandler(before, after, getHandle)
-					);
+					// In addition to the bot sync tracking mechanism, we also execute any concurrent view
+					// updates we receive in serial. This assumption could be removed if sync logic was a bit more robust,
+					// but the perf considerations from doing this are pretty negligible--website puzzle adds
+					// will already come in as a single viewChange due to call of `addPuzzles` and `addRounds`,
+					// so this just means we don't parallelize puzzle adds from different clients interacting
+					// with the bot/website.
+					viewUpdateQ.push(() => {
+						const workload = viewChangeHandler(
+							before,
+							after,
+							getHandle
+						);
+						client.pushAsyncWork('viewChange', workload);
+						return workload;
+					});
+
+					client.pushAsyncWork('viewChange', viewUpdateQ.drain());
 				}
 			);
 		}

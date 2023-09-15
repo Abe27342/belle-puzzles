@@ -326,8 +326,6 @@ const updateEmbedFactory =
 							}
 						}
 
-						// TODO: Need some kind of batched write to make sure we only POST most recent data.
-						// Alternatively use really fine-grained inval.
 						return (
 							embed.title !== other.title ||
 							embed.description?.trim() !==

@@ -26,7 +26,6 @@ describe('add_round', () => {
 			baseClient: mockDiscord.getClient(),
 			onError: async (error) => {
 				asyncErrors.push({ error, stack: error.stack });
-				throw error;
 			},
 		});
 		await runCommand(

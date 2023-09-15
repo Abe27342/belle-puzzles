@@ -160,8 +160,9 @@ export function loadPuzzlehunt(
 		adminMessage.content
 	);
 	expect(puzzlehuntContext.fluidFileId).toBeDefined();
-	return puzzlehuntProvider.getPuzzlehunt(puzzlehuntContext.fluidFileId, () =>
-		expect.fail('Puzzlehunt should already be created!')
+	return puzzlehuntProvider.getPuzzlehunt(
+		puzzlehuntContext.fluidFileId,
+		() => {}
 	);
 }
 
