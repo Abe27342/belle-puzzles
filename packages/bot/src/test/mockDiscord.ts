@@ -19,6 +19,7 @@ import {
 	ClientUser,
 	ChannelType,
 	TextChannel,
+	OverwriteType,
 } from 'discord.js';
 import { BELLE_USER_ID } from '../utils';
 
@@ -29,9 +30,19 @@ export interface HasName {
 	name: string;
 }
 export interface GuildData extends HasId, HasName {}
+
+export interface PermissionOverwriteData {
+	id: string;
+	type: OverwriteType;
+	allow: string; // conceptually a BitFlag/bigint
+	deny: string; // conceptually a BitFlag/bigint
+}
+
 export interface ChannelData extends HasId, HasName {
 	type: ChannelType;
 	guild_id: string;
+	parent_id?: string;
+	permission_overwrites?: PermissionOverwriteData[];
 }
 export interface RoleData extends HasId, HasName {
 	mentionable: boolean;
@@ -88,8 +99,12 @@ export class ServerState implements IServerState {
 	public readonly messages: Map<string, MessageData[]> = new Map();
 
 	findChannelBy(type: 'name' | 'id', value: string): ChannelData {
+		expect(
+			this.channels.map((channel) =>
+				type === 'name' ? channel.name : channel.id
+			)
+		).toContain(value);
 		const result = this.channels.find((channel) => channel[type] === value);
-		expect(result).toBeDefined();
 		return result;
 	}
 }
@@ -247,11 +262,10 @@ export class MockDiscord {
 			async (fullRoute: `/${string}`, options?: RequestData) => {
 				if (fullRoute.match(new RegExp(Routes.guildChannels('.*')))) {
 					expect(options.body).toBeInstanceOf(Object);
-					const { body } = options;
-					expect((body as HasName).name).toBeDefined();
-					const channelType =
-						(body as any).type ?? ChannelType.GuildText;
-					const sanitizedName = (body as HasName).name
+					const { body } = options as any;
+					expect(body.name).toBeDefined();
+					const channelType = body.type ?? ChannelType.GuildText;
+					const sanitizedName = body.name
 						.toLocaleLowerCase()
 						.replaceAll(' ', '-');
 
@@ -261,6 +275,20 @@ export class MockDiscord {
 						type: channelType,
 						guild_id: 'guild-id',
 					};
+
+					if ('parent_id' in body) {
+						channel.parent_id = body.parent_id;
+					}
+
+					if (
+						'permission_overwrites' in body &&
+						body.permission_overwrites
+					) {
+						// Round trip this to avoid mutating the object passed in by the REST request.
+						channel.permission_overwrites = JSON.parse(
+							JSON.stringify(body.permission_overwrites)
+						);
+					}
 					serverState.channels.push(channel);
 					return channel;
 				} else if (
