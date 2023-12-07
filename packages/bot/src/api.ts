@@ -1,8 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import { Routes, REST } from 'discord.js';
-import { BelleBotClient } from './client';
-import { getHuntContext } from './puzzlehunt-context';
+import { BelleBotClient } from './client.js';
+import { getHuntContext } from './puzzlehunt-context.js';
 
 export function exposeBelleBotApi(client: BelleBotClient) {
 	const app = express();
