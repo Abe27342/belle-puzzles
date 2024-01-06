@@ -10,6 +10,7 @@ import {
 	About,
 	Home,
 	Login,
+	LoginGate,
 	Logout,
 	Puzzles,
 	Servers,
@@ -34,8 +35,22 @@ export const Router: React.FC = () => {
 							element={<Login />}
 							loader={redirectIfAlreadyLoggedIn}
 						/>
-						<Route path="/servers" element={<Servers />} />
-						<Route path="/hunt/:guildId" element={<Puzzles />} />
+						<Route
+							path="/servers"
+							element={
+								<LoginGate>
+									<Servers />
+								</LoginGate>
+							}
+						/>
+						<Route
+							path="/hunt/:guildId"
+							element={
+								<LoginGate>
+									<Puzzles />
+								</LoginGate>
+							}
+						/>
 						<Route path="*" element={<RootRedirect />} />,
 					</Route>,
 				])
