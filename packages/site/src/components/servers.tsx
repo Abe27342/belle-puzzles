@@ -26,8 +26,6 @@ const queryOptions = {
 
 export const Servers: React.FC = () => {
 	const isLoggedIn = useIsLoggedIn();
-	const [searchParams] = useSearchParams();
-
 	const {
 		data: allGuilds,
 		// isLoading: isUserLoadLoading,
@@ -72,12 +70,6 @@ export const Servers: React.FC = () => {
 		},
 		[navigate]
 	);
-
-	const location = useLocation();
-	if (!isLoggedIn) {
-		searchParams.set('postLoginPathname', location.pathname);
-		return <Navigate to={`/login?${searchParams}`} replace />;
-	}
 
 	const errorMessage =
 		error && !isLoading ? getMessageFromError(error) : undefined;
