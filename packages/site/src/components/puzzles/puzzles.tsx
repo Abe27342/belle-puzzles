@@ -142,6 +142,7 @@ export const Puzzles: React.FC = () => {
 										: 'Switch to most recent status change view'}
 								</Button>
 							</Toolbar>
+							{rounds.length === 0 && <div>No puzzles yet!</div>}
 							<TreeView
 								className="puzzle-view"
 								onContextMenu={onContextMenu}

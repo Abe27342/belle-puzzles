@@ -1,5 +1,24 @@
 # Belle Puzzles Website
 
+## Disclaimer
+
+Despite documented engine requirements, all local workflows currently require node 16!
+
+This is due to the issue mentioned [here](https://johnnyreilly.com/static-web-apps-cli-node-18-could-not-connect-to-api)
+
+Specifically, using node 18 will likely present errors like the following:
+
+```pwsh
+[swa] ✖ Waiting for http://localhost:7071 to be ready
+[swa] ✖ Could not connect to "http://localhost:7071". Is the server up and running?
+[swa] node "C:\code\belle-puzzles\node_modules\.pnpm\@azure+static-web-apps-cli@1.0.6\node_modules\@azure\static-web-apps-cli\dist\msha\server.js" exited with code 0
+--> Sending SIGTERM to other processes..
+[api] cd "C:\code\belle-puzzles\packages\site-api" && "C:\Users\Abram\.swa\core-tools\v4\func" start --cors "*" --port 7071  exited with code 1
+--> Sending SIGTERM to other processes..
+[run] cd "C:\code\belle-puzzles\packages\site" && vite --mode remote-bot exited with code 1
+✖ SWA emulator stoped because the --run command exited with code 1.
+```
+
 ## Running against a local belle-bot
 
 TODO: restore this flow

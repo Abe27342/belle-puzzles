@@ -215,7 +215,7 @@ export function createClient({
 			!oldChannel.parentId ||
 			oldChannel.parentId === newChannel.parentId
 		) {
-			// Note a reparenting, so nothing to do.
+			// Not a reparenting, so nothing to do.
 			return;
 		}
 
