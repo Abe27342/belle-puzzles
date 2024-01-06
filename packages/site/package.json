@@ -17,7 +17,7 @@
 		"start": "swa start http://localhost:5173 --api-location ../site-api --port 9000 --run \"vite --mode remote-bot\"",
 		"start:azure-local": "azure-local-service",
 		"start:local-bot": "swa start http://localhost:5173 --api-location ../site-api --port 9000 --run \"vite --mode local-bot\"",
-		"start:debug-api": "swa start HTTP://localhost:5173 --api-location=http://localhost:7071 --run \"vite --mode remote-bot\"",
+		"start:debug-api": "swa start http://localhost:5173 --api-location=http://localhost:7071 --run \"vite --mode remote-bot\"",
 		"test": "vitest run",
 		"coverage": "vitest run --coverage"
 	},
