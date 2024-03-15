@@ -175,11 +175,13 @@ export async function computeParentRound(
 	if (parentRoundArg) {
 		const indexChannelId = parentRoundArg.id;
 		parentRound = Array.from(puzzlehunt.rounds).find(
-			(round) => round.discordInfo?.indexChannelId === indexChannelId
+			(round) =>
+				round.discordInfo?.indexChannelId === indexChannelId ||
+				round.discordInfo?.channelId === indexChannelId
 		);
 		if (!parentRound) {
 			await interaction.editReply(
-				'parent_round should be one of the round index channels.'
+				'parent_round should be one of the round channels.'
 			);
 			return { valid: false };
 		}
