@@ -53,3 +53,13 @@ jobs:
                   DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
                   CLIENT_ID: ${{ secrets.CLIENT_ID }}
               if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+
+              # This step helps ensure that changes to command schema are valid, since
+              # discord has some constraints on command names and descriptions.
+            - name: Deploy commands to test server
+              run: pnpm run --filter=@belle-puzzles/bot update-commands
+              env:
+                  DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+                  CLIENT_ID: ${{ secrets.CLIENT_ID }}
+                  GUILD_ID: ${{ secrets.TEST_GUILD_ID }}
+              if: github.event_name == 'pull_request'
