@@ -171,16 +171,9 @@ export async function computeParentRound(
 		puzzlehunt
 	);
 	let parentRound: Round;
-	const parentRoundArg = interaction.options.getString(ROUND_ARG);
+	const parentRoundArg = interaction.options.getChannel(ROUND_ARG);
 	if (parentRoundArg) {
-		const match = parentRoundArg.match(/^<#(\d*)>$/);
-		if (!match) {
-			await interaction.editReply(
-				'parent_round should be a discord channel.'
-			);
-			return { valid: false };
-		}
-		const [, indexChannelId] = match;
+		const indexChannelId = parentRoundArg.id;
 		parentRound = Array.from(puzzlehunt.rounds).find(
 			(round) => round.discordInfo?.indexChannelId === indexChannelId
 		);

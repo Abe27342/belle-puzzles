@@ -136,6 +136,7 @@ export interface IPuzzlehunt extends TypedEventEmitter<IPuzzlehuntEvents> {
 	addPuzzles(puzzles: { name: string; url: string }[], round: Round): void;
 	delete(puzzleObj: Puzzle | Round): void;
 	changeName(puzzleObj: Puzzle | Round, name: string): void;
+	changeUrl(puzzleObj: Puzzle | Round, url: string): void;
 	addRound(name: string, url: string, parentRound?: Round): Round;
 	addRounds(
 		rounds: { name: string; url: string }[],
@@ -616,6 +617,15 @@ class Puzzlehunt
 			...replace(makeString(name), {
 				parent: puzzleObj.id,
 				label: traitLabels.name,
+			})
+		);
+	}
+
+	public changeUrl(puzzleObj: Puzzle | Round, url: string): void {
+		this.checkout.applyEdit(
+			...replace(makeString(url), {
+				parent: puzzleObj.id,
+				label: traitLabels.url,
 			})
 		);
 	}

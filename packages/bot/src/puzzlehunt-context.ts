@@ -64,9 +64,9 @@ export async function getHuntContext(
 				async (task, callback) => {
 					try {
 						await task();
-						callback();
+						callback?.();
 					} catch (error) {
-						callback(error);
+						callback?.(error);
 					}
 				},
 				1

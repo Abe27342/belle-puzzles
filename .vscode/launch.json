@@ -69,7 +69,11 @@
 			"request": "launch",
 			"name": "Serverless: Debug Current Test File (bot)",
 			"autoAttachChildProcesses": true,
-			"skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+			"skipFiles": [
+				"<node_internals>/**",
+				// Disable this to debug in FF or discord.js code.
+				"**/node_modules/**"
+			],
 			"program": "${workspaceRoot}/packages/bot/node_modules/vitest/vitest.mjs",
 			"cwd": "${workspaceRoot}/packages/bot",
 			"args": ["run", "${relativeFile}"],
