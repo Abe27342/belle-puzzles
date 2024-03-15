@@ -1,5 +1,10 @@
 import { expect } from 'vitest';
-import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
+import {
+	ApplicationCommandOptionType,
+	ChatInputCommandInteraction,
+	SlashCommandBuilder,
+	SlashCommandSubcommandsOnlyBuilder,
+} from 'discord.js';
 import { ChannelData, MockDiscord } from './mockDiscord.js';
 import { BelleBotClient } from '../client';
 import * as commandsModule from '../commands/index.js';
@@ -22,6 +27,22 @@ export const defaultConfig = {
 	buildPreview: 'enabled',
 };
 
+const resolveChannel = (
+	data: {
+		name: string;
+		type: ApplicationCommandOptionType;
+		value: string;
+	},
+	mockDiscord: MockDiscord
+) => {
+	const match = data.value.match(/^<#(\d*)>$/);
+	if (!match) {
+		throw new Error(`Invalid channel format: ${data.value}`);
+	}
+	const [, indexChannelId] = match;
+	return mockDiscord.serverState.findChannelBy('id', indexChannelId);
+};
+
 export const optionType: any = {
 	// 0: null,
 	// 1: subCommand,
@@ -30,7 +51,7 @@ export const optionType: any = {
 	4: Number,
 	5: Boolean,
 	// 6: user,
-	// 7: channel,
+	[ApplicationCommandOptionType.Channel]: String, // handled higher up
 	// 8: role,
 	// 9: mentionable,
 	10: Number,
@@ -40,7 +61,7 @@ function getNestedOptions(options: any[]): any {
 	return options.reduce((allOptions, optionable) => {
 		const option = optionable.toJSON();
 		if (!option.options) return [...allOptions, option];
-		const nestedOptions = getNestedOptions(option.options);
+		const nestedOptions = getNestedOptions(optionable.options);
 		return [option, ...allOptions, ...nestedOptions];
 	}, []);
 }
@@ -52,10 +73,18 @@ function castToType(value: string, typeId: number) {
 
 function getParsedCommand(
 	stringCommand: string,
-	commandData: SlashCommandBuilder
+	commandData: SlashCommandBuilder | SlashCommandSubcommandsOnlyBuilder,
+	mockDiscord: MockDiscord
 ) {
 	const options = getNestedOptions(commandData.options);
 	const optionsIndentifiers = options.map((option: any) => `${option.name}:`);
+	const resolved: any = {
+		users: {},
+		members: {},
+		roles: {},
+		attachments: {},
+		channels: {},
+	};
 	const requestedOptions = options.reduce(
 		(requestedOptions: any, option: any) => {
 			const identifier = `${option.name}:`;
@@ -65,26 +94,35 @@ function getParsedCommand(
 			const nextOptionIdentifier = remainder
 				.split(' ')
 				.find((word) => optionsIndentifiers.includes(word));
+			let result: {
+				name: string;
+				value: any;
+				type: ApplicationCommandOptionType;
+				channel?: ChannelData;
+			};
 			if (nextOptionIdentifier) {
 				const value = remainder.split(nextOptionIdentifier)[0].trim();
-				return [
-					...requestedOptions,
-					{
-						name: option.name,
-						value: castToType(value, option.type),
-						type: option.type,
-					},
-				];
-			}
-
-			return [
-				...requestedOptions,
-				{
+				result = {
+					name: option.name,
+					value: castToType(value, option.type),
+					type: option.type,
+				};
+			} else {
+				result = {
 					name: option.name,
 					value: castToType(remainder.trim(), option.type),
 					type: option.type,
-				},
-			];
+				};
+			}
+
+			if (result.type === ApplicationCommandOptionType.Channel) {
+				resolved.channels[result.value] = resolveChannel(
+					result,
+					mockDiscord
+				);
+			}
+
+			return [...requestedOptions, result];
 		},
 		[]
 	);
@@ -107,6 +145,7 @@ function getParsedCommand(
 					},
 			  ]
 			: requestedOptions,
+		resolved,
 	};
 }
 
@@ -123,7 +162,11 @@ export async function runCommand(
 		(command) => command.data.name === commandName
 	);
 	expect(commandSchema).toBeDefined();
-	const parsedCommand = getParsedCommand(command, commandSchema.data);
+	const parsedCommand = getParsedCommand(
+		command,
+		commandSchema.data,
+		mockDiscord
+	);
 	const interaction = mockDiscord.createCommandInteraction(
 		parsedCommand,
 		interactionSource

@@ -142,10 +142,9 @@ export const About: React.FC = () => {
 				</p>
 				<h2>Permissions</h2>
 				<p>
-					Belle doesn't currently support a permissions model: beware
-					that created google sheets and all puzzlehunts are available
-					to the general public from an information security
-					standpoint.
+					The visibility of all spreadsheets created by Belle will match that of the Google Drive folder used to create the puzzlehunt.
+					If you want to restrict access to the puzzlehunt, you must share that folder with belle-714@belle-puzzles.iam.gserviceaccount.com,
+					which is the Google service account for Belle.
 				</p>
 				<h2>Technical Details</h2>
 				<p>
