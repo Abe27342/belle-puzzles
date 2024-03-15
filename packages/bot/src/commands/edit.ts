@@ -51,7 +51,8 @@ export const edit: Command = {
 						.setMinLength(1)
 						.setRequired(true)
 				)
-		),
+		)
+		.setDescription('Edit features of existing puzzles and rounds.'),
 	async execute(
 		{ puzzlehunt }: PuzzlehuntContext,
 		interaction: ChatInputCommandInteraction<CacheType>
