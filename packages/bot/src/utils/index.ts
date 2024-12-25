@@ -136,6 +136,19 @@ export function generateRoundEmbed(
 	return { embeds: [embed], components: rows };
 }
 
+export function* descendantPuzzles(round: Round): Iterable<Puzzle> {
+	for (const child of round.children) {
+		switch (child.type) {
+			case 'puzzle':
+				yield child;
+				break;
+			case 'round':
+				yield* descendantPuzzles(child);
+				break;
+		}
+	}
+}
+
 export function computeAssociatedRoundOrPuzzle(
 	channel: TextBasedChannel | CategoryChannel,
 	puzzlehunt: IPuzzlehunt
