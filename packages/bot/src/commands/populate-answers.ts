@@ -81,6 +81,9 @@ export const populateAnswers: Command = {
 			['Title', 'Answer', 'Google sheet'],
 		];
 		for (const puzzle of descendantPuzzles(roundToPopulateAnswersFrom)) {
+			if (puzzle.id === puzzleObj.id) {
+				// Don't bother adding an entry for the puzzle this command is run from.
+			}
 			values.push([
 				`=hyperlink("${puzzle.url}", "${puzzle.name}")`,
 				puzzle.answer,
