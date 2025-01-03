@@ -4,6 +4,7 @@ import {
 	RouterProvider,
 	Route,
 	createRoutesFromElements,
+	Navigate,
 } from 'react-router-dom';
 import {
 	About,
@@ -14,8 +15,7 @@ import {
 	Puzzles,
 	Servers,
 	NavBar,
-	RootRedirect,
-	RemoveAuthParams,
+	HandleAuthRedirects,
 } from './components';
 import { fetchLoginInfo, redirectIfAlreadyLoggedIn } from './loaders';
 
@@ -28,7 +28,7 @@ export const Router: React.FC = () => {
 				createRoutesFromElements([
 					<Route path="/logout" element={<Logout />} />,
 					<Route element={<NavBar />} loader={fetchLoginInfo}>
-						<Route element={<RemoveAuthParams />}>
+						<Route element={<HandleAuthRedirects />}>
 							<Route path="/home" element={<Home />} />,
 							<Route path="/about" element={<About />} />,
 							<Route
@@ -52,7 +52,17 @@ export const Router: React.FC = () => {
 									</LoginGate>
 								}
 							/>
-							<Route path="*" element={<RootRedirect />} />,
+							{/* Redirect any unknown routes to /home */}
+							<Route
+								path="*"
+								element={
+									<Navigate
+										to={{ pathname: '/home' }}
+										replace
+									/>
+								}
+							/>
+							,
 						</Route>
 					</Route>,
 				])
