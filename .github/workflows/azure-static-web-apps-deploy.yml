@@ -20,7 +20,7 @@ jobs:
               with:
                   submodules: true
             - name: Install dependencies
-              run: npm i -g pnpm@7.27.0 && pnpm i --frozen-lockfile
+              run: corepack enable && pnpm i --frozen-lockfile
 
             - name: Run build
               run: npm run build

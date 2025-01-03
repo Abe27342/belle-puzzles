@@ -34,13 +34,6 @@ async function fetchDiscordLoginInfo(): Promise<null> {
 		await store.dispatch(fetchToken());
 	}
 
-	const params = new URLSearchParams(window.location.search);
-	if (params.has('code') || params.has('state')) {
-		params.delete('code');
-		params.delete('state');
-		throw redirect(`${window.location.pathname}?${params}`);
-	}
-
 	return null;
 }
 

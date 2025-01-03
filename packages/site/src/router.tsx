@@ -4,7 +4,6 @@ import {
 	RouterProvider,
 	Route,
 	createRoutesFromElements,
-	useRouteError,
 } from 'react-router-dom';
 import {
 	About,
@@ -16,6 +15,7 @@ import {
 	Servers,
 	NavBar,
 	RootRedirect,
+	RemoveAuthParams,
 } from './components';
 import { fetchLoginInfo, redirectIfAlreadyLoggedIn } from './loaders';
 
@@ -28,30 +28,32 @@ export const Router: React.FC = () => {
 				createRoutesFromElements([
 					<Route path="/logout" element={<Logout />} />,
 					<Route element={<NavBar />} loader={fetchLoginInfo}>
-						<Route path="/home" element={<Home />} />,
-						<Route path="/about" element={<About />} />,
-						<Route
-							path="/login"
-							element={<Login />}
-							loader={redirectIfAlreadyLoggedIn}
-						/>
-						<Route
-							path="/servers"
-							element={
-								<LoginGate>
-									<Servers />
-								</LoginGate>
-							}
-						/>
-						<Route
-							path="/hunt/:guildId"
-							element={
-								<LoginGate>
-									<Puzzles />
-								</LoginGate>
-							}
-						/>
-						<Route path="*" element={<RootRedirect />} />,
+						<Route element={<RemoveAuthParams />}>
+							<Route path="/home" element={<Home />} />,
+							<Route path="/about" element={<About />} />,
+							<Route
+								path="/login"
+								element={<Login />}
+								loader={redirectIfAlreadyLoggedIn}
+							/>
+							<Route
+								path="/servers"
+								element={
+									<LoginGate>
+										<Servers />
+									</LoginGate>
+								}
+							/>
+							<Route
+								path="/hunt/:guildId"
+								element={
+									<LoginGate>
+										<Puzzles />
+									</LoginGate>
+								}
+							/>
+							<Route path="*" element={<RootRedirect />} />,
+						</Route>
 					</Route>,
 				])
 			),
