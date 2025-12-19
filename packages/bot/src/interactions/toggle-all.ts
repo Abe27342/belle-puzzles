@@ -1,4 +1,4 @@
-import { ButtonInteraction } from 'discord.js';
+import { ButtonInteraction, MessageFlags } from 'discord.js';
 import { PuzzlehuntContext } from '../puzzlehunt-context.js';
 import { InteractionHandler } from './types';
 
@@ -9,7 +9,7 @@ export const toggleAll: InteractionHandler = {
 		interaction: ButtonInteraction
 	) {
 		if (!interaction.deferred) {
-			await interaction.deferReply({ ephemeral: true });
+			await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		}
 
 		const member = await interaction.guild.members.fetch(

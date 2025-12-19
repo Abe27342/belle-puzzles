@@ -10,8 +10,9 @@ import {
 	Guild,
 	Interaction,
 	Message,
+	MessageFlags,
 	MessageManager,
-	SelectMenuBuilder,
+	StringSelectMenuBuilder,
 	TextBasedChannel,
 } from 'discord.js';
 import { IPuzzlehunt, Puzzle, Round } from '@belle-puzzles/puzzlehunt-model';
@@ -42,7 +43,7 @@ export function generatePuzzleEmbed(puzzle: Puzzle): EmbedContent {
 // Note: can be used directly in a message.
 export interface EmbedContent {
 	embeds: EmbedBuilder[];
-	components?: ActionRowBuilder<SelectMenuBuilder | ButtonBuilder>[];
+	components?: ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>[];
 }
 
 export function generateRoundEmbed(
@@ -96,15 +97,16 @@ export function generateRoundEmbed(
 			}>`,
 		});
 	}
-	const rows: ActionRowBuilder<SelectMenuBuilder | ButtonBuilder>[] = [];
+	const rows: ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>[] =
+		[];
 	if (puzzles.length > 0) {
 		const options = puzzles.map((puzzle) => ({
 			label: puzzle.name,
 			value: `${puzzle.id}`,
 		}));
 		const makeVisibleRow =
-			new ActionRowBuilder<SelectMenuBuilder>().addComponents(
-				new SelectMenuBuilder()
+			new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+				new StringSelectMenuBuilder()
 					.setCustomId('makePuzzleVisible')
 					.setPlaceholder('Select which puzzle channels to join')
 					.setOptions(options)
@@ -112,8 +114,8 @@ export function generateRoundEmbed(
 					.setMaxValues(puzzles.length)
 			);
 		const makeInvisibleRow =
-			new ActionRowBuilder<SelectMenuBuilder>().addComponents(
-				new SelectMenuBuilder()
+			new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+				new StringSelectMenuBuilder()
 					.setCustomId('makePuzzleInvisible')
 					.setPlaceholder('Select which puzzle channels to leave')
 					.setOptions(options)
@@ -262,9 +264,9 @@ export async function getHuntContextMessage(
 	if (!adminMessage) {
 		await Promise.all([
 			interaction?.isRepliable()
-				? interaction.deferReply({ ephemeral: true })
+				? interaction.deferReply({ flags: MessageFlags.Ephemeral })
 				: Promise.resolve(),
-			channel.messages.fetchPinned(),
+			channel.messages.fetchPins(),
 		]);
 		adminMessage = getAdminMessage();
 	}

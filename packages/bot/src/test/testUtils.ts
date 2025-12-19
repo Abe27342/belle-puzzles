@@ -1,5 +1,9 @@
 import { expect } from 'vitest';
-import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
+import {
+	ChatInputCommandInteraction,
+	SlashCommandBuilder,
+	SlashCommandOptionsOnlyBuilder,
+} from 'discord.js';
 import { ChannelData, MockDiscord } from './mockDiscord.js';
 import { BelleBotClient } from '../client';
 import * as commandsModule from '../commands/index.js';
@@ -52,7 +56,7 @@ function castToType(value: string, typeId: number) {
 
 function getParsedCommand(
 	stringCommand: string,
-	commandData: SlashCommandBuilder
+	commandData: SlashCommandBuilder | SlashCommandOptionsOnlyBuilder
 ) {
 	const options = getNestedOptions(commandData.options);
 	const optionsIndentifiers = options.map((option: any) => `${option.name}:`);

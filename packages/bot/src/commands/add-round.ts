@@ -1,6 +1,7 @@
 import {
 	CacheType,
 	ChatInputCommandInteraction,
+	MessageFlags,
 	SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from './types';
@@ -36,7 +37,7 @@ export const addRound: Command = {
 		interaction: ChatInputCommandInteraction<CacheType>
 	) {
 		if (!interaction.deferred) {
-			await interaction.deferReply({ ephemeral: true });
+			await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		}
 
 		const { valid, parentRound } = await computeParentRound(

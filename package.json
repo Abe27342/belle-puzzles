@@ -2,9 +2,9 @@
 	"name": "root",
 	"version": "0.0.1",
 	"engines": {
-		"node": ">=18.0.0"
+		"node": ">=20.15.0"
 	},
-	"packageManager": "pnpm@8.7.4",
+	"packageManager": "pnpm@10.26.1",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/abe27342/belle-puzzles.git"
@@ -23,7 +23,7 @@
 	},
 	"devDependencies": {
 		"@fluidframework/azure-local-service": "^1.1.1",
-		"pnpm": ">=8.7.4",
+		"pnpm": ">=10.26.1",
 		"vite": "^4.1.1",
 		"vitest": "^0.28.5"
 	}

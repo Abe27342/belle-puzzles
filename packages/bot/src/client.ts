@@ -5,6 +5,7 @@ import {
 	Collection,
 	GatewayIntentBits,
 	Interaction,
+	MessageFlags,
 	NonThreadGuildBasedChannel,
 } from 'discord.js';
 import * as commandsModule from './commands/index.js';
@@ -145,7 +146,7 @@ export function createClient({
 		}
 	};
 
-	client.once('ready', async () => {
+	client.once('clientReady', async () => {
 		console.log('Ready!');
 	});
 
@@ -286,7 +287,7 @@ async function surfaceError(
 		if (interaction?.isRepliable() && !interaction.replied) {
 			await interaction.reply({
 				content: `There was an error while executing a ${source}!`,
-				ephemeral: true,
+				flags: MessageFlags.Ephemeral,
 			});
 		}
 	} catch (err) {
