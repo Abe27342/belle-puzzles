@@ -2,6 +2,7 @@ import {
 	CacheType,
 	ChannelType,
 	ChatInputCommandInteraction,
+	MessageFlags,
 	OverwriteType,
 	PermissionsBitField,
 	SlashCommandBuilder,
@@ -45,7 +46,7 @@ export const create: Command = {
 	) {
 		await interaction.reply({
 			content: 'Creating puzzle hunt...',
-			ephemeral: true,
+			flags: MessageFlags.Ephemeral,
 		});
 		const { guild } = interaction;
 		const metadataChannels = guild.channels.cache.filter(

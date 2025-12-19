@@ -2,8 +2,6 @@ import { expect } from 'vitest';
 import {
 	ApplicationCommandOptionType,
 	ChatInputCommandInteraction,
-	SlashCommandBuilder,
-	SlashCommandSubcommandsOnlyBuilder,
 } from 'discord.js';
 import { ChannelData, MockDiscord } from './mockDiscord.js';
 import { BelleBotClient } from '../client';
@@ -15,6 +13,7 @@ import {
 	Round,
 } from '@belle-puzzles/puzzlehunt-model';
 import { SerializedPuzzlehuntContext } from '../puzzlehunt-context.js';
+import { SlashCommandData } from '../commands/types.js';
 
 // TODO: There's a lot of `any` in this file.
 
@@ -73,7 +72,7 @@ function castToType(value: string, typeId: number) {
 
 function getParsedCommand(
 	stringCommand: string,
-	commandData: SlashCommandBuilder | SlashCommandSubcommandsOnlyBuilder,
+	commandData: SlashCommandData,
 	mockDiscord: MockDiscord
 ) {
 	const options = getNestedOptions(commandData.options);

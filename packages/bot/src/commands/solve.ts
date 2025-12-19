@@ -1,6 +1,7 @@
 import {
 	CacheType,
 	ChatInputCommandInteraction,
+	MessageFlags,
 	SlashCommandBuilder,
 } from 'discord.js';
 import { PuzzlehuntContext } from '../puzzlehunt-context';
@@ -23,7 +24,7 @@ export const solve: Command = {
 		interaction: ChatInputCommandInteraction<CacheType>
 	) {
 		if (!interaction.deferred) {
-			await interaction.deferReply({ ephemeral: true });
+			await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		}
 
 		const matchingPuzzles = Array.from(puzzlehunt.puzzles).filter(

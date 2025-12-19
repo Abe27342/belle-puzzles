@@ -1,6 +1,7 @@
 import {
 	CacheType,
 	ChatInputCommandInteraction,
+	MessageFlags,
 	SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from './types';
@@ -21,12 +22,12 @@ export const syncAll: Command = {
 		if (context.huntContextMessage.channelId !== interaction.channelId) {
 			await interaction.reply({
 				content: 'This command can only be run from the admin channel.',
-				ephemeral: true,
+				flags: MessageFlags.Ephemeral,
 			});
 			return;
 		}
 		if (!interaction.deferred) {
-			await interaction.deferReply({ ephemeral: true });
+			await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		}
 		await interaction.editReply(
 			'Re-syncing all discord state to reflect the Fluid file. This may take a while...'

@@ -1,2 +1,4 @@
 # Coverage artifacts
 coverage/
+# Vite sometimes fails to clear these
+vite.config.ts.timestamp*

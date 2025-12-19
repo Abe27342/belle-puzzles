@@ -1,4 +1,9 @@
-import { AzureFunction, Context, HttpRequest } from '@azure/functions';
+import {
+	app,
+	InvocationContext as Context,
+	HttpRequest,
+	HttpResponse,
+} from '@azure/functions';
 import { Client, GatewayIntentBits } from 'discord.js';
 
 const client = new Client({
@@ -6,19 +11,26 @@ const client = new Client({
 });
 const discordToken = process.env.DISCORD_TOKEN;
 
-const httpTrigger: AzureFunction = async function (
-	context: Context,
-	req: HttpRequest
-): Promise<void> {
-	const guildIdsString = (req.query.guildIds ||
-		(req.body && req.body.guildIds)) as string;
+const httpTrigger = async function (
+	req: HttpRequest,
+	context: Context
+): Promise<HttpResponse> {
+	let reqBody: { guildIds?: string } | undefined;
+	try {
+		reqBody = await req.json();
+	} catch (err) {
+		// Ignore invalid json body
+	}
+
+	const guildIdsString = (req.query.get('guildIds') ||
+		(reqBody && reqBody?.guildIds)) as string;
 	const guildIds = guildIdsString.split(',');
 	if (!guildIds || guildIds.length === 0) {
-		context.res = {
+		const response = new HttpResponse({
 			status: 400,
 			body: 'Request needs comma-separated list of 1 or more guild ids in "guildIds" query param.',
-		};
-		return;
+		});
+		return response;
 	}
 
 	await client.login(discordToken);
@@ -28,9 +40,15 @@ const httpTrigger: AzureFunction = async function (
 		.filter((id) => client.guilds.cache.has(id))
 		.map((id) => client.guilds.cache.get(id).toJSON());
 
-	context.res = {
-		body: { mutualGuilds },
-	};
+	return new HttpResponse({
+		status: 200,
+		jsonBody: { mutualGuilds },
+	});
 };
 
-export default httpTrigger;
+app.http('mutualGuilds', {
+	methods: ['GET', 'POST'],
+	route: 'discord/userId/mutualGuilds',
+	authLevel: 'anonymous',
+	handler: httpTrigger,
+});

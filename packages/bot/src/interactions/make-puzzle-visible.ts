@@ -1,5 +1,5 @@
 import { NodeId } from '@fluid-experimental/tree';
-import { SelectMenuInteraction } from 'discord.js';
+import { MessageFlags, SelectMenuInteraction } from 'discord.js';
 import { PuzzlehuntContext } from '../puzzlehunt-context.js';
 import { InteractionHandler } from './types';
 
@@ -10,7 +10,7 @@ export const makePuzzleVisible: InteractionHandler = {
 		interaction: SelectMenuInteraction
 	) {
 		if (!interaction.deferred) {
-			await interaction.deferReply({ ephemeral: true });
+			await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		}
 
 		const member = await interaction.guild.members.fetch(

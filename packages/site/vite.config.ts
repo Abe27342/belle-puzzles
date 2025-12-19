@@ -7,7 +7,7 @@ export default defineConfig({
 	build: {
 		sourcemap: true,
 	},
-	plugins: [react()],
+	plugins: [!process.env.VITEST && react()],
 	server: {
 		port: 5173,
 		strictPort: true,

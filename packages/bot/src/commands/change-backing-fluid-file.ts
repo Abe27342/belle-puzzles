@@ -1,6 +1,7 @@
 import {
 	CacheType,
 	ChatInputCommandInteraction,
+	MessageFlags,
 	SlashCommandBuilder,
 } from 'discord.js';
 import type { Command } from './types';
@@ -32,7 +33,7 @@ export const changeBackingFluidFile: Command = {
 		const previousFileId = context.fluidFileId;
 		const contextMessage = context.huntContextMessage;
 		if (!interaction.replied && !interaction.deferred) {
-			await interaction.deferReply({ ephemeral: true });
+			await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		}
 
 		if (contextMessage.channelId !== interaction.channelId) {

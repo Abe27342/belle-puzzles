@@ -2,6 +2,7 @@ import {
 	CacheType,
 	ChannelType,
 	ChatInputCommandInteraction,
+	MessageFlags,
 	SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from './types';
@@ -23,12 +24,12 @@ export const resetServer: Command = {
 		if (interaction.channel.name !== 'general') {
 			await interaction.reply({
 				content: 'Please run this command from the general channel.',
-				ephemeral: true,
+				flags: MessageFlags.Ephemeral,
 			});
 			return;
 		}
 		if (!interaction.deferred) {
-			await interaction.deferReply({ ephemeral: true });
+			await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		}
 		try {
 			await interaction.editReply('Deleting channels...');

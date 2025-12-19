@@ -1,40 +1,44 @@
-import type { AzureFunction, Context, HttpRequest } from '@azure/functions';
+import { app, HttpRequest, HttpResponse } from '@azure/functions';
 import { ScopeType } from '@fluidframework/azure-client';
 import { generateToken } from '@fluidframework/azure-service-utils';
 
 // injected via app setting
 const key = process.env.FLUID_RELAY_KEY;
 
-const httpTrigger: AzureFunction = async function (
-	context: Context,
-	req: HttpRequest
-): Promise<void> {
-	// tenantId, documentId, userId and userName are required parameters
-	const tenantId = (req.query.tenantId ||
-		(req.body && req.body.tenantId)) as string;
-	const documentId = (req.query.documentId ||
-		(req.body && req.body.documentId)) as string | undefined;
-	const userId = (req.query.userId ||
-		(req.body && req.body.userId)) as string;
-	const userName = (req.query.userName ||
-		(req.body && req.body.userName)) as string;
-	const scopes = (req.query.scopes ||
-		(req.body && req.body.scopes)) as ScopeType[];
+interface TokenInfo {
+	tenantId: string;
+	documentId?: string;
+	userId: string;
+	userName?: string;
+	scopes?: ScopeType[];
+}
+
+const httpTrigger = async function (req: HttpRequest): Promise<HttpResponse> {
+	let reqBody: TokenInfo | undefined;
+	try {
+		reqBody = (await req.json()) as TokenInfo;
+	} catch (err) {
+		// Ignore invalid json body
+	}
+
+	const tenantId = req.query.get('tenantId') ?? reqBody?.tenantId;
+	const documentId = req.query.get('documentId') ?? reqBody?.documentId;
+	const userId = req.query.get('userId') ?? reqBody?.userId;
+	const userName = req.query.get('userName') ?? reqBody?.userName;
+	const scopes = reqBody?.scopes;
 
 	if (!tenantId) {
-		context.res = {
+		return new HttpResponse({
 			status: 400,
 			body: 'No tenantId provided in query params',
-		};
-		return;
+		});
 	}
 
 	if (!key) {
-		context.res = {
+		return new HttpResponse({
 			status: 404,
 			body: `No key found for the provided tenantId: ${tenantId}`,
-		};
-		return;
+		});
 	}
 
 	let user = { name: userName, id: userId };
@@ -53,10 +57,15 @@ const httpTrigger: AzureFunction = async function (
 		user
 	);
 
-	context.res = {
+	return new HttpResponse({
 		status: 200,
 		body: token,
-	};
+	});
 };
 
-export default httpTrigger;
+app.http('getToken', {
+	methods: ['GET', 'POST'],
+	route: 'getToken',
+	authLevel: 'anonymous',
+	handler: httpTrigger,
+});
