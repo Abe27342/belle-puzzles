@@ -187,10 +187,14 @@ export class MockDiscord {
 		const interaction = Reflect.construct(ChatInputCommandInteraction, [
 			this.client,
 			{
-				data: { ...command, type: ApplicationCommandType.ChatInput },
+				data: {
+					...command,
+					type: ApplicationCommandType.ChatInput,
+				},
 				id: BigInt(1),
 				user: this.guildMember,
 				type: InteractionType.ApplicationCommand,
+				entitlements: [],
 				channel,
 			},
 		]);
@@ -215,12 +219,35 @@ export class MockDiscord {
 		this.serverState = new ServerState();
 		const serverState = this.serverState;
 
+		const channelMessagesPinsRegex = new RegExp(
+			Routes.channelMessagesPins('(.*)')
+		);
+		const channelPinsRegex = new RegExp(Routes.channelPins('(.*)'));
+		const channelMessagesPinRegex = new RegExp(
+			Routes.channelMessagesPin('(.*)', '(.*)')
+		);
+
 		this.client.rest.get = vi.fn(
 			async (fullRoute: `/${string}`, options?: RequestData) => {
-				if (fullRoute.match(new RegExp(Routes.channelPins('.*')))) {
+				if (fullRoute.match(channelMessagesPinsRegex)) {
 					const [, channelId] = fullRoute.match(
-						new RegExp(Routes.channelPins('(.*)'))
+						channelMessagesPinsRegex
 					);
+					const channelMessages =
+						serverState.messages.get(channelId) ?? [];
+					const messages = channelMessages.filter(
+						(message) => message.pinned
+					);
+					return {
+						items: messages.map((message) => ({
+							message,
+							pinned_at: 0,
+							id: message.id,
+						})),
+						has_more: false,
+					};
+				} else if (fullRoute.match(channelPinsRegex)) {
+					const [, channelId] = fullRoute.match(channelPinsRegex);
 					const channelMessages =
 						serverState.messages.get(channelId) ?? [];
 					const messages = channelMessages.filter(
@@ -237,11 +264,9 @@ export class MockDiscord {
 
 		this.client.rest.put = vi.fn(
 			async (fullRoute: `/${string}`, options?: RequestData) => {
-				if (
-					fullRoute.match(new RegExp(Routes.channelPin('.*', '.*')))
-				) {
+				if (fullRoute.match(channelMessagesPinRegex)) {
 					const [, channelId, messageId] = fullRoute.match(
-						new RegExp(Routes.channelPin('(.*)', '(.*)'))
+						channelMessagesPinRegex
 					);
 					const newChannelMessages =
 						serverState.messages.get(channelId) ?? [];

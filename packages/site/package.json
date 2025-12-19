@@ -73,8 +73,8 @@
 		"react-router-dom": "^6.4.0",
 		"ts-node": "^10.9.1",
 		"typescript": "^5.2.2",
-		"vite": "^4.1.1",
-		"vitest": "^0.28.5",
-		"vitest-fetch-mock": "^0.2.1"
+		"vite": "^7.2.7",
+		"vitest": "^4.0.16",
+		"vitest-fetch-mock": "^0.4.5"
 	}
 }

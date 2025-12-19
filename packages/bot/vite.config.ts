@@ -10,5 +10,6 @@ export default defineConfig({
 			USE_LOCAL_SERVICE: 'true',
 			CLIENT_ID: '1019695303026290698',
 		},
+		include: ['src/test/**/*.spec.ts'],
 	},
 });
