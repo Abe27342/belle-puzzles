@@ -138,6 +138,19 @@ export function generateRoundEmbed(
 	return { embeds: [embed], components: rows };
 }
 
+export function* descendantPuzzles(round: Round): Iterable<Puzzle> {
+	for (const child of round.children) {
+		switch (child.type) {
+			case 'puzzle':
+				yield child;
+				break;
+			case 'round':
+				yield* descendantPuzzles(child);
+				break;
+		}
+	}
+}
+
 export function computeAssociatedRoundOrPuzzle(
 	channel: TextBasedChannel | CategoryChannel,
 	puzzlehunt: IPuzzlehunt
@@ -173,22 +186,17 @@ export async function computeParentRound(
 		puzzlehunt
 	);
 	let parentRound: Round;
-	const parentRoundArg = interaction.options.getString(ROUND_ARG);
+	const parentRoundArg = interaction.options.getChannel(ROUND_ARG);
 	if (parentRoundArg) {
-		const match = parentRoundArg.match(/^<#(\d*)>$/);
-		if (!match) {
-			await interaction.editReply(
-				'parent_round should be a discord channel.'
-			);
-			return { valid: false };
-		}
-		const [, indexChannelId] = match;
+		const indexChannelId = parentRoundArg.id;
 		parentRound = Array.from(puzzlehunt.rounds).find(
-			(round) => round.discordInfo?.indexChannelId === indexChannelId
+			(round) =>
+				round.discordInfo?.indexChannelId === indexChannelId ||
+				round.discordInfo?.channelId === indexChannelId
 		);
 		if (!parentRound) {
 			await interaction.editReply(
-				'parent_round should be one of the round index channels.'
+				'parent_round should be one of the round channels.'
 			);
 			return { valid: false };
 		}

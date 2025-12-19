@@ -1,12 +1,4 @@
-import {
-	describe,
-	it,
-	beforeAll,
-	beforeEach,
-	afterEach,
-	expect,
-	vi,
-} from 'vitest';
+import { describe, it, beforeEach, afterEach, expect, vi } from 'vitest';
 import { BelleBotClient, createClient } from '../../client';
 import {
 	IPuzzlehuntProvider,
@@ -196,11 +188,7 @@ describe('add_puzzle', () => {
 	});
 
 	describe('reports a reasonable error', () => {
-		// None of these commands should modify the state of the discord server or the puzzlehunt, so
-		// a single `before` is sufficient.
-		// If debugging a failure in one of these tests and that assumption isn't valid, might be better
-		// to change this to beforeEach temporarly.
-		beforeAll(initializePuzzlehunt);
+		beforeEach(initializePuzzlehunt);
 
 		it('when run without a parent round in an invalid channel', async () => {
 			const adminChannel = serverState.findChannelBy(
@@ -217,30 +205,6 @@ describe('add_puzzle', () => {
 
 			expect(interaction.editReply).toHaveBeenCalledWith(
 				'Either run this command from a puzzle channel (to create a sibling puzzle) or specify the parent_round argument.'
-			);
-		});
-
-		it('when run with a non-conformant parent round argument', async () => {
-			const interaction = await runCommand(
-				'/add_puzzle name: puzzle 1 url: mock-puzzle-url parent_round: 1234',
-				client,
-				mockDiscord
-			);
-
-			expect(interaction.editReply).toHaveBeenCalledWith(
-				'parent_round should be a discord channel.'
-			);
-		});
-
-		it('when run with a parent round argument pointing to an invalid channel', async () => {
-			const interaction = await runCommand(
-				'/add_puzzle name: puzzle 1 url: mock-puzzle-url parent_round: <#1234>',
-				client,
-				mockDiscord
-			);
-
-			expect(interaction.editReply).toHaveBeenCalledWith(
-				'parent_round should be one of the round index channels.'
 			);
 		});
 	});

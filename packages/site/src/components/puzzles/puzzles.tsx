@@ -24,6 +24,7 @@ import {
 	DeleteModal,
 	EditNameModal,
 	EditSheetIdModal,
+	EditUrlModal,
 } from './modals';
 import { useStore } from 'react-redux';
 import type { AppStore } from '../../store/store';
@@ -302,6 +303,14 @@ function useEditingUI(puzzlehunt: IPuzzlehunt): {
 					close={closeModal}
 				/>
 			);
+		} else if (modalArgs.modalType === 'editUrl') {
+			ui = (
+				<EditUrlModal
+					puzzleObj={puzzleObj}
+					puzzlehunt={puzzlehunt}
+					close={closeModal}
+				/>
+			);
 		} else if (modalArgs.modalType === 'solve') {
 			ui = (
 				<SolveModal
@@ -335,6 +344,7 @@ type ModalSpec =
 	| {
 			modalType: 'editName';
 	  }
+	| { modalType: 'editUrl' }
 	| {
 			modalType: 'editSheetId';
 	  }
@@ -401,6 +411,11 @@ const PuzzlePageMenu: React.FC<PuzzlePageMenu> = ({
 				onClick={(event) => openModal(event, { modalType: 'editName' })}
 			>
 				Change name
+			</MenuItem>
+			<MenuItem
+				onClick={(event) => openModal(event, { modalType: 'editUrl' })}
+			>
+				Change URL
 			</MenuItem>
 			{puzzleObj.type === 'puzzle' && (
 				<MenuItem

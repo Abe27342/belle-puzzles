@@ -26,7 +26,7 @@ export const addRound: Command = {
 				.setName(URL_ARG)
 				.setRequired(true)
 		)
-		.addStringOption((builder) =>
+		.addChannelOption((builder) =>
 			builder
 				.setDescription("Parent round's index channel")
 				.setName(ROUND_ARG)
