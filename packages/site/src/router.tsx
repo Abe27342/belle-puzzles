@@ -4,7 +4,7 @@ import {
 	RouterProvider,
 	Route,
 	createRoutesFromElements,
-	Navigate,
+	replace,
 } from 'react-router-dom';
 import {
 	About,
@@ -52,17 +52,11 @@ export const Router: React.FC = () => {
 									</LoginGate>
 								}
 							/>
-							{/* Redirect any unknown routes to /home */}
+							{/* Redirect any unknown routes */}
 							<Route
 								path="*"
-								element={
-									<Navigate
-										to={{ pathname: '/home' }}
-										replace
-									/>
-								}
+								loader={redirectToHome}
 							/>
-							,
 						</Route>
 					</Route>,
 				])
@@ -73,4 +67,6 @@ export const Router: React.FC = () => {
 	return <RouterProvider router={router} />;
 };
 
-// TODO: Error element
+async function redirectToHome() {
+	throw replace('/home');
+}
