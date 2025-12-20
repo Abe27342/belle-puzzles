@@ -76,7 +76,7 @@ jobs:
 
             - name: Upload pre-deployment snapshot
               if: always()
-              uses: actions/upload-artifact@v3
+              uses: actions/upload-artifact@v4
               with:
                   name: pre-deployment-api-snapshot
                   path: pre-deployment-api.zip
