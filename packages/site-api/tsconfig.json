@@ -11,5 +11,5 @@
 		"sourceMap": true,
 		"target": "ESNext"
 	},
-	"include": ["mutualGuilds", "getToken"]
+	"include": ["src"]
 }
