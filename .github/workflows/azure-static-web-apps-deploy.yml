@@ -43,7 +43,6 @@ jobs:
                   app_location: '/packages/site'
                   api_location: '/packages/site-api'
                   output_location: '/dist'
-                  skip_api_build: true
                   ###### End of Repository/Build Configurations ######
               env:
                   CUSTOM_BUILD_COMMAND: npm run build
