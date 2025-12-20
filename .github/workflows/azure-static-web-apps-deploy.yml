@@ -46,38 +46,3 @@ jobs:
                   ###### End of Repository/Build Configurations ######
               env:
                   CUSTOM_BUILD_COMMAND: npm run build
-                  VERBOSE: true
-
-            - name: Capture Oryx build output
-              if: always()
-              run: |
-                  echo "=== Checking for Oryx build artifacts ==="
-                  if [ -d "/home/runner/work/_temp/_github_home/.oryx" ]; then
-                    echo "Found Oryx directory"
-                    ls -la /home/runner/work/_temp/_github_home/.oryx/
-                  fi
-                  if [ -d "/tmp/oryx" ]; then
-                    echo "Found temp Oryx directory"
-                    ls -la /tmp/oryx/
-                  fi
-
-            - name: Create deployment snapshot
-              if: always()
-              run: |
-                  echo "=== Pre-deployment API structure ==="
-                  cd packages/site-api
-                  find . -type f -name "*.js" -o -name "*.json" -o -name "*.ts"
-                  echo ""
-                  echo "=== package.json ==="
-                  cat package.json
-                  echo ""
-                  echo "=== Creating snapshot zip ==="
-                  zip -r ../../pre-deployment-api.zip .
-
-            - name: Upload pre-deployment snapshot
-              if: always()
-              uses: actions/upload-artifact@v4
-              with:
-                  name: pre-deployment-api-snapshot
-                  path: pre-deployment-api.zip
-                  retention-days: 7
