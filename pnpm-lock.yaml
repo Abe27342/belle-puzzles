@@ -331,8 +331,8 @@ importers:
         version: 1.4.0
     devDependencies:
       '@azure/functions':
-        specifier: ^4.0.0
-        version: 4.10.0
+        specifier: ^3.0.0
+        version: 3.5.1
       '@types/debug':
         specifier: ^4.1.5
         version: 4.1.12
@@ -396,13 +396,8 @@ packages:
     resolution: {integrity: sha512-XPArKLzsvl0Hf0CaGyKHUyVgF7oDnhKoP85Xv6M4StF/1AhfORhZudHtOyf2s+FcbuQ9dPRAjB8J2KvRRMUK2A==}
     engines: {node: '>=20.0.0'}
 
-  '@azure/functions-extensions-base@0.2.0':
-    resolution: {integrity: sha512-ncCkHBNQYJa93dBIh+toH0v1iSgCzSo9tr94s6SMBe7DPWREkaWh8cq33A5P4rPSFX1g5W+3SPvIzDr/6/VOWQ==}
-    engines: {node: '>=18.0'}
-
-  '@azure/functions@4.10.0':
-    resolution: {integrity: sha512-hJ58IrZ4vyzcD/2FXTAoBr9iJO1gtb7jUbdU0lCOYOIeQNezVjNXaqLjECuP0GMGVq12RsqZoDfTRNo8xqcLYg==}
-    engines: {node: '>=20.0'}
+  '@azure/functions@3.5.1':
+    resolution: {integrity: sha512-6UltvJiuVpvHSwLcK/Zc6NfUwlkDLOFFx97BHCJzlWNsfiWwzwmTsxJXg4kE/LemKTHxPpfoPE+kOJ8hAdiKFQ==}
 
   '@azure/identity@4.13.0':
     resolution: {integrity: sha512-uWC0fssc+hs1TGGVkkghiaFkkS7NkTxfnCH+Hdg+yTehTpMcehpok4PgUKKdyCH+9ldu6FhiHRv84Ntqj1vVcw==}
@@ -4776,14 +4771,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@azure/functions-extensions-base@0.2.0': {}
-
-  '@azure/functions@4.10.0':
+  '@azure/functions@3.5.1':
     dependencies:
-      '@azure/functions-extensions-base': 0.2.0
-      cookie: 0.7.2
+      iconv-lite: 0.6.3
       long: 4.0.0
-      undici: 5.29.0
+      uuid: 8.3.2
 
   '@azure/identity@4.13.0':
     dependencies:
