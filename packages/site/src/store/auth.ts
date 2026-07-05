@@ -123,8 +123,9 @@ export function createAddBotToServerUrl(): string {
 		 * - Read Message History
 		 * - Add Reactions
 		 * - Use Slash Commands
+		 * - Pin Messages
 		 */
-		permissions: '397552987216',
+		permissions: '2252197366672464',
 		redirect_uri: window.location.origin,
 		response_type: 'code',
 		scope: ['bot', ...scopes].join(' '),
