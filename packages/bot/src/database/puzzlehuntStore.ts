@@ -5,6 +5,8 @@ import {
 	isDocumentId,
 } from '@belle-puzzles/puzzlehunt-model/document';
 import type {
+	DocumentDiscordAssociation,
+	DocumentNode,
 	HuntCommand,
 	HuntCommandRequest,
 	HuntCommandResult,
@@ -38,11 +40,64 @@ interface HuntRow extends Record<string, unknown> {
 	schema_version: number;
 	revision: string;
 	configuration: HuntConfiguration;
-	document: HuntDocument;
+	nodes: HuntNodeRow[];
 }
 
-const huntColumns =
-	'id, guild_id, name, schema_version, revision::text, configuration, document';
+interface HuntNodeRow extends Record<string, unknown> {
+	id: string;
+	type: 'round' | 'puzzle';
+	name: string;
+	url: string;
+	parent_id: string | null;
+	position: number;
+	answer: string | null;
+	status: string | null;
+	last_status_update: number | null;
+	sheet_id: string | null;
+	discord_channel_id: string | null;
+	discord_role_id: string | null;
+	discord_index_channel_id: string | null;
+}
+
+function nodeFromRow(row: HuntNodeRow): DocumentNode {
+	let discord: DocumentDiscordAssociation | undefined;
+	if (row.discord_channel_id !== null) {
+		if (row.discord_role_id === null) {
+			throw new Error('Stored Discord association has no role.');
+		}
+		discord = {
+			channelId: row.discord_channel_id,
+			roleId: row.discord_role_id,
+			...(row.discord_index_channel_id === null
+				? {}
+				: { indexChannelId: row.discord_index_channel_id }),
+		};
+	}
+	const common = {
+		id: row.id,
+		name: row.name,
+		url: row.url,
+		position: row.position,
+		...(discord === undefined ? {} : { discord }),
+	};
+	if (row.type === 'round') {
+		return { ...common, type: 'round', parentId: row.parent_id };
+	}
+	if (row.parent_id === null) {
+		throw new Error('Stored puzzle has no parent round.');
+	}
+	return {
+		...common,
+		type: 'puzzle',
+		parentId: row.parent_id,
+		...(row.answer === null ? {} : { answer: row.answer }),
+		...(row.status === null ? {} : { status: row.status }),
+		...(row.last_status_update === null
+			? {}
+			: { lastStatusUpdate: row.last_status_update }),
+		...(row.sheet_id === null ? {} : { sheetId: row.sheet_id }),
+	};
+}
 
 function snapshotFromRow(row: HuntRow): HuntSnapshot {
 	if (row.schema_version !== 1) {
@@ -54,8 +109,12 @@ function snapshotFromRow(row: HuntRow): HuntSnapshot {
 	if (!Number.isSafeInteger(revision) || revision < 0) {
 		throw new Error(`Invalid hunt revision: ${row.revision}`);
 	}
+	const nodes: Record<string, DocumentNode> = {};
 	try {
-		assertHuntDocument(row.document);
+		for (const node of row.nodes) {
+			nodes[node.id] = nodeFromRow(node);
+		}
+		assertHuntDocument({ nodes });
 	} catch (error) {
 		throw new Error('Stored hunt document failed validation.', {
 			cause: error,
@@ -68,8 +127,90 @@ function snapshotFromRow(row: HuntRow): HuntSnapshot {
 		schemaVersion: row.schema_version,
 		revision,
 		configuration: row.configuration,
-		document: row.document,
+		document: { nodes },
 	};
+}
+
+async function readSnapshot(
+	connection: HuntDatabaseConnection,
+	scope: HuntScope
+): Promise<HuntSnapshot> {
+	// One statement keeps hunt metadata and node rows on the same MVCC snapshot.
+	const { rows } = await connection.query<HuntRow>(
+		`SELECT h.id, h.guild_id, h.name, h.schema_version, h.revision::text, h.configuration,
+		 (SELECT COALESCE(jsonb_agg(n ORDER BY n.id), '[]'::jsonb)
+		  FROM hunt_nodes n WHERE n.hunt_id = h.id) AS nodes
+		 FROM hunts h WHERE h.id = $1 AND h.guild_id = $2`,
+		[scope.huntId, scope.guildId]
+	);
+	if (rows.length === 0) {
+		throw new HuntCommandError(
+			'not-found',
+			'Hunt not found in this guild.'
+		);
+	}
+	return snapshotFromRow(rows[0]);
+}
+
+async function writeDocumentChanges(
+	connection: HuntDatabaseConnection,
+	huntId: string,
+	before: HuntDocument,
+	after: HuntDocument
+): Promise<void> {
+	const removed = Object.keys(before.nodes).filter(
+		(id) => after.nodes[id] === undefined
+	);
+	if (removed.length > 0) {
+		await connection.query(
+			`DELETE FROM hunt_nodes WHERE hunt_id = $1 AND id = ANY($2::uuid[])`,
+			[huntId, removed]
+		);
+	}
+	const changed = Object.values(after.nodes).filter(
+		(node) => node !== before.nodes[node.id]
+	);
+	if (changed.length === 0) {
+		return;
+	}
+	const values = changed.map((node) => ({
+		id: node.id,
+		type: node.type,
+		name: node.name,
+		url: node.url,
+		parent_id: node.parentId,
+		position: node.position,
+		answer: node.type === 'puzzle' ? node.answer ?? null : null,
+		status: node.type === 'puzzle' ? node.status ?? null : null,
+		last_status_update:
+			node.type === 'puzzle' ? node.lastStatusUpdate ?? null : null,
+		sheet_id: node.type === 'puzzle' ? node.sheetId ?? null : null,
+		discord_channel_id: node.discord?.channelId ?? null,
+		discord_role_id: node.discord?.roleId ?? null,
+		discord_index_channel_id: node.discord?.indexChannelId ?? null,
+	}));
+	// JSON is only a batch parameter here; each node is stored in typed SQL columns.
+	await connection.query(
+		`INSERT INTO hunt_nodes (
+			hunt_id, id, type, name, url, parent_id, position, answer, status,
+			last_status_update, sheet_id, discord_channel_id, discord_role_id, discord_index_channel_id
+		 )
+		 SELECT $1::uuid, n.id, n.type, n.name, n.url, n.parent_id, n.position,
+			n.answer, n.status, n.last_status_update, n.sheet_id,
+			n.discord_channel_id, n.discord_role_id, n.discord_index_channel_id
+		 FROM jsonb_to_recordset($2::jsonb) AS n(
+			id uuid, type text, name text, url text, parent_id uuid, position bigint,
+			answer text, status text, last_status_update bigint, sheet_id text,
+			discord_channel_id text, discord_role_id text, discord_index_channel_id text
+		 )
+		 ON CONFLICT (hunt_id, id) DO UPDATE SET
+			name = EXCLUDED.name, url = EXCLUDED.url, parent_id = EXCLUDED.parent_id,
+			position = EXCLUDED.position, answer = EXCLUDED.answer, status = EXCLUDED.status,
+			last_status_update = EXCLUDED.last_status_update, sheet_id = EXCLUDED.sheet_id,
+			discord_channel_id = EXCLUDED.discord_channel_id, discord_role_id = EXCLUDED.discord_role_id,
+			discord_index_channel_id = EXCLUDED.discord_index_channel_id`,
+		[huntId, JSON.stringify(values)]
+	);
 }
 
 function validateScope(scope: HuntScope): void {
@@ -86,17 +227,7 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 		validateScope(scope);
 		const connection = await this.pool.connect();
 		try {
-			const { rows } = await connection.query<HuntRow>(
-				`SELECT ${huntColumns} FROM hunts WHERE id = $1 AND guild_id = $2`,
-				[scope.huntId, scope.guildId]
-			);
-			if (rows.length === 0) {
-				throw new HuntCommandError(
-					'not-found',
-					'Hunt not found in this guild.'
-				);
-			}
-			return snapshotFromRow(rows[0]);
+			return await readSnapshot(connection, scope);
 		} finally {
 			connection.release();
 		}
@@ -158,8 +289,8 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 		try {
 			await connection.query('BEGIN');
 			transactionOpen = true;
-			const { rows } = await connection.query<HuntRow>(
-				`SELECT ${huntColumns} FROM hunts
+			const { rows } = await connection.query<{ id: string }>(
+				`SELECT id FROM hunts
 				 WHERE id = $1 AND guild_id = $2 FOR UPDATE`,
 				[scope.huntId, scope.guildId]
 			);
@@ -169,7 +300,8 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 					'Hunt not found in this guild.'
 				);
 			}
-			const snapshot = snapshotFromRow(rows[0]);
+			// A new statement after the lock wait reads the winner's committed node changes.
+			const snapshot = await readSnapshot(connection, scope);
 			const encodedCommand = JSON.stringify(command);
 			const { rows: receipts } = await connection.query<{
 				committed_revision: string;
@@ -211,15 +343,16 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 				revision: snapshot.revision + 1,
 				document: applied.document,
 			};
+			await writeDocumentChanges(
+				connection,
+				scope.huntId,
+				snapshot.document,
+				committed.document
+			);
 			await connection.query(
-				`UPDATE hunts SET document = $3::jsonb, revision = $4, updated_at = clock_timestamp()
+				`UPDATE hunts SET revision = $3, updated_at = clock_timestamp()
 				 WHERE id = $1 AND guild_id = $2`,
-				[
-					scope.huntId,
-					scope.guildId,
-					JSON.stringify(committed.document),
-					committed.revision,
-				]
+				[scope.huntId, scope.guildId, committed.revision]
 			);
 			await connection.query(
 				`INSERT INTO command_receipts (hunt_id, command_id, command, committed_revision)

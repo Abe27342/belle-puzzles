@@ -6,9 +6,6 @@ CREATE TABLE hunts (
     schema_version integer NOT NULL CHECK (schema_version = 1),
     revision bigint NOT NULL DEFAULT 0 CHECK (revision BETWEEN 0 AND 9007199254740991),
     configuration jsonb NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(configuration) = 'object'),
-    document jsonb NOT NULL DEFAULT '{"nodes": {}}'
-        CHECK (jsonb_typeof(document) = 'object' AND document ? 'nodes'
-            AND jsonb_typeof(document->'nodes') = 'object'),
     source_provenance jsonb,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
@@ -23,6 +20,59 @@ CREATE TABLE active_hunts (
     hunt_id uuid NOT NULL,
     FOREIGN KEY (hunt_id, guild_id) REFERENCES hunts(id, guild_id)
 );
+
+CREATE TABLE hunt_nodes (
+    hunt_id uuid NOT NULL REFERENCES hunts(id),
+    id uuid NOT NULL,
+    type text NOT NULL CHECK (type IN ('round', 'puzzle')),
+    name text NOT NULL,
+    url text NOT NULL,
+    parent_id uuid,
+    -- Only rounds may be parents; this generated value participates in the foreign key.
+    parent_type text GENERATED ALWAYS AS ('round'::text) STORED,
+    position bigint NOT NULL CHECK (position BETWEEN 0 AND 9007199254740991),
+    answer text,
+    status text,
+    last_status_update bigint
+        CHECK (last_status_update BETWEEN 0 AND 9007199254740991),
+    sheet_id text,
+    discord_channel_id text,
+    discord_role_id text,
+    discord_index_channel_id text,
+    PRIMARY KEY (hunt_id, id),
+    UNIQUE (hunt_id, id, type),
+    FOREIGN KEY (hunt_id, parent_id, parent_type)
+        REFERENCES hunt_nodes(hunt_id, id, type),
+    CONSTRAINT puzzle_requires_parent CHECK (type = 'round' OR parent_id IS NOT NULL),
+    CONSTRAINT node_cannot_parent_itself CHECK (parent_id IS NULL OR parent_id <> id),
+    CONSTRAINT puzzle_properties_only CHECK (
+        type = 'puzzle' OR (
+            answer IS NULL AND status IS NULL AND last_status_update IS NULL
+            AND sheet_id IS NULL
+        )
+    ),
+    CONSTRAINT status_has_timestamp CHECK (
+        (status IS NULL) = (last_status_update IS NULL)
+    ),
+    CONSTRAINT complete_discord_association CHECK (
+        (
+            discord_channel_id IS NULL AND discord_role_id IS NULL
+            AND discord_index_channel_id IS NULL
+        ) OR (
+            discord_channel_id IS NOT NULL AND discord_role_id IS NOT NULL
+            AND (
+                (type = 'round' AND discord_index_channel_id IS NOT NULL)
+                OR (type = 'puzzle' AND discord_index_channel_id IS NULL)
+            )
+        )
+    )
+);
+
+-- Separate root/non-root indexes also enforce uniqueness when parent_id is NULL.
+CREATE UNIQUE INDEX hunt_nodes_child_positions ON hunt_nodes (hunt_id, parent_id, position)
+    WHERE parent_id IS NOT NULL;
+CREATE UNIQUE INDEX hunt_nodes_root_positions ON hunt_nodes (hunt_id, position)
+    WHERE parent_id IS NULL;
 
 CREATE TABLE command_receipts (
     hunt_id uuid NOT NULL REFERENCES hunts(id),

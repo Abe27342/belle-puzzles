@@ -17,7 +17,8 @@ Implemented:
   `pg.Pool`; a production driver/bootstrap is deliberately not wired yet.
 - An initial PostgreSQL schema in `packages/bot/src/database/schema.sql`, exercised
   with an ephemeral in-memory PGlite database. PGlite is a test dependency, not the
-  proposed production database.
+  proposed production database. This revises the initial, unapplied schema;
+  it is not an upgrade migration for an existing JSONB database.
 
 Not implemented: HTTP routes/JSON decoding, authentication policy, React bindings,
 SSE delivery, external integration workers, hunt provisioning/import, database
@@ -26,14 +27,14 @@ new path. The independent Fluid export format is not a dependency or this schema
 
 ## Representation
 
-Use PostgreSQL and one JSONB document per hunt. A hunt is small and infrequently
-edited; serializing a short transaction per hunt is simpler than normalizing the
-tree and coordinating many node rows. Separate hunts do not share an application
-lock. A normalized representation can be introduced later if document size,
-write amplification, or lock wait measurements justify it.
+Use PostgreSQL with one metadata row per hunt and one typed `hunt_nodes` row per
+round or puzzle. Database constraints enforce fundamental node properties and
+parent relationships. Commands still serialize short transactions per hunt;
+normalizing node storage does not require per-node locking. Separate hunts do
+not share an application lock.
 
 `hunts` stores stable UUID identity, guild ownership, name, schema version,
-monotonic revision, configuration, document, optional source provenance, and
+monotonic revision, configuration, optional source provenance, and
 timestamps. Configuration brings the existing Google folder, Discord index and
 all-puzzles role IDs, and logging channel IDs out of pinned messages/SharedMap.
 Hunt/guild identity is outside the editable document and absent from commands.
@@ -41,13 +42,33 @@ The configuration also has no generic user-patch command in this initial model.
 `active_hunts` explicitly selects one hunt per guild while retaining archived
 hunts; its composite foreign key prevents a cross-guild pointer.
 
-The JSONB document contains `nodes`, keyed by lowercase application UUIDs. A node
-has `type: 'round' | 'puzzle'`, name, URL, parent ID, and sibling position. Only
-rounds can be roots or parents. Stable IDs are not Fluid local node numbers or
-Discord IDs. An importer must allocate/remap IDs, preserve external associations
-and provenance, and validate the resulting graph. New node creations use fresh
-random UUIDs. The store rejects IDs already in the document, but does not retain
-a permanent record of IDs after deletion.
+`hunt_nodes` contains UUID identity, a round/puzzle discriminator, name, URL,
+parent ID, and sibling position, plus nullable puzzle and Discord properties.
+Its primary key is `(hunt_id, id)`. A composite foreign key requires the parent
+to be an existing round in the same hunt. The generated `parent_type` column is
+always `'round'`; it is a constraint helper, not separately editable tree state.
+Only rounds may have a null parent, meaning a top-level child of the implicit
+hunt root.
+
+SQL checks restrict answers, statuses, status timestamps, and sheet IDs to
+puzzles; require status and its timestamp together; and require complete Discord
+associations, with an index channel for rounds only. Positions and status times
+are nonnegative integers bounded to JavaScript's safe integer range. Separate
+unique indexes enforce sibling positions for roots and non-roots, including the
+null-parent case, and also support ordered child lookup.
+
+Self-parenting is rejected in SQL. Longer cycles are checked by the command
+model before writing, while holding the hunt row lock through commit. This is
+the deliberately controlled write protocol, not a database cycle trigger:
+imports and maintenance writers must also lock the hunt and validate the final
+graph. Concurrent commands cannot both validate against a stale tree because
+the later lock holder reads fresh committed nodes before applying its command.
+Uncontrolled direct SQL could still introduce a longer cycle.
+
+Stable IDs are not Fluid local node numbers or Discord IDs. An importer must
+allocate/remap IDs, preserve external associations and provenance, and validate
+the resulting graph. New node creations use fresh random UUIDs. Existing node
+IDs collide with the primary key; no permanent record is retained after deletion.
 
 Persist only parent pointers; derive children. Additions and reparenting append
 to the current destination's sibling positions. Positions need not be contiguous
@@ -58,11 +79,17 @@ subtree, including additions committed before that deletion. An add targeting a
 round deleted earlier fails explicitly.
 
 Puzzle fields include optional answer, status, last-status-update time, Google
-sheet ID, and Discord associations. Clearing a value removes the property;
-commands use explicit `null`, never JSON-ambiguous `undefined`. Status and its
-timestamp are present/absent together. A Discord round association additionally
-requires an index channel. Google sheets are retained when a node is deleted,
-matching existing behavior.
+sheet ID, and Discord associations. Optional SQL columns use `NULL`; snapshots
+omit absent properties, and commands use explicit `null`, never JSON-ambiguous
+`undefined`. Status and its timestamp are present/absent together. A Discord round
+association additionally requires an index channel. Google sheets are retained
+when a node is deleted, matching existing behavior.
+
+The public `HuntSnapshot.document.nodes` map is assembled from these rows; it is
+not a JSONB storage column. A snapshot read uses one SQL statement so metadata,
+revision, and nodes share the same MVCC snapshot, even during concurrent writes.
+SQL JSON aggregation and batch JSON parameters are query/transport encoding only.
+JSONB remains for configuration, provenance, command receipts, and event payloads.
 
 ## Commands, ordering, and retries
 
@@ -76,6 +103,8 @@ The store performs the following on a single leased connection at PostgreSQL's
 default READ COMMITTED isolation:
 
 1. Begin; select the hunt by both hunt ID and authorized guild ID `FOR UPDATE`.
+   After acquiring the lock, read the snapshot in a new statement so a waiting
+   command sees node changes committed by the previous lock holder.
 2. Read the command receipt under that same lock. A retry of the same JSON
    command returns its original committed revision plus the current snapshot,
    with `replayed: true`; it does not apply the command again. Reusing an ID for
@@ -83,8 +112,11 @@ default READ COMMITTED isolation:
 3. Apply the command to freshly read authoritative state. Sample database time
    after acquiring the lock for status timestamps. Validate the complete graph
    before writing.
-4. Update the document and increment its revision; insert the command receipt,
-   coalescing integration jobs, and separate lifecycle/log events.
+4. Insert/update only changed node rows and delete removed nodes as a batch;
+   increment the hunt revision and insert the command receipt, coalescing
+   integration jobs, and separate lifecycle/log events. Foreign keys prevent a
+   standalone parent deletion while children still reference it; a subtree
+   deletion removes all its rows in one statement.
 5. Transactionally `pg_notify` a small hunt/revision hint and commit. Return only
    committed state. On failure roll back all the records together.
 

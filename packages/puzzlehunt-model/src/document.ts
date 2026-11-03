@@ -314,9 +314,10 @@ export function assertHuntDocument(document: HuntDocument): void {
 			requireCommand(
 				typeof node.discord.channelId === 'string' &&
 					typeof node.discord.roleId === 'string' &&
-					(node.type !== 'round' ||
-						typeof node.discord.indexChannelId === 'string'),
-				'Incomplete Discord association.'
+					(node.type === 'round'
+						? typeof node.discord.indexChannelId === 'string'
+						: node.discord.indexChannelId === undefined),
+				'Invalid Discord association.'
 			);
 		}
 	}

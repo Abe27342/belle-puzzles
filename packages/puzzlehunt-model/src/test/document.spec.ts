@@ -287,7 +287,7 @@ describe('database document commands', () => {
 		).toThrow(/UUID/);
 	});
 
-	it('rejects incoherent timestamps and incomplete round associations', () => {
+	it('rejects incoherent timestamps and invalid Discord associations', () => {
 		const document = seed();
 		const puzzle = document.nodes[puzzleId];
 		expect(() =>
@@ -313,7 +313,22 @@ describe('database document commands', () => {
 				},
 				100
 			)
-		).toThrow(/Incomplete Discord/);
+		).toThrow(/Invalid Discord/);
+		expect(() =>
+			applyHuntCommand(
+				document,
+				{
+					type: 'set-discord',
+					nodeId: puzzleId,
+					discord: {
+						channelId: 'channel',
+						roleId: 'role',
+						indexChannelId: 'index',
+					},
+				},
+				100
+			)
+		).toThrow(/Invalid Discord/);
 	});
 });
 
