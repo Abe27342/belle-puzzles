@@ -226,8 +226,9 @@ Authorized SSE invalidations at `/guilds/:guildId/hunts/:huntId/changes` and
 reconnection handling are proposed follow-up work, not registered routes.
 The [decision record, sections 12-13](ARCHITECTURE_DECISIONS.md#12-change-notification-architectures)
 compares polling, PostgreSQL-backed SSE, and managed fan-out, and evaluates SQL
-organization/type-generation alternatives. These are proposals, not implemented
-notification infrastructure or a selected query tool.
+organization/type-generation alternatives. SSE plus PostgreSQL `LISTEN` is now the
+user-selected direction. The protocol below remains a proposal, not implemented
+notification infrastructure; no query tool has been selected.
 
 The shared model may expose synchronous mutations over an optimistic projection:
 the latest committed snapshot with pending semantic commands reapplied. Local
@@ -254,6 +255,146 @@ Do not continue interpreting low-level Fluid deltas on this path. Its renderers
 can use the same snapshot projection without depending on React. Integration
 workers belong to the application service, not specifically the Discord gateway
 process; initial cohosting does not require keeping those responsibilities coupled.
+
+## Proposed change notification protocol
+
+**Status:** Protocol proposal for the user-confirmed SSE plus PostgreSQL `LISTEN`
+architecture. No route, subscription client, or reconnection behavior is
+implemented by this specification.
+
+Keep snapshot reads and command submission unchanged. Add one observation-only
+stream per hunt, with one application event type: `revision`. Its first message
+also serves as the initial synchronization handshake; no separate ready, reset,
+snapshot, or command-acknowledgement events are needed.
+
+### Wire shape
+
+```http
+GET /guilds/:guildId/hunts/:huntId/changes
+Authorization: Bearer <Discord OAuth token>
+Accept: text/event-stream
+```
+
+Trusted processes use the existing `Authorization: Service <credential>` scheme.
+Use fetch-based streaming so both authorization schemes work without credentials
+in URLs or a new cookie policy. Apply the existing guild/hunt ownership checks
+and CORS allowlist.
+
+```text
+HTTP/1.1 200 OK
+Content-Type: text/event-stream; charset=utf-8
+Cache-Control: no-store, no-transform
+
+event: revision
+data: {"huntId":"00000000-0000-4000-8000-000000000001","revision":42}
+
+: keepalive
+
+event: revision
+data: {"huntId":"00000000-0000-4000-8000-000000000001","revision":45}
+
+```
+
+Each frame ends with a blank line. The JSON payload reuses the existing database
+hint shape: `huntId` is the requested UUID and `revision` is a nonnegative safe
+integer. Validate it with a shared Zod schema and check the requested scope.
+Additional payload fields may be ignored, as with existing response schemas.
+SSE comments are transport keepalives, not model changes. Flush complete frames
+promptly rather than buffering the whole HTTP response.
+
+A revision message means **the hunt has committed at least this revision**.
+Messages may skip revisions or coalesce many changes; they contain neither
+document patches nor durable integration work. There are no SSE `id` fields,
+replay cursors, `Last-Event-ID` semantics, or client acknowledgements. Recover by
+reading current state, not by requesting missing messages.
+
+### Subscription ordering and recovery
+
+Before accepting subscriptions, establish and commit the replica's dedicated
+database `LISTEN`. For each connection:
+
+1. Authenticate and register the scoped subscriber, buffering only its highest
+   notified revision while initializing.
+2. Read the current revision with both hunt ID and guild ID predicates. Return
+   the existing JSON 404 response if the hunt does not belong to that guild.
+3. Begin the 200 stream and send the higher of the read revision and any buffered
+   notification. Thereafter send only increasing revisions for that connection.
+
+This closes the read/subscribe race without a replay log. Clients may load the
+ordinary snapshot first, then connect: a commit in between appears in the first
+revision message or a subsequent one. Reconnecting to any replica uses the same
+procedure. Slow subscribers need only a bounded high-water mark, not a growing
+event queue; close the stream if its transport buffer cannot drain.
+
+If the database listener fails, close its affected streams and log the cause.
+Reject new streams with a transient 503 until listening is restored. Do not keep
+sending heartbeats on a stream whose change source is known to be disconnected.
+If this happens during initialization, abort that subscription rather than
+finishing its handshake.
+
+### Applying notifications to a model
+
+Track the highest announced revision. If `committedSnapshot.revision` is already
+at least that value, no read is needed. Otherwise mark a refresh needed and
+coalesce notifications into one outstanding queued refresh. A command response
+may catch the model up without an additional read. Continue consuming the stream
+while waiting for the model queue.
+
+The current `refresh()` promise describes batch settlement, not completion of
+one refresh operation. In particular, a rejected promise while a command is
+uncertain does not remove its queued refresh. The implementation must coalesce
+against the actual queue, retain the dirty revision while paused, and avoid
+repeatedly enqueueing refreshes in response to that rejection.
+
+Never install a snapshot directly from this path, retire a command because of a
+revision hint, or automatically call `retryPending()`. A command with an uncertain
+outcome still pauses the existing queue; the model can remain behind the announced
+revision until that command is resolved. Connection/freshness state must remain
+separate from pending-edit/commit state. Neither a stream message nor a stream
+error proves that a pending mutation succeeded or failed.
+
+### Connection lifetime and failures
+
+Before streaming begins, use the existing JSON error envelope and status codes.
+Once 200 headers have been sent, log server failures and close the connection;
+do not insert an ordinary JSON error response into the SSE body.
+
+| Condition | Client behavior |
+| --- | --- |
+| Normal EOF, network interruption, 429, or 5xx | Reconnect with capped backoff and jitter; the new first revision detects missed changes. Honor `Retry-After` when supplied, exposing that header through CORS. |
+| 401 | Pause observation attempts until the authentication layer obtains valid credentials. |
+| 403 or 404 | Stop automatic observation attempts for this scope and surface the error; do not silently switch hunts. |
+| Malformed known event, wrong hunt ID, or unexpected successful response type | Surface a protocol error and stop automatic retries until explicitly restarted. |
+| Page/model disposal or scope change | Abort the old stream without reconnecting. |
+
+Ignore comments and unrecognized event names for forward compatibility, but
+do not silently discard malformed `revision` messages. Read credentials again
+for every connection. Reconnection applies to observation requests only, not
+automatic retries of mutation requests.
+
+Suggested implementation defaults, not additional wire fields: a keepalive every
+15 seconds, a 45-second no-data watchdog, planned stream rotation after about
+180 seconds, and failure backoff growing from about 1 to 30 seconds with jitter.
+These bound authorization lifetime and accommodate the documented Container Apps
+request timeout; verify proxy streaming behavior before deployment. The existing
+30-second REST request timeout must not be applied to the stream. Also coalesce
+snapshot safety refreshes about once a minute while the page is visible and on
+focus/network recovery, so a missed hint cannot leave a client permanently stale.
+
+### Bot and worker scope
+
+A bot model uses this same protocol. An integration worker may use the stream or
+direct database `LISTEN` as a wake-up source, but must scan durable jobs/events on
+startup, on a wake-up, and when retries become due. Even an unchanged initial
+revision may accompany unfinished integration work. Revision messages are never
+work claims or delivery acknowledgements; private worker claim/acknowledgement
+contracts remain separate.
+
+The stream follows the explicit hunt ID, not changes to a guild's active-hunt
+selection. A guild-wide selection feed or multi-hunt multiplexing is outside
+this first protocol.
+
+Reference: [standard SSE framing](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events).
 
 ## Local model evaluation
 

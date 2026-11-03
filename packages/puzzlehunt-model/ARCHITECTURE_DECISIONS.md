@@ -266,7 +266,9 @@ for the legacy non-strict TypeScript build without weakening runtime validation.
 
 ## 12. Change notification architectures
 
-**Status:** Proposal for user review, not implemented or a confirmed selection.
+**Status:** SSE plus PostgreSQL `LISTEN` selected by the user. The
+[wire protocol](DATABASE_MODEL.md#proposed-change-notification-protocol) is a
+proposal for review; notification delivery is not implemented.
 
 Separate two requirements: open webpages need to learn that their snapshot is
 stale; Discord/Google synchronization must eventually perform durable work even
@@ -277,10 +279,10 @@ remain authoritative.
 | Architecture | Webpage updates | Integration worker updates | Trade-off |
 | --- | --- | --- | --- |
 | Polling only | Periodically queue a snapshot refresh; also refresh on focus/reconnect. | Poll due durable jobs/events at startup and on a timer. | Fewest moving parts and no extra infrastructure, but either seconds of latency or frequent idle requests. An optional new revision-only endpoint could avoid sending unchanged snapshots. |
-| PostgreSQL `LISTEN` plus application SSE | Each service replica listens for committed hints and fans out `{ huntId, revision }` to its authorized HTTP subscribers. | An in-process worker shares the wake-up source; a separate trusted worker can have its own listener. Both also scan durable work. | Recommended for the current low-usage, low-latency target: no additional managed service, but the application owns streaming connections and listener recovery. |
+| PostgreSQL `LISTEN` plus application SSE | Each service replica listens for committed hints and fans out `{ huntId, revision }` to its authorized HTTP subscribers. | An in-process worker shares the wake-up source; a separate trusted worker can have its own listener. Both also scan durable work. | Selected for the current low-usage, low-latency target: no additional managed service, but the application owns streaming connections and listener recovery. |
 | Managed fan-out, such as Azure Web PubSub | The service authorizes hunt-scoped subscriptions; a publisher sends revision hints through the managed service. | Still consume durable jobs/events, directly or through a separately designed durable queue. | Offloads connection management and scaling, but adds infrastructure, authorization, a reliable publisher, and cost. Not automatically transactional with PostgreSQL. |
 
-**Recommended flow:** retain REST for reads/commands, use server-to-client
+**Selected flow:** retain REST for reads/commands, use server-to-client
 invalidation messages, and keep integrations independent of browser sessions.
 
 ```mermaid
@@ -303,14 +305,16 @@ process-local events alone would miss writes handled by another replica or
 worker.
 
 For browsers, propose an authorized, hunt-scoped `/changes` stream carrying only
-revision hints. Attach the subscription before the initial refresh; establish and
-commit database `LISTEN` before reading the baseline. Coalesce hints and feed them
-through the model's existing queued `refresh()`, rather than installing snapshots
-outside its pending-command pipeline. Reconnects, page focus, listener recovery,
-and a low-frequency safety refresh re-read current state; they do not depend on
-replaying missed hints. After reconnecting the database listener, resynchronize
-all affected open subscriptions. Disconnect slow clients instead of buffering an
-unbounded notification history.
+revision hints. Establish and commit database `LISTEN`, then attach the
+server-side subscription before reading its initial revision. This first message
+also closes the race when a client loads its snapshot before opening the stream.
+Coalesce hints and feed them through the model's existing queued `refresh()`,
+rather than installing snapshots outside its pending-command pipeline. Reconnects
+receive a fresh revision baseline; page focus and low-frequency safety refreshes
+also re-read current state. Recovery does not depend on replaying missed hints.
+On database-listener failure, close affected streams so that reconnecting clients
+receive a fresh baseline after listening resumes. Disconnect slow clients instead
+of buffering an unbounded notification history.
 
 Use a fetch-based SSE client to retain the current bearer-token authorization;
 native browser `EventSource` cannot set the required Authorization header. Do not
@@ -341,7 +345,7 @@ and publish. It does not replace the integration jobs/events or provide exactly
 once external effects. Scaling the publisher to zero also requires an explicit
 reliable wake-up/recovery mechanism, not reliance on an absent database listener.
 
-The recommended option remains fully locally testable with PostgreSQL and HTTP,
+The selected option remains fully locally testable with PostgreSQL and HTTP,
 without an Azure dependency. Future notification tests should exercise multiple
 service replicas, subscription/read races, disconnected clients/listeners, and
 worker restart recovery. No such application suite is added in this checkpoint.
