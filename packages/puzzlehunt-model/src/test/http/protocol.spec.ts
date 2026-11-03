@@ -37,15 +37,20 @@ describe('Hunt HTTP protocol', () => {
 			],
 		},
 		{ type: 'delete', nodeId },
-		{ type: 'rename', nodeId, name: 'Renamed' },
-		{ type: 'set-url', nodeId, url: 'https://example.test/puzzle' },
+		{ type: 'set-property', property: 'name', nodeId, value: 'Renamed' },
+		{
+			type: 'set-property',
+			property: 'url',
+			nodeId,
+			value: 'https://example.test/puzzle',
+		},
 		{ type: 'move', nodeId, parentId: null },
-		{ type: 'solve', nodeId, answer: 'ANSWER' },
-		{ type: 'unsolve', nodeId },
-		{ type: 'set-status', nodeId, status: null },
-		{ type: 'set-status', nodeId, status: 'Working' },
-		{ type: 'set-sheet', nodeId, sheetId: null },
-		{ type: 'set-sheet', nodeId, sheetId: 'sheet' },
+		{ type: 'set-property', property: 'answer', nodeId, value: 'ANSWER' },
+		{ type: 'set-property', property: 'answer', value: null, nodeId },
+		{ type: 'set-property', property: 'status', nodeId, value: null },
+		{ type: 'set-property', property: 'status', nodeId, value: 'Working' },
+		{ type: 'set-property', property: 'sheetId', nodeId, value: null },
+		{ type: 'set-property', property: 'sheetId', nodeId, value: 'sheet' },
 	])('decodes the public $type command', (command) => {
 		expect(decodeHuntCommandRequest({ commandId, command })).toEqual({
 			commandId,
@@ -57,15 +62,76 @@ describe('Hunt HTTP protocol', () => {
 		null,
 		[],
 		{ commandId, command: null },
+		{ commandId },
 		{ commandId: 'not-a-uuid', command: { type: 'delete', nodeId } },
-		{ commandId, guildId: 'other', command: { type: 'delete', nodeId } },
-		{ commandId, command: { type: 'set-discord', nodeId, discord: null } },
+		{ commandId, command: { type: 'move', nodeId } },
 		{
 			commandId,
-			command: { type: 'solve', nodeId, answer: 'A', serverTime: 123 },
+			command: {
+				type: 'add',
+				nodes: [{ id: nodeId, type: 'round', name: '', url: '' }],
+			},
 		},
-		{ commandId, command: { type: 'set-status', nodeId } },
-		{ commandId, command: { type: 'rename', nodeId, name: 7 } },
+		{
+			commandId,
+			command: {
+				type: 'set-property',
+				nodeId,
+				property: 'parentId',
+				value: null,
+			},
+		},
+		{
+			commandId,
+			command: {
+				type: 'set-property',
+				nodeId,
+				property: 'name',
+				value: null,
+			},
+		},
+		{
+			commandId,
+			command: {
+				type: 'set-property',
+				nodeId,
+				property: 'status',
+				value: false,
+			},
+		},
+		{ commandId, guildId: 'other', command: { type: 'delete', nodeId } },
+		{
+			commandId,
+			command: {
+				type: 'set-property',
+				property: 'discord',
+				nodeId,
+				value: null,
+			},
+		},
+		{
+			commandId,
+			command: {
+				type: 'set-property',
+				property: 'answer',
+				nodeId,
+				value: 'A',
+				serverTime: 123,
+			},
+		},
+		{
+			commandId,
+			command: { type: 'set-property', property: 'status', nodeId },
+		},
+		{
+			commandId,
+			command: {
+				type: 'set-property',
+				property: 'name',
+				nodeId,
+				value: 7,
+			},
+		},
 		{
 			commandId,
 			command: {
