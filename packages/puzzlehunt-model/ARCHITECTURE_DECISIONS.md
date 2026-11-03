@@ -2,7 +2,8 @@
 
 This is a reviewable record for the opt-in prototype, not authorization to switch
 existing Fluid consumers. Entries distinguish user-confirmed direction from
-implementation choices made here. Tooling and production authentication remain open.
+implementation choices made here. Tooling and deployment remain open; the initial
+HTTP authorization policy is recorded below.
 
 ## 1. Keep the domain and its adapters in the model package
 
@@ -10,8 +11,8 @@ implementation choices made here. Tooling and production authentication remain o
 
 The model package owns domain commands, snapshots, projections, the PostgreSQL
 adapter, its schema, and its tests. Use separate `document` and server-only
-`postgres` entry points, rather than another workspace package or a dependency on
-the bot. The schema is an exported SQL asset; applying it is explicit.
+`postgres` entry points, rather than another domain/store workspace package or a
+dependency on the bot. The schema is an exported SQL asset; applying it is explicit.
 
 The PostgreSQL adapter still accepts an injected connection pool. Moving it
 changes no transaction, receipt, outbox, or graph-validation behavior. Existing
@@ -105,8 +106,9 @@ independent edits proceed. Failures remain inspectable until `clearFailures()`.
 A non-domain failure has an uncertain commit result: retain the original command
 ID/payload, pause the queue, expose the error, and resume through `retryPending()`.
 Do not silently regenerate IDs, discard unknown outcomes, or automatically retry
-forever. HTTP adapters will need to translate explicit server rejections into the
-domain error contract; their authentication/error protocol is still deferred.
+forever. The HTTP adapter now translates matching explicit server rejections into
+the domain error contract, including authorization failures. Malformed responses
+and 5xx responses never count as proof of rejection.
 
 **Trade-off:** A slow/uncertain write also delays this model's refreshes. This is
 the simpler initial protocol, not a fully disconnected editor. `flush()` confirms
@@ -159,3 +161,61 @@ source tests only, preventing a build's emitted tests from running again.
 A test-only declaration re-exports `embedded-postgres`' own types for the repository's
 legacy TypeScript Node resolver. It avoids duplicating its API or changing every
 package's module-resolution strategy.
+
+## 8. Add an HTTP transport and an independently hosted application service
+
+**Status:** Implemented; guild-member access and a separate trusted-bot credential
+were explicitly confirmed by the user. Package layout and wire details are
+implementation choices.
+
+The model's browser-safe `http` entry point implements `HuntDocumentClient`.
+`PuzzlehuntModel` remains the only optimistic command facade; HTTP introduces no
+second domain implementation. Tokens are obtained per request. There are no
+automatic retries, cookies, redirect following, or change subscriptions.
+
+`packages/puzzlehunt-service` owns the Express host, production PostgreSQL pool,
+Discord authorization, startup configuration, and shutdown. It depends on the
+existing model/store entry points, never the Discord gateway bot. This separate
+executable can run in a Container App without making the bot a required host.
+Existing bot/site Fluid paths are not switched.
+
+Any current Discord guild member may read and edit that guild's hunts through an
+OAuth token with the existing `guilds` scope. Trusted-bot requests use a separate
+service credential and `Service` authorization scheme, distinct from OAuth
+`Bearer` tokens so invalid service keys are never forwarded to Discord. The
+service checks the configured bot's guild access with
+Discord rather than trusting a client-supplied guild assertion. The URL scopes
+authorization, and the database independently checks hunt ownership. Public JSON
+cannot change ownership/configuration or invoke worker-only commands.
+
+Expose active selection at `/guilds/:guildId/hunts/active`, returning a snapshot,
+instead of changing the old Fluid-context endpoint. Snapshot reads and command
+submissions have scoped GET/POST routes. JSON decoding and a 1 MiB request limit
+sit before the typed store. Commands return only after commit.
+
+Only recognized JSON rejection envelopes with matching 4xx statuses are
+definitive. Authentication/authorization failures join the existing
+`HuntCommandError` contract, so rollback/rebasing needs no HTTP-specific model
+branch. Network failures, timeouts, invalid snapshots/receipts, and all 5xx
+responses retain the pending command and its original ID, because commit status
+can be unknown. Unexpected server errors are logged, not returned verbatim.
+
+## 9. Preserve a local application test seam without adding that suite yet
+
+**Status:** User-confirmed priority; application tests explicitly deferred by the user.
+
+The executable composes the exported `createPuzzlehuntApp` factory with a real
+store and Discord authorizer. The factory has no environment, listen, or database
+startup side effects. A future test host can inject a disposable local PostgreSQL
+pool through the store and substitute the authorizer, then use an ephemeral
+loopback HTTP port with the real client. No production authentication bypass or
+automatic database reset is introduced. The shared PostgreSQL fixture resolves
+the schema's package export, so source and compiled test hosts use the same asset.
+
+Discord membership checks require network access in production. Substituting
+that boundary is necessary for deterministic, fully local application tests;
+there is no other known architectural obstacle. The existing model/service
+contract suite remains unchanged. New tests cover the protocol, transport, and
+authorization/configuration functions, not a local HTTP-plus-database application
+suite. Notifications/reconnection, external workers, consumer cutover, provisioning,
+and deployment remain separate follow-up work.

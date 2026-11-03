@@ -20,6 +20,10 @@
 			"types": "./dist/model/index.d.ts",
 			"default": "./dist/model/index.js"
 		},
+		"./http": {
+			"types": "./dist/http/index.d.ts",
+			"default": "./dist/http/index.js"
+		},
 		"./fluid": {
 			"types": "./dist/fluid/index.d.ts",
 			"default": "./dist/fluid/index.js"
@@ -30,6 +34,7 @@
 		"*": {
 			"document": ["dist/document.d.ts"],
 			"model": ["dist/model/index.d.ts"],
+			"http": ["dist/http/index.d.ts"],
 			"fluid": ["dist/fluid/index.d.ts"],
 			"postgres": ["dist/postgres/index.d.ts"]
 		}

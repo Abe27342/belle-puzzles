@@ -4,7 +4,8 @@
 
 This is an opt-in foundation, not a cutover. The existing Fluid exports, bot
 commands, Discord event handlers, website components, and pinned hunt-context
-messages remain unchanged. No database connection is opened at startup.
+messages remain unchanged. Their startup opens no new database connection; only
+the explicitly started application service connects to PostgreSQL.
 
 Implemented:
 
@@ -19,7 +20,12 @@ Implemented:
   point: scoped reads and serialized transactional
   commands, retry receipts, durable integration intent, and conditional
   reconciliation acknowledgement. Its injected pool is a structural subset of
-  `pg.Pool`; a production driver/bootstrap is deliberately not wired yet.
+  `pg.Pool`.
+- A browser-safe `http` adapter for that same `HuntDocumentClient` interface,
+  plus the independent `packages/puzzlehunt-service` Express executable with
+  a PostgreSQL pool, scoped routes, JSON validation, Discord authorization,
+  and graceful shutdown. See [the service guide](../puzzlehunt-service/README.md)
+  for configuration and usage.
 - An initial PostgreSQL schema in `packages/puzzlehunt-model/src/postgres/schema.sql`, exercised
   with an ephemeral in-memory PGlite database. PGlite is a test dependency, not the
   proposed production database. This revises the initial, unapplied schema;
@@ -28,10 +34,12 @@ Implemented:
   ordering service and a disposable, multi-connection PostgreSQL service, plus
   focused optimistic-client and authoritative concurrency tests.
 
-Not implemented: HTTP routes/JSON decoding, authentication policy, React bindings,
-SSE delivery, external integration workers, hunt provisioning/import, database
-migration tooling, and deployment. These must be completed before enabling the
-new path. The independent Fluid export format is not a dependency or this schema.
+Not implemented: React bindings, SSE delivery/reconnection, external integration
+workers, hunt provisioning/import, database migration tooling, and deployment.
+Local HTTP-plus-database application tests are intentionally deferred; the app
+factory preserves injectable database and authorization boundaries for them.
+These follow-up pieces remain prerequisites for production cutover. The independent
+Fluid export format is not a dependency or this schema.
 
 See [the architectural decision record](ARCHITECTURE_DECISIONS.md) for package
 boundaries, the optimistic model direction, and the local-service test strategy.
@@ -175,9 +183,9 @@ await model.flush(); // confirmation, not a fire-and-forget write
 stopListening();
 ```
 
-`client` implements the existing `HuntDocumentClient`; it may be a local store or,
-once implemented, an authenticated HTTP adapter. Public model code imports no
-PostgreSQL or Fluid implementation. `committedSnapshot` remains authoritative;
+`client` implements the existing `HuntDocumentClient`; it may be a local store or
+the authenticated `HttpHuntDocumentClient` from the `http` entry point. Public
+model code imports no PostgreSQL or Fluid implementation. `committedSnapshot` remains authoritative;
 `view` includes provisional changes, and `isPending`/`pendingChanges` distinguish
 them. Definitive failures roll back and stay in `failures`; dependent edits fail
 explicitly and independent edits survive. Unknown outcomes pause with the
@@ -185,23 +193,33 @@ original command ID for `retryPending()`. `refresh()` shares the command queue t
 avoid applying accepted pending commands twice. See the decision record for this
 simple protocol's latency trade-off and the legacy Fluid adapter's semantics.
 
-Proposed authenticated routes, deliberately not yet registered:
+Authenticated routes in the opt-in application service:
 
 | Route | Contract |
 | --- | --- |
-| `GET /guilds/:guildId/puzzlehunt` | Resolve `active_hunts` to stable hunt identity and metadata; gate this response for the new path so existing Fluid clients remain compatible. |
-| `GET /guilds/:guildId/hunts/:huntId` | Return `HuntSnapshot`; optionally use revision as an ETag. |
+| `GET /guilds/:guildId/hunts/active` | Resolve `active_hunts` and return its `HuntSnapshot`; leave the existing Fluid-context endpoint unchanged. |
+| `GET /guilds/:guildId/hunts/:huntId` | Return `HuntSnapshot`. |
 | `POST /guilds/:guildId/hunts/:huntId/commands` | Accept `HuntCommandRequest`; return `HuntCommandResult` after commit. |
-| `GET /guilds/:guildId/hunts/:huntId/changes` | Authorized SSE invalidations with hunt ID and revision, not a generic op stream. |
 
-The HTTP boundary must decode/validate unknown JSON, enforce size/batch limits
-and the public command allowlist, and authorize both identity and permitted
-command kinds. The model's typed invariant checker is not a JSON decoder.
+The separate service's Discord authorizer permits reads and edits by current
+guild members using OAuth tokens with the existing `guilds` scope. Optional
+trusted-bot credentials are separate from Discord tokens and limited by the
+configured bot's guild access. This policy was explicitly confirmed by the user.
+
+The HTTP boundary decodes/validates unknown JSON, enforces a 1 MiB request limit
+and the public command allowlist, and authorizes before invoking the store.
+The model's typed invariant checker is not a JSON decoder.
 The store's guild predicate is defense in depth, not authentication. Never accept
 the guild, active-hunt selection, configuration, or integration-only commands from
 freely editable document JSON. Map domain errors to user-facing 400/404/409
-responses, propagate other errors explicitly, and do not report success until
-the transaction commits.
+responses, and authentication failures to 401/403. Propagate other errors explicitly
+and do not report success until the transaction commits. The client treats
+network failures, invalid responses, and 5xx results as uncertain, keeping the
+original command ID. Only matching explicit API rejection envelopes allow rollback.
+
+All responses use `Cache-Control: no-store`; there is no ETag/cache protocol yet.
+Authorized SSE invalidations at `/guilds/:guildId/hunts/:huntId/changes` and
+reconnection handling are proposed follow-up work, not registered routes.
 
 The shared model may expose synchronous mutations over an optimistic projection:
 the latest committed snapshot with pending semantic commands reapplied. Local

@@ -1,4 +1,5 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -55,7 +56,9 @@ export async function startLocalPostgres() {
 		started = true;
 		await pool.query(
 			await readFile(
-				new URL('../../postgres/schema.sql', import.meta.url),
+				createRequire(import.meta.url).resolve(
+					'@belle-puzzles/puzzlehunt-model/postgres/schema.sql'
+				),
 				'utf8'
 			)
 		);

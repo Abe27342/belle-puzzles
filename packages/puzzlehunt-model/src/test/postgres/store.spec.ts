@@ -101,6 +101,26 @@ afterAll(async () => {
 });
 
 describe('PostgreSQL hunt store', () => {
+	it('resolves an active hunt and its document within the requested guild', async () => {
+		await seed();
+		await database.query(
+			'INSERT INTO active_hunts (guild_id, hunt_id) VALUES ($1, $2)',
+			[scope.guildId, scope.huntId]
+		);
+		expect(await store.readActive(scope.guildId)).toEqual(
+			await store.read(scope)
+		);
+		await expect(store.readActive('other-guild')).rejects.toMatchObject({
+			code: 'not-found',
+		});
+	});
+
+	it('reports a missing active selection rather than choosing an arbitrary hunt', async () => {
+		await expect(store.readActive(scope.guildId)).rejects.toMatchObject({
+			code: 'not-found',
+		});
+	});
+
 	it('commits overlapping adds and independent assignments without replacing stale documents', async () => {
 		await seed();
 		await Promise.all([

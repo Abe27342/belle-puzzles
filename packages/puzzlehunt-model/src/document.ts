@@ -149,9 +149,15 @@ export type HuntDocumentEvent =
 	| { readonly type: 'puzzle-solved'; readonly node: DocumentPuzzle }
 	| { readonly type: 'puzzle-status-updated'; readonly node: DocumentPuzzle };
 
+/** A definitive rejection, not an uncertain transport or commit failure. */
 export class HuntCommandError extends Error {
 	constructor(
-		public readonly code: 'invalid-command' | 'not-found' | 'conflict',
+		public readonly code:
+			| 'invalid-command'
+			| 'not-found'
+			| 'conflict'
+			| 'unauthorized'
+			| 'forbidden',
 		message: string
 	) {
 		super(message);

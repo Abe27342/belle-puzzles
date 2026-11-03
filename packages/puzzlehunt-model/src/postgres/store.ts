@@ -131,16 +131,18 @@ function snapshotFromRow(row: HuntRow): HuntSnapshot {
 	};
 }
 
+const snapshotQuery = `SELECT h.id, h.guild_id, h.name, h.schema_version, h.revision::text, h.configuration,
+	(SELECT COALESCE(jsonb_agg(n ORDER BY n.id), '[]'::jsonb)
+	 FROM hunt_nodes n WHERE n.hunt_id = h.id) AS nodes
+	FROM hunts h`;
+
 async function readSnapshot(
 	connection: HuntDatabaseConnection,
 	scope: HuntScope
 ): Promise<HuntSnapshot> {
 	// One statement keeps hunt metadata and node rows on the same MVCC snapshot.
 	const { rows } = await connection.query<HuntRow>(
-		`SELECT h.id, h.guild_id, h.name, h.schema_version, h.revision::text, h.configuration,
-		 (SELECT COALESCE(jsonb_agg(n ORDER BY n.id), '[]'::jsonb)
-		  FROM hunt_nodes n WHERE n.hunt_id = h.id) AS nodes
-		 FROM hunts h WHERE h.id = $1 AND h.guild_id = $2`,
+		`${snapshotQuery} WHERE h.id = $1 AND h.guild_id = $2`,
 		[scope.huntId, scope.guildId]
 	);
 	if (rows.length === 0) {
@@ -221,6 +223,31 @@ function validateScope(scope: HuntScope): void {
 
 export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 	constructor(private readonly pool: HuntDatabasePool) {}
+
+	/** Resolve selection and document in one MVCC snapshot, after guild authorization. */
+	public async readActive(guildId: string): Promise<HuntSnapshot> {
+		if (!guildId) {
+			throw new HuntCommandError('invalid-command', 'Invalid guild ID.');
+		}
+		const connection = await this.pool.connect();
+		try {
+			const { rows } = await connection.query<HuntRow>(
+				`${snapshotQuery}
+				 JOIN active_hunts a ON a.hunt_id = h.id AND a.guild_id = h.guild_id
+				 WHERE a.guild_id = $1`,
+				[guildId]
+			);
+			if (rows.length === 0) {
+				throw new HuntCommandError(
+					'not-found',
+					'No active hunt in this guild.'
+				);
+			}
+			return snapshotFromRow(rows[0]);
+		} finally {
+			connection.release();
+		}
+	}
 
 	/** The caller must authorize the guild/hunt scope before invoking the store. */
 	public async read(scope: HuntScope): Promise<HuntSnapshot> {
