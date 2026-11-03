@@ -224,6 +224,10 @@ original command ID. Only matching explicit API rejection envelopes allow rollba
 All responses use `Cache-Control: no-store`; there is no ETag/cache protocol yet.
 Authorized SSE invalidations at `/guilds/:guildId/hunts/:huntId/changes` and
 reconnection handling are proposed follow-up work, not registered routes.
+The [decision record, sections 12-13](ARCHITECTURE_DECISIONS.md#12-change-notification-architectures)
+compares polling, PostgreSQL-backed SSE, and managed fan-out, and evaluates SQL
+organization/type-generation alternatives. These are proposals, not implemented
+notification infrastructure or a selected query tool.
 
 The shared model may expose synchronous mutations over an optimistic projection:
 the latest committed snapshot with pending semantic commands reapplied. Local

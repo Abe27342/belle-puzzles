@@ -263,3 +263,130 @@ the validation cause, never a definitive rejection of a possibly committed edit.
 Readable domain interfaces remain independent of Zod, with schema output types
 checked against them. Explicit nullable schema types preserve required fields
 for the legacy non-strict TypeScript build without weakening runtime validation.
+
+## 12. Change notification architectures
+
+**Status:** Proposal for user review, not implemented or a confirmed selection.
+
+Separate two requirements: open webpages need to learn that their snapshot is
+stale; Discord/Google synchronization must eventually perform durable work even
+when no webpage or worker was connected at the time of a change. Neither requires
+streaming every model operation. The committed snapshot and integration tables
+remain authoritative.
+
+| Architecture | Webpage updates | Integration worker updates | Trade-off |
+| --- | --- | --- | --- |
+| Polling only | Periodically queue a snapshot refresh; also refresh on focus/reconnect. | Poll due durable jobs/events at startup and on a timer. | Fewest moving parts and no extra infrastructure, but either seconds of latency or frequent idle requests. An optional new revision-only endpoint could avoid sending unchanged snapshots. |
+| PostgreSQL `LISTEN` plus application SSE | Each service replica listens for committed hints and fans out `{ huntId, revision }` to its authorized HTTP subscribers. | An in-process worker shares the wake-up source; a separate trusted worker can have its own listener. Both also scan durable work. | Recommended for the current low-usage, low-latency target: no additional managed service, but the application owns streaming connections and listener recovery. |
+| Managed fan-out, such as Azure Web PubSub | The service authorizes hunt-scoped subscriptions; a publisher sends revision hints through the managed service. | Still consume durable jobs/events, directly or through a separately designed durable queue. | Offloads connection management and scaling, but adds infrastructure, authorization, a reliable publisher, and cost. Not automatically transactional with PostgreSQL. |
+
+**Recommended flow:** retain REST for reads/commands, use server-to-client
+invalidation messages, and keep integrations independent of browser sessions.
+
+```mermaid
+flowchart LR
+    Clients["Web / Discord command handlers"] -->|REST commands| API["puzzlehunt-service"]
+    API -->|Transaction| DB[("PostgreSQL state + jobs/events")]
+    DB -.->|Committed revision hint| API
+    API -->|Authenticated SSE| Views["Open webpage models"]
+    DB -.->|Wake-up hint| Worker["Integration worker"]
+    Worker -->|Read / claim / conditional acknowledgement| DB
+    Worker -->|Reconcile| External["Discord / Google"]
+```
+
+The store already commits `pg_notify('hunt_changed', ...)` with state and
+integration intent. PostgreSQL delivers those notifications after commit to all
+currently listening sessions. Each application replica needs one dedicated,
+session-affine listener connection, not one database connection per browser and
+not a transaction-pooled connection. This supports fan-out across replicas;
+process-local events alone would miss writes handled by another replica or
+worker.
+
+For browsers, propose an authorized, hunt-scoped `/changes` stream carrying only
+revision hints. Attach the subscription before the initial refresh; establish and
+commit database `LISTEN` before reading the baseline. Coalesce hints and feed them
+through the model's existing queued `refresh()`, rather than installing snapshots
+outside its pending-command pipeline. Reconnects, page focus, listener recovery,
+and a low-frequency safety refresh re-read current state; they do not depend on
+replaying missed hints. After reconnecting the database listener, resynchronize
+all affected open subscriptions. Disconnect slow clients instead of buffering an
+unbounded notification history.
+
+Use a fetch-based SSE client to retain the current bearer-token authorization;
+native browser `EventSource` cannot set the required Authorization header. Do not
+put OAuth/service credentials in stream URLs. Authorize the requested hunt/guild,
+refresh credentials on reconnect, and bound stream authorization lifetimes.
+Azure Container Apps documents a 240-second HTTP request timeout: verify actual
+streaming/proxy behavior locally and in the deployment, and support bounded
+streams/reconnects rather than assuming an indefinite connection. Heartbeats are
+not a substitute for handling a total request timeout. Long polling is a viable
+transport alternative using the same listener/fan-out architecture. WebSockets
+also work, but bidirectional transport is unnecessary while commands remain REST.
+Long-lived open requests can keep application replicas active; do not assume
+scale-to-zero savings while clients are connected.
+
+Workers must scan pending jobs/events on startup and periodically, including
+retries whose `available_at` becomes due without a new notification. Wake-up hints
+only reduce latency. Reconcile current desired state and conditionally acknowledge
+the exact generation; preserve distinct lifecycle/log events. Leases, retry
+scheduling, and external-effect recovery still need implementation. A separately
+hosted worker can access this through trusted server-side database access or new
+private claim/acknowledgement endpoints; the public model API is not that worker
+API. If the Discord gateway process also holds a model for commands, it can use
+the same scoped invalidation stream as the webpage.
+
+Managed fan-out likewise needs a durable outbox publisher/retry path: publishing
+after commit alone can lose a notification if the process exits between commit
+and publish. It does not replace the integration jobs/events or provide exactly
+once external effects. Scaling the publisher to zero also requires an explicit
+reliable wake-up/recovery mechanism, not reliance on an absent database listener.
+
+The recommended option remains fully locally testable with PostgreSQL and HTTP,
+without an Azure dependency. Future notification tests should exercise multiple
+service replicas, subscription/read races, disconnected clients/listeners, and
+worker restart recovery. No such application suite is added in this checkpoint.
+
+References: PostgreSQL [LISTEN](https://www.postgresql.org/docs/current/sql-listen.html)
+and [NOTIFY](https://www.postgresql.org/docs/current/sql-notify.html);
+[Container Apps ingress](https://learn.microsoft.com/en-us/azure/container-apps/ingress-overview);
+[Azure Web PubSub](https://learn.microsoft.com/en-us/azure/azure-web-pubsub/overview).
+
+## 13. SQL organization and TypeScript tooling
+
+**Status:** Evaluation requested by the user; no query tool or ORM adopted.
+
+Parameterized SQL in a PostgreSQL adapter is idiomatic `node-postgres`, not an
+architectural problem. Query text is static and values use `$1`, `$2`, etc.; the
+current code does not concatenate user input into SQL. Keeping transaction and
+locking behavior explicit is useful here. Moving query text to another file does
+not itself make it safer or type checked.
+
+The current weakness is manual duplication: `query<HuntRow>(...)` tells TypeScript
+what rows to assume; it does not check the SQL, selected columns, parameter types,
+or nullability against PostgreSQL. The following are reasonable alternatives:
+
+| Pattern | Source of truth and benefit | Cost |
+| --- | --- | --- |
+| SQL files with PgTyped | Keep SQL DDL and named SQL queries; generate parameter/result types by checking queries against a local database. Removes long SQL strings from application control flow. | Adds a reproducible generation/check step against an applied schema. |
+| Kysely with database type generation | Keep SQL DDL; introspect it into TypeScript database types, then express most queries in a typed query builder. | Adds a query API and generation step; PostgreSQL-specific operations may still use SQL fragments. |
+| Drizzle | Declare tables/constraints in TypeScript, infer query types, and generate migrations from that schema. | Changes the schema-authoring workflow; generated columns, composite constraints, partial indexes, and locking semantics still require deliberate verification. |
+| Keep `pg`, extract named queries/modules | Smallest organizational change; no new query abstraction. | Does not address unchecked handwritten parameter/result types by itself. |
+
+For the current SQL-first prototype, prefer evaluating **SQL files with PgTyped**
+first if the concern is embedded SQL and repeated types. Choose **Kysely plus
+code generation** instead if TypeScript query composition is the desired
+experience. Drizzle is worth considering if TypeScript should become the schema
+source of truth, but it is not necessary to make this architecture conventional.
+Do not silently migrate the persistence layer as part of this review.
+
+No tool removes the need to understand transactions, per-hunt row locking,
+conditional acknowledgements, or external-effect retry semantics. Generated
+database types also do not automatically turn CHECK constraints into domain
+discriminated unions or describe arbitrary aggregated JSONB contents; the
+database-to-document projection remains a real boundary. Zod validates REST
+data and is complementary to, not a replacement for, database query typing.
+
+References: [node-postgres queries](https://node-postgres.com/features/queries);
+[PgTyped](https://pgtyped.dev/docs/);
+[Kysely type generation](https://kysely.dev/docs/generating-types);
+[Drizzle schema declarations](https://orm.drizzle.team/docs/sql-schema-declaration).
