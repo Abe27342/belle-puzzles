@@ -3,6 +3,21 @@
 	"version": "0.0.1",
 	"description": "Puzzlehunt model for belle bot and website",
 	"main": "dist/index.js",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		},
+		"./document": {
+			"types": "./dist/document.d.ts",
+			"default": "./dist/document.js"
+		}
+	},
+	"typesVersions": {
+		"*": {
+			"document": ["dist/document.d.ts"]
+		}
+	},
 	"type": "module",
 	"engines": {
 		"node": ">=20.15.0"
