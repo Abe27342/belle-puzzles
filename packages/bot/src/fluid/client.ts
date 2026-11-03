@@ -6,6 +6,7 @@ import {
 	IUser,
 } from '@fluidframework/azure-client';
 import { InsecureTokenProvider } from '@fluidframework/test-client-utils';
+import { ScopeType } from '@fluidframework/protocol-definitions';
 import '../register-env/index.js';
 
 const useLocalService = !!process.env.USE_LOCAL_SERVICE;
@@ -35,9 +36,13 @@ const remoteConnection: AzureRemoteConnectionConfig = {
 // and causes document corruption:
 // https://github.com/microsoft/FluidFramework/pull/12060
 // Once that fix is in, this could be simplified to just an exported client.
-export const makeFluidClient = () => {
+export const makeFluidClient = (options: { readOnly?: boolean } = {}) => {
 	return new AzureClient({
-		connection: useLocalService ? localConnection : remoteConnection,
+		connection: options.readOnly
+			? makeReadOnlyFluidConnection()
+			: useLocalService
+			? localConnection
+			: remoteConnection,
 		logger: {
 			send: (event) => {
 				if (event.category === 'error') {
@@ -49,3 +54,19 @@ export const makeFluidClient = () => {
 		},
 	});
 };
+
+export function makeReadOnlyFluidConnection() {
+	const connection = useLocalService ? localConnection : remoteConnection;
+	const exportUser: IUser & AzureUser = {
+		id: 'belle-exporter',
+		name: 'belle-exporter',
+	};
+	return {
+		...connection,
+		tokenProvider: new InsecureTokenProvider(
+			useLocalService ? '' : process.env.FLUID_PRIMARY_KEY,
+			exportUser,
+			[ScopeType.DocRead]
+		),
+	};
+}

@@ -15,6 +15,9 @@ It uses [pnpm](https://pnpm.io/).
 
 The discord bot is hosted on Azure using a container app. Deployment details can be found in the github workflows folder.
 
+For read-only migration snapshots of all guilds, see the bot's
+[puzzlehunt exporter instructions](packages/bot/README.md#exporting-puzzlehunt-data).
+
 ## Website Infrastructure
 
 The website is hosted with azure static web apps. Deployment details can be found in the github workflows folder.

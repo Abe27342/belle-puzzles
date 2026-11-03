@@ -22,6 +22,7 @@ import { AzureClient } from '@fluidframework/azure-client';
 import { IFluidContainer } from '@fluidframework/fluid-static';
 import { TypedEventEmitter } from '@fluidframework/common-utils';
 import { IEvent } from '@fluidframework/common-definitions';
+import type { IContainer } from '@fluidframework/container-definitions';
 
 function assert(condition: boolean, message: string): asserts condition {
 	if (!condition) {
@@ -103,17 +104,70 @@ async function createPuzzlehunt(
 
 export const loadExistingPuzzlehunt = async (
 	client: AzureClient,
-	id: string
+	id: string,
+	options: {
+		signal?: AbortSignal;
+		catchUp?: (container: IContainer) => Promise<void>;
+	} = {}
 ): Promise<PuzzlehuntLoadResult> => {
+	options.signal?.throwIfAborted();
 	const { container } = await client.getContainer(id, schema);
-	await waitContainerToCatchUp((container as any).container);
-	return {
-		puzzlehunt: new Puzzlehunt(container),
-		disposer: container,
-		id,
-		container,
-	};
+	const abort = () => container.dispose();
+	options.signal?.addEventListener('abort', abort, { once: true });
+	try {
+		options.signal?.throwIfAborted();
+		const loaderContainer = (
+			container as IFluidContainer & { container: IContainer }
+		).container;
+		await waitContainerToCatchUp(loaderContainer);
+		await options.catchUp?.(loaderContainer);
+		options.signal?.throwIfAborted();
+		return {
+			puzzlehunt: new Puzzlehunt(container),
+			disposer: container,
+			id,
+			container,
+		};
+	} catch (error) {
+		container.dispose();
+		throw error;
+	} finally {
+		options.signal?.removeEventListener('abort', abort);
+	}
 };
+
+export interface PuzzlehuntSnapshot {
+	guildId: string;
+	loggingChannelIds?: LoggingChannelIds;
+	rootIds: string[];
+	nodes: PuzzlehuntSnapshotNode[];
+}
+
+export type PuzzlehuntSnapshotNode = {
+	// Stable SharedTree identifiers, not session-local compressed NodeIds.
+	id: string;
+	parentId?: string;
+	name: string;
+	url: string;
+	discordInfo?: Partial<DiscordAssociation>;
+} & (
+	| { type: 'round'; childIds: string[] }
+	| {
+			type: 'puzzle';
+			sheetId?: string;
+			answer?: string;
+			status?: string;
+			lastStatusUpdate?: number;
+	  }
+);
+
+export function snapshotPuzzlehunt(hunt: IPuzzlehunt): PuzzlehuntSnapshot {
+	assert(
+		hunt instanceof Puzzlehunt,
+		'Snapshotting requires the tree-based Puzzlehunt implementation.'
+	);
+	return hunt.snapshot();
+}
 
 export interface IPuzzlehuntEvents extends IEvent {
 	(
@@ -800,5 +854,99 @@ class Puzzlehunt
 				})
 			)
 		);
+	}
+
+	public snapshot(): PuzzlehuntSnapshot {
+		// Materialize all fields from one immutable view in one synchronous turn.
+		const view = this.checkout.currentView;
+		const nodes: PuzzlehuntSnapshotNode[] = [];
+		const stableId = (id: NodeId) => this.hunt.convertToStableNodeId(id);
+		const visit = (id: NodeId, parentId?: string): string => {
+			const handle = new TreeNodeHandle(view, id);
+			const readString = (label: TraitLabel): string | undefined => {
+				const value = readOptional(handle.traits[label]);
+				return value === undefined ? undefined : str(value.payload);
+			};
+			const nodeId = stableId(id);
+			const channelId = readString(traitLabels.channelId);
+			const roleId = readString(traitLabels.roleId);
+			const indexChannelId = readString(traitLabels.indexChannelId);
+			const discordInfo =
+				channelId === undefined &&
+				roleId === undefined &&
+				indexChannelId === undefined
+					? undefined
+					: {
+							...(channelId === undefined ? {} : { channelId }),
+							...(roleId === undefined ? {} : { roleId }),
+							...(indexChannelId === undefined
+								? {}
+								: { indexChannelId }),
+					  };
+			const common = {
+				id: nodeId,
+				...(parentId === undefined ? {} : { parentId }),
+				name: str(readCell(handle.traits.name).payload),
+				url: str(readCell(handle.traits.url).payload),
+				...(discordInfo === undefined ? {} : { discordInfo }),
+			};
+			if (handle.definition === roundDef) {
+				const node: PuzzlehuntSnapshotNode = {
+					...common,
+					type: 'round',
+					childIds: [],
+				};
+				nodes.push(node);
+				node.childIds = (handle.traits.children ?? []).map((child) =>
+					visit(child.identifier, nodeId)
+				);
+			} else {
+				assert(
+					handle.definition === puzzleDef,
+					'Snapshot encountered an unexpected node in hunt children.'
+				);
+				assert(
+					!handle.traits.children?.length,
+					'Puzzle nodes should not contain hunt children.'
+				);
+				const node: PuzzlehuntSnapshotNode = {
+					...common,
+					type: 'puzzle',
+				};
+				for (const label of ['sheetId', 'answer', 'status'] as const) {
+					const value = readString(traitLabels[label]);
+					if (value !== undefined) {
+						node[label] = value;
+					}
+				}
+				const timestamp = readOptional(
+					handle.traits.lastStatusUpdate
+				)?.payload;
+				if (timestamp !== undefined) {
+					assert(
+						typeof timestamp === 'number' &&
+							Number.isFinite(timestamp),
+						'lastStatusUpdate should be a finite number.'
+					);
+					node.lastStatusUpdate = timestamp;
+				}
+				nodes.push(node);
+			}
+			return nodeId;
+		};
+		const guildId = this.guildId;
+		const loggingChannelIds = this.loggingChannelIds;
+		const root = new TreeNodeHandle(view, view.root);
+		const rootIds = (root.traits.children ?? []).map((child) =>
+			visit(child.identifier)
+		);
+		return {
+			guildId,
+			...(loggingChannelIds === undefined
+				? {}
+				: { loggingChannelIds: { ...loggingChannelIds } }),
+			rootIds,
+			nodes,
+		};
 	}
 }
