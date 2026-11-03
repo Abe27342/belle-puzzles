@@ -22,6 +22,7 @@ import { AzureClient } from '@fluidframework/azure-client';
 import { IFluidContainer } from '@fluidframework/fluid-static';
 import { TypedEventEmitter } from '@fluidframework/common-utils';
 import { IEvent } from '@fluidframework/common-definitions';
+import type { IPuzzlehunt as SharedPuzzlehunt } from './model/types.js';
 
 function assert(condition: boolean, message: string): asserts condition {
 	if (!condition) {
@@ -131,29 +132,11 @@ export interface DiscordRoundInfo extends DiscordPuzzleInfo {
 	indexChannel: { /* channel ID */ id: string } | string;
 }
 
-export interface IPuzzlehunt extends TypedEventEmitter<IPuzzlehuntEvents> {
-	addPuzzle(name: string, url: string, round: Round): Puzzle;
-	addPuzzles(puzzles: { name: string; url: string }[], round: Round): void;
-	delete(puzzleObj: Puzzle | Round): void;
-	changeName(puzzleObj: Puzzle | Round, name: string): void;
-	changeUrl(puzzleObj: Puzzle | Round, url: string): void;
-	addRound(name: string, url: string, parentRound?: Round): Round;
-	addRounds(
-		rounds: { name: string; url: string }[],
-		parentRound: Round
-	): void;
-	solve(id: NodeId, answer: string): Puzzle;
-	unsolve(id: NodeId): Puzzle;
-	updateStatus(puzzle: Puzzle, status: string): void;
-	clearStatus(puzzle: Puzzle): void;
-	move(obj: Puzzle | Round, newParent: Round): void;
+export interface IPuzzlehunt
+	extends TypedEventEmitter<IPuzzlehuntEvents>,
+		SharedPuzzlehunt<Puzzle, Round> {
 	augmentWithDiscord(puzzle: Puzzle, discordInfo: DiscordPuzzleInfo): void;
 	augmentWithDiscord(round: Round, discordInfo: DiscordRoundInfo): void;
-	augmentWithGoogleSheet(puzzle: Puzzle, sheetId: string): void;
-	getRound(id: NodeId): Round;
-	getPuzzle(id: NodeId): Puzzle;
-	get rounds(): Iterable<Round>;
-	get puzzles(): Iterable<Puzzle>;
 	get guildId(): string;
 	setGuildId(id: string): void;
 	get loggingChannelIds(): LoggingChannelIds | undefined;

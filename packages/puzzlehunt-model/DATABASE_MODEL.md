@@ -12,7 +12,8 @@ Implemented:
 - The Fluid-independent `@belle-puzzles/puzzlehunt-model/document` entry point:
   snapshots, semantic commands, invariant checks, command application, async
   read/write contracts, and a synchronous view projection.
-- A common `IPuzzlehuntModel` with plain views and synchronous local mutations.
+- A common generic `IPuzzlehunt` for reads/mutations, specialized by legacy Fluid
+  handles and by `IPuzzlehuntModel` with plain views and synchronous local mutations.
   `PuzzlehuntModel` in the `model` entry point tracks optimistic commands over
   `HuntDocumentClient`; `FluidPuzzlehuntModel` in `fluid` delegates to the existing
   Fluid implementation with stable string IDs and storage-neutral notifications.
@@ -112,11 +113,14 @@ JSONB remains for configuration, provenance, command receipts, and event payload
 
 ## Commands, ordering, and retries
 
-The public command vocabulary covers batch add, recursive delete, rename, URL,
-move, solve, unsolve, status, and sheet association. A separate worker-only
-command attaches Discord resources. Both existing bulk creation methods map to
-one `add` command; parents must precede their children within a batch. All callers
-send IDs and intent, never a replacement snapshot or a client-computed tree diff.
+The public command vocabulary is `add`, `delete`, `move`, and `set-property`.
+Property names are the typed union `name`, `url`, `answer`, `status`, and `sheetId`,
+with their corresponding value types. Nullable properties use `null` to clear;
+setting/clearing `answer` expresses solve/unsolve. A separate worker-only
+`set-property` command attaches/clears `discord` resources. Both existing bulk
+creation methods map to one `add` command; parents must precede their children
+within a batch. All callers send IDs and intent, never a replacement snapshot or
+a client-computed tree diff.
 
 The store performs the following on a single leased connection at PostgreSQL's
 default READ COMMITTED isolation:
@@ -206,9 +210,9 @@ guild members using OAuth tokens with the existing `guilds` scope. Optional
 trusted-bot credentials are separate from Discord tokens and limited by the
 configured bot's guild access. This policy was explicitly confirmed by the user.
 
-The HTTP boundary decodes/validates unknown JSON, enforces a 1 MiB request limit
+The HTTP boundary uses shared Zod schemas to decode/validate unknown JSON, enforces a 1 MiB request limit
 and the public command allowlist, and authorizes before invoking the store.
-The model's typed invariant checker is not a JSON decoder.
+The model's typed `validateHuntDocument` invariant checker is not a JSON decoder.
 The store's guild predicate is defense in depth, not authentication. Never accept
 the guild, active-hunt selection, configuration, or integration-only commands from
 freely editable document JSON. Map domain errors to user-facing 400/404/409
@@ -255,7 +259,10 @@ behavioral assertions on both model implementations. Run
 including the existing Fluid tests, PGlite schema tests, optimistic failure/retry
 tests, and real PostgreSQL contention tests.
 
-The runner starts and checks an isolated local ordering service; database fixtures
+Vitest global setup starts and checks an isolated local ordering service and
+returns its teardown. Tests receive its endpoint through typed `provide`/`inject`;
+an optional `PUZZLEHUNT_FLUID_ENDPOINT` selects an externally owned service instead.
+There is no outer test-runner script or WMIC dependency. Database fixtures
 start real PostgreSQL on dynamic loopback ports and clear their own tables before
 each test. They never accept an external database URL or reset a user database.
 Services and their temporary data are cleaned up afterward. Native PostgreSQL

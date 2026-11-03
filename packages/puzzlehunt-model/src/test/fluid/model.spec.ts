@@ -1,6 +1,6 @@
 import { AzureClient } from '@fluidframework/azure-client';
 import { InsecureTokenProvider } from '@fluidframework/test-client-utils';
-import { expect, vi } from 'vitest';
+import { expect, inject, vi } from 'vitest';
 import {
 	createNewPuzzlehunt,
 	loadExistingPuzzlehunt,
@@ -22,9 +22,7 @@ puzzlehuntModelContract(
 				connection: {
 					type: 'local',
 					tokenProvider: new InsecureTokenProvider('', user),
-					endpoint:
-						process.env.PUZZLEHUNT_FLUID_ENDPOINT ??
-						'http://localhost:7070',
+					endpoint: inject('fluidEndpoint'),
 				},
 				logger,
 			});

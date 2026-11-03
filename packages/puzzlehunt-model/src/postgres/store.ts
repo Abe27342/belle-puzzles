@@ -1,6 +1,6 @@
 import {
 	applyHuntCommand,
-	assertHuntDocument,
+	validateHuntDocument,
 	HuntCommandError,
 	isDocumentId,
 } from '../document.js';
@@ -114,7 +114,7 @@ function snapshotFromRow(row: HuntRow): HuntSnapshot {
 		for (const node of row.nodes) {
 			nodes[node.id] = nodeFromRow(node);
 		}
-		assertHuntDocument({ nodes });
+		validateHuntDocument({ nodes });
 	} catch (error) {
 		throw new Error('Stored hunt document failed validation.', {
 			cause: error,

@@ -1,4 +1,5 @@
 export type {
+	IPuzzlehunt,
 	IPuzzlehuntModel,
 	PuzzlehuntRound,
 	PuzzlehuntView,

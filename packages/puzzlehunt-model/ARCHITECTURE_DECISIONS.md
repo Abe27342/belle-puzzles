@@ -151,12 +151,16 @@ or production database version. On Unix, run as a non-root user; the fixture doe
 not create host accounts. Automatic dependency-symlink rehydration avoids requiring
 installer scripts for the native test binaries.
 
-The model's test runner owns a local ordering-service child process, dynamic port,
-temporary storage/log directory, readiness check, and shutdown. It launches Node
-directly rather than the old Windows process-tree helper, which requires the
-removed `wmic.exe`. Legacy tests accept the runner's endpoint through an environment
-variable, retaining their previous localhost default. Vitest explicitly includes
-source tests only, preventing a build's emitted tests from running again.
+Vitest's `globalSetup` owns a local ordering-service child process, dynamic port,
+temporary storage/log directory, readiness check, and returned teardown. Tests use
+Vitest's typed `provide`/`inject` endpoint; the package runs `vitest run` directly.
+An optional `PUZZLEHUNT_FLUID_ENDPOINT` selects an already running service, which
+the suite does not stop or reset. The owned service launches Node directly:
+`start-server-and-test@1.15.5` used `ps-tree@1.2.0`, whose Windows cleanup spawns
+`wmic.exe`. That executable is absent on this host but may exist on other Windows
+installations. No operating-system fix or PostgreSQL setting was involved.
+Vitest explicitly includes source tests only, preventing a build's emitted tests
+from running again.
 
 A test-only declaration re-exports `embedded-postgres`' own types for the repository's
 legacy TypeScript Node resolver. It avoids duplicating its API or changing every
@@ -219,3 +223,43 @@ contract suite remains unchanged. New tests cover the protocol, transport, and
 authorization/configuration functions, not a local HTTP-plus-database application
 suite. Notifications/reconnection, external workers, consumer cutover, provisioning,
 and deployment remain separate follow-up work.
+
+## 10. Simplify commands and share the core model interface
+
+**Status:** Implemented from user review feedback.
+
+Use only `add`, `delete`, `move`, and `set-property` commands. A mapped union ties
+each known property name to its value type; nullable properties use explicit
+`null` to clear. Public properties are `name`, `url`, `answer`, `status`, and
+`sheetId`. Worker-only `discord` assignments use the same shape but remain a
+separate command type, not part of the public HTTP allowlist. Answer/status
+assignments retain their domain side effects and distinct integration events;
+this is not unrestricted object patching.
+
+The shared generic `IPuzzlehunt` defines common reads and mutations once. The
+legacy interface specializes it for Fluid handles/numeric IDs and adds existing
+metadata, Discord association, and tree event APIs. `IPuzzlehuntModel` specializes
+it for stable IDs/plain views and adds subscriptions and asynchronous settlement.
+The earlier duplicated signatures were a compatibility shortcut, not a required
+architectural boundary. Existing Fluid implementations and consumers keep their
+behavior.
+
+Both projections build and sort a parent-to-children index once, rather than
+scanning every node for each round. `validateHuntDocument` names the existing
+graph validation explicitly.
+
+## 11. Use Zod at the REST boundary
+
+**Status:** Implemented from user review feedback; no ORM selection implied.
+
+Shared Zod schemas validate public requests and response snapshots/receipts.
+Strict request objects reject unknown and privileged fields; response objects
+allow unrelated additional fields for compatibility. Graph validation and
+request-specific scope/receipt matching remain semantic checks.
+
+Malformed requests become definitive `invalid-command` rejections. Malformed
+responses, including invalid graph invariants, remain `HuntProtocolError` with
+the validation cause, never a definitive rejection of a possibly committed edit.
+Readable domain interfaces remain independent of Zod, with schema output types
+checked against them. Explicit nullable schema types preserve required fields
+for the legacy non-strict TypeScript build without weakening runtime validation.

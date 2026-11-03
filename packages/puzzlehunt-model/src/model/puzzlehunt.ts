@@ -1,6 +1,6 @@
 import {
 	applyHuntCommand,
-	assertHuntDocument,
+	validateHuntDocument,
 	HuntCommandError,
 } from '../document.js';
 import type {
@@ -198,11 +198,21 @@ export class PuzzlehuntModel implements IPuzzlehuntModel {
 	}
 
 	changeName(node: DocumentNode, name: string): void {
-		this.dispatch({ type: 'rename', nodeId: node.id, name });
+		this.dispatch({
+			type: 'set-property',
+			property: 'name',
+			nodeId: node.id,
+			value: name,
+		});
 	}
 
 	changeUrl(node: DocumentNode, url: string): void {
-		this.dispatch({ type: 'set-url', nodeId: node.id, url });
+		this.dispatch({
+			type: 'set-property',
+			property: 'url',
+			nodeId: node.id,
+			value: url,
+		});
 	}
 
 	move(node: DocumentNode, parent: PuzzlehuntRound): void {
@@ -210,25 +220,50 @@ export class PuzzlehuntModel implements IPuzzlehuntModel {
 	}
 
 	solve(id: string, answer: string): DocumentPuzzle {
-		this.dispatch({ type: 'solve', nodeId: id, answer });
+		this.dispatch({
+			type: 'set-property',
+			property: 'answer',
+			nodeId: id,
+			value: answer,
+		});
 		return this.getPuzzle(id);
 	}
 
 	unsolve(id: string): DocumentPuzzle {
-		this.dispatch({ type: 'unsolve', nodeId: id });
+		this.dispatch({
+			type: 'set-property',
+			property: 'answer',
+			value: null,
+			nodeId: id,
+		});
 		return this.getPuzzle(id);
 	}
 
 	updateStatus(puzzle: DocumentPuzzle, status: string): void {
-		this.dispatch({ type: 'set-status', nodeId: puzzle.id, status });
+		this.dispatch({
+			type: 'set-property',
+			property: 'status',
+			nodeId: puzzle.id,
+			value: status,
+		});
 	}
 
 	clearStatus(puzzle: DocumentPuzzle): void {
-		this.dispatch({ type: 'set-status', nodeId: puzzle.id, status: null });
+		this.dispatch({
+			type: 'set-property',
+			property: 'status',
+			nodeId: puzzle.id,
+			value: null,
+		});
 	}
 
 	augmentWithGoogleSheet(puzzle: DocumentPuzzle, sheetId: string): void {
-		this.dispatch({ type: 'set-sheet', nodeId: puzzle.id, sheetId });
+		this.dispatch({
+			type: 'set-property',
+			property: 'sheetId',
+			nodeId: puzzle.id,
+			value: sheetId,
+		});
 	}
 
 	subscribe(listener: () => void): () => void {
@@ -404,7 +439,7 @@ export class PuzzlehuntModel implements IPuzzlehuntModel {
 		) {
 			throw new Error('Invalid puzzlehunt snapshot scope or revision.');
 		}
-		assertHuntDocument(snapshot.document);
+		validateHuntDocument(snapshot.document);
 	}
 
 	private accept(snapshot: HuntSnapshot): void {

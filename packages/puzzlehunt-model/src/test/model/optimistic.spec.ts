@@ -242,7 +242,12 @@ describe('Optimistic puzzlehunt model', () => {
 		);
 		backend.commit({
 			commandId: crypto.randomUUID(),
-			command: { type: 'solve', nodeId: puzzleId, answer: 'LATER' },
+			command: {
+				type: 'set-property',
+				property: 'answer',
+				nodeId: puzzleId,
+				value: 'LATER',
+			},
 		});
 		await model.retryPending();
 		expect(backend.client.submit.mock.calls[1][1]).toEqual(request);

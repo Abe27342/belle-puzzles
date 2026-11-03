@@ -79,43 +79,33 @@ export type HuntCommand =
 	| { readonly type: 'add'; readonly nodes: readonly NewDocumentNode[] }
 	| { readonly type: 'delete'; readonly nodeId: string }
 	| {
-			readonly type: 'rename';
-			readonly nodeId: string;
-			readonly name: string;
-	  }
-	| {
-			readonly type: 'set-url';
-			readonly nodeId: string;
-			readonly url: string;
-	  }
-	| {
 			readonly type: 'move';
 			readonly nodeId: string;
 			readonly parentId: string | null;
 	  }
-	| {
-			readonly type: 'solve';
-			readonly nodeId: string;
-			readonly answer: string;
-	  }
-	| { readonly type: 'unsolve'; readonly nodeId: string }
-	| {
-			readonly type: 'set-status';
-			readonly nodeId: string;
-			readonly status: string | null;
-	  }
-	| {
-			readonly type: 'set-sheet';
-			readonly nodeId: string;
-			readonly sheetId: string | null;
-	  };
+	| SetHuntProperty<HuntPropertyValues>;
+
+export interface HuntPropertyValues {
+	readonly name: string;
+	readonly url: string;
+	readonly answer: string | null;
+	readonly status: string | null;
+	readonly sheetId: string | null;
+}
+
+type SetHuntProperty<Properties> = {
+	[Property in keyof Properties]: {
+		readonly type: 'set-property';
+		readonly nodeId: string;
+		readonly property: Property;
+		readonly value: Properties[Property];
+	};
+}[keyof Properties];
 
 /** Only integration workers may submit these; never expose as general user writes. */
-export type HuntIntegrationCommand = {
-	readonly type: 'set-discord';
-	readonly nodeId: string;
+export type HuntIntegrationCommand = SetHuntProperty<{
 	readonly discord: DocumentDiscordAssociation | null;
-};
+}>;
 
 export interface HuntCommandRequest {
 	/** A UUID retained across retries of this exact command. */
@@ -220,11 +210,30 @@ export function documentChildren(
 ): readonly DocumentNode[] {
 	return Object.values(document.nodes)
 		.filter((node) => node.parentId === parentId)
-		.sort(
-			(a, b) =>
-				a.position - b.position ||
-				(a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
-		);
+		.sort(compareDocumentNodes);
+}
+
+function compareDocumentNodes(a: DocumentNode, b: DocumentNode): number {
+	return a.position - b.position || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+
+/** Build once per projection rather than scanning the document for each round. */
+export function indexDocumentChildren(
+	document: HuntDocument
+): ReadonlyMap<string | null, readonly DocumentNode[]> {
+	const children = new Map<string | null, DocumentNode[]>();
+	for (const node of Object.values(document.nodes)) {
+		const siblings = children.get(node.parentId);
+		if (siblings) {
+			siblings.push(node);
+		} else {
+			children.set(node.parentId, [node]);
+		}
+	}
+	for (const siblings of children.values()) {
+		siblings.sort(compareDocumentNodes);
+	}
+	return children;
 }
 
 export interface HuntDocumentView {
@@ -238,15 +247,13 @@ export interface HuntDocumentView {
 /** A synchronous projection of one committed snapshot, suitable for React/Discord views. */
 export function projectHuntDocument(snapshot: HuntSnapshot): HuntDocumentView {
 	const nodes = Object.values(snapshot.document.nodes);
+	const children = indexDocumentChildren(snapshot.document);
 	const rounds = nodes.filter(
 		(node): node is DocumentRound => node.type === 'round'
 	);
 	const childrenByRound: Record<string, readonly DocumentNode[]> = {};
 	for (const round of rounds) {
-		childrenByRound[round.id] = documentChildren(
-			snapshot.document,
-			round.id
-		);
+		childrenByRound[round.id] = children.get(round.id) ?? [];
 	}
 	return {
 		snapshot,
@@ -262,7 +269,7 @@ export function projectHuntDocument(snapshot: HuntSnapshot): HuntDocumentView {
 }
 
 /** Checks graph invariants for trusted, typed snapshots (not an HTTP JSON decoder). */
-export function assertHuntDocument(document: HuntDocument): void {
+export function validateHuntDocument(document: HuntDocument): void {
 	const siblingPositions = new Map<string | null, Set<number>>();
 	for (const [id, node] of Object.entries(document.nodes)) {
 		requireCommand(
@@ -350,7 +357,7 @@ export function applyHuntCommand(
 		Number.isSafeInteger(serverTime) && serverTime >= 0,
 		'Invalid server timestamp.'
 	);
-	assertHuntDocument(document);
+	validateHuntDocument(document);
 	const nodes: Record<string, DocumentNode> = { ...document.nodes };
 	const next = { nodes };
 	const events: HuntDocumentEvent[] = [];
@@ -407,16 +414,6 @@ export function applyHuntCommand(
 			}
 			break;
 		}
-		case 'rename': {
-			const node = getNode(next, command.nodeId);
-			nodes[node.id] = { ...node, name: command.name };
-			break;
-		}
-		case 'set-url': {
-			const node = getNode(next, command.nodeId);
-			nodes[node.id] = { ...node, url: command.url };
-			break;
-		}
 		case 'move': {
 			const node = getNode(next, command.nodeId);
 			requireParent(next, command.parentId);
@@ -442,63 +439,89 @@ export function applyHuntCommand(
 			}
 			break;
 		}
-		case 'solve': {
-			const node = getPuzzle(next, command.nodeId);
-			requireCommand(
-				typeof command.answer === 'string' && command.answer.length > 0,
-				'Solve requires an answer.'
-			);
-			const { status, lastStatusUpdate, ...rest } = node;
-			const solved = { ...rest, answer: command.answer };
-			nodes[node.id] = solved;
-			events.push({ type: 'puzzle-solved', node: solved });
-			break;
-		}
-		case 'unsolve': {
-			const node = getPuzzle(next, command.nodeId);
-			const { answer, ...rest } = node;
-			nodes[node.id] = rest;
-			break;
-		}
-		case 'set-status': {
-			const node = getPuzzle(next, command.nodeId);
-			const { status, lastStatusUpdate, ...rest } = node;
-			requireCommand(
-				command.status === null || typeof command.status === 'string',
-				'Status must be a string or null.'
-			);
-			const updated =
-				command.status === null
-					? rest
-					: {
-							...rest,
-							status: command.status,
-							lastStatusUpdate: serverTime,
-					  };
-			nodes[node.id] = updated;
-			events.push({ type: 'puzzle-status-updated', node: updated });
-			break;
-		}
-		case 'set-sheet': {
-			const node = getPuzzle(next, command.nodeId);
-			requireCommand(
-				command.sheetId === null || typeof command.sheetId === 'string',
-				'Sheet ID must be a string or null.'
-			);
-			const { sheetId, ...rest } = node;
-			nodes[node.id] =
-				command.sheetId === null
-					? rest
-					: { ...rest, sheetId: command.sheetId };
-			break;
-		}
-		case 'set-discord': {
-			const node = getNode(next, command.nodeId);
-			const { discord, ...rest } = node;
-			nodes[node.id] =
-				command.discord === null
-					? rest
-					: { ...rest, discord: { ...command.discord } };
+		case 'set-property': {
+			switch (command.property) {
+				case 'name':
+				case 'url': {
+					const node = getNode(next, command.nodeId);
+					nodes[node.id] = {
+						...node,
+						[command.property]: command.value,
+					};
+					break;
+				}
+				case 'answer': {
+					const node = getPuzzle(next, command.nodeId);
+					if (command.value === null) {
+						const { answer, ...rest } = node;
+						nodes[node.id] = rest;
+						break;
+					}
+					requireCommand(
+						typeof command.value === 'string' &&
+							command.value.length > 0,
+						'Solve requires an answer.'
+					);
+					const { status, lastStatusUpdate, ...rest } = node;
+					const solved = { ...rest, answer: command.value };
+					nodes[node.id] = solved;
+					events.push({ type: 'puzzle-solved', node: solved });
+					break;
+				}
+				case 'status': {
+					const node = getPuzzle(next, command.nodeId);
+					const { status, lastStatusUpdate, ...rest } = node;
+					requireCommand(
+						command.value === null ||
+							typeof command.value === 'string',
+						'Status must be a string or null.'
+					);
+					const updated =
+						command.value === null
+							? rest
+							: {
+									...rest,
+									status: command.value,
+									lastStatusUpdate: serverTime,
+							  };
+					nodes[node.id] = updated;
+					events.push({
+						type: 'puzzle-status-updated',
+						node: updated,
+					});
+					break;
+				}
+				case 'sheetId': {
+					const node = getPuzzle(next, command.nodeId);
+					requireCommand(
+						command.value === null ||
+							typeof command.value === 'string',
+						'Sheet ID must be a string or null.'
+					);
+					const { sheetId, ...rest } = node;
+					nodes[node.id] =
+						command.value === null
+							? rest
+							: { ...rest, sheetId: command.value };
+					break;
+				}
+				case 'discord': {
+					const node = getNode(next, command.nodeId);
+					const { discord, ...rest } = node;
+					nodes[node.id] =
+						command.value === null
+							? rest
+							: { ...rest, discord: { ...command.value } };
+					break;
+				}
+				default: {
+					const exhaustive: never = command;
+					throw new HuntCommandError(
+						'invalid-command',
+						`Unknown property command: ${exhaustive}`
+					);
+				}
+			}
 			break;
 		}
 		default: {
@@ -509,6 +532,6 @@ export function applyHuntCommand(
 			);
 		}
 	}
-	assertHuntDocument(next);
+	validateHuntDocument(next);
 	return { document: next, events };
 }

@@ -7,7 +7,7 @@ import {
 	it,
 	vi,
 } from 'vitest';
-import { assertHuntDocument, HuntCommandError } from '../../document.js';
+import { validateHuntDocument, HuntCommandError } from '../../document.js';
 import type { HuntScope } from '../../document.js';
 import { PuzzlehuntModel } from '../../model/puzzlehunt.js';
 import { startLocalPostgres } from '../fixtures/postgres.js';
@@ -95,7 +95,7 @@ describe('Authoritative commands on multiple PostgreSQL connections', () => {
 		}
 		await Promise.all(commands);
 		const snapshot = await database.store.read(scope);
-		assertHuntDocument(snapshot.document);
+		validateHuntDocument(snapshot.document);
 		expect(
 			Object.values(snapshot.document.nodes)
 				.filter((node) => node.type === 'puzzle')
@@ -140,7 +140,7 @@ describe('Authoritative commands on multiple PostgreSQL connections', () => {
 		if (rejected?.status === 'rejected') {
 			expect(rejected.reason).toBeInstanceOf(HuntCommandError);
 		}
-		assertHuntDocument((await database.store.read(scope)).document);
+		validateHuntDocument((await database.store.read(scope)).document);
 	});
 
 	it('recovers a lost acknowledgement without replaying a solve over a newer solve', async () => {
@@ -165,7 +165,12 @@ describe('Authoritative commands on multiple PostgreSQL connections', () => {
 		await expect(model.flush()).rejects.toThrow('response loss');
 		await database.store.submit(scope, {
 			commandId: crypto.randomUUID(),
-			command: { type: 'solve', nodeId: puzzleId, answer: 'LATER' },
+			command: {
+				type: 'set-property',
+				property: 'answer',
+				nodeId: puzzleId,
+				value: 'LATER',
+			},
 		});
 		await model.retryPending();
 		expect(model.getPuzzle(puzzleId).answer).toBe('LATER');

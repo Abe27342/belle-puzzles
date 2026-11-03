@@ -1,4 +1,4 @@
-import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, inject, it, vi } from 'vitest';
 import { AzureClient } from '@fluidframework/azure-client';
 import { InsecureTokenProvider } from '@fluidframework/test-client-utils';
 import { Delta, NodeId, TreeView } from '@fluid-experimental/tree';
@@ -29,7 +29,7 @@ describe('Puzzlehunt', () => {
 			connection: {
 				type: 'local',
 				tokenProvider: new InsecureTokenProvider('', user),
-				endpoint: process.env.PUZZLEHUNT_FLUID_ENDPOINT ?? 'http://localhost:7070',
+				endpoint: inject('fluidEndpoint'),
 			},
 			logger,
 		});

@@ -8,7 +8,7 @@ import type {
 	HuntScope,
 } from '../../document.js';
 import {
-	assertHuntDocument,
+	validateHuntDocument,
 	projectHuntDocument,
 } from '../../document.js';
 
@@ -150,11 +150,17 @@ describe('PostgreSQL hunt store', () => {
 			}),
 		]);
 		await Promise.all([
-			submit(103, { type: 'rename', nodeId: puzzleId, name: 'Renamed' }),
-			submit(104, {
-				type: 'set-url',
+			submit(103, {
+				type: 'set-property',
+				property: 'name',
 				nodeId: puzzleId,
-				url: 'https://example.com',
+				value: 'Renamed',
+			}),
+			submit(104, {
+				type: 'set-property',
+				property: 'url',
+				nodeId: puzzleId,
+				value: 'https://example.com',
 			}),
 		]);
 		const current = await store.read(scope);
@@ -174,21 +180,29 @@ describe('PostgreSQL hunt store', () => {
 	it('does not reapply a retry after a newer solve, including after reconstructing the store', async () => {
 		await seed();
 		await submit(101, {
-			type: 'set-status',
+			type: 'set-property',
+			property: 'status',
 			nodeId: puzzleId,
-			status: 'Working',
+			value: 'Working',
 		});
 		const first = await submit(102, {
-			type: 'solve',
+			type: 'set-property',
+			property: 'answer',
 			nodeId: puzzleId,
-			answer: 'FIRST',
+			value: 'FIRST',
 		});
-		await submit(103, { type: 'solve', nodeId: puzzleId, answer: 'LAST' });
+		await submit(103, {
+			type: 'set-property',
+			property: 'answer',
+			nodeId: puzzleId,
+			value: 'LAST',
+		});
 		store = new PostgresPuzzlehuntStore(singleConnectionPool());
 		const retried = await submit(102, {
-			type: 'solve',
+			type: 'set-property',
+			property: 'answer',
 			nodeId: puzzleId,
-			answer: 'FIRST',
+			value: 'FIRST',
 		});
 		expect(retried.replayed).toBe(true);
 		expect(retried.receipt).toEqual(first.receipt);
@@ -212,15 +226,26 @@ describe('PostgreSQL hunt store', () => {
 
 	it('deduplicates equivalent JSON command objects but rejects key reuse for a different intent', async () => {
 		await seed();
-		await submit(101, { type: 'rename', nodeId: puzzleId, name: 'New' });
-		const retry = await submit(101, {
-			name: 'New',
+		await submit(101, {
+			type: 'set-property',
+			property: 'name',
 			nodeId: puzzleId,
-			type: 'rename',
+			value: 'New',
+		});
+		const retry = await submit(101, {
+			value: 'New',
+			nodeId: puzzleId,
+			type: 'set-property',
+			property: 'name',
 		});
 		expect(retry.replayed).toBe(true);
 		await expect(
-			submit(101, { type: 'rename', nodeId: puzzleId, name: 'Different' })
+			submit(101, {
+				type: 'set-property',
+				property: 'name',
+				nodeId: puzzleId,
+				value: 'Different',
+			})
 		).rejects.toMatchObject({ code: 'conflict' });
 		expect((await store.read(scope)).revision).toBe(2);
 	});
@@ -246,7 +271,12 @@ describe('PostgreSQL hunt store', () => {
 
 	it('conditionally acknowledges only the exact pending generation and integration', async () => {
 		await seed();
-		await submit(101, { type: 'rename', nodeId: puzzleId, name: 'Newer' });
+		await submit(101, {
+			type: 'set-property',
+			property: 'name',
+			nodeId: puzzleId,
+			value: 'Newer',
+		});
 		expect(await store.acknowledgeReconciliation(scope, 'discord', 1)).toBe(
 			false
 		);
@@ -258,9 +288,10 @@ describe('PostgreSQL hunt store', () => {
 		);
 		expect(rows).toEqual([{ target: 'google', requested_revision: 2 }]);
 		await submit(102, {
-			type: 'set-url',
+			type: 'set-property',
+			property: 'url',
 			nodeId: puzzleId,
-			url: 'new-url',
+			value: 'new-url',
 		});
 		expect(await store.acknowledgeReconciliation(scope, 'google', 2)).toBe(
 			false
@@ -292,9 +323,10 @@ describe('PostgreSQL hunt store', () => {
 			)
 		).rejects.toThrow();
 		await store.submitIntegration(scope, id(102), {
-			type: 'set-discord',
+			type: 'set-property',
+			property: 'discord',
 			nodeId: puzzleId,
-			discord: { channelId: 'channel', roleId: 'role' },
+			value: { channelId: 'channel', roleId: 'role' },
 		});
 		await submit(103, { type: 'delete', nodeId: rootId });
 		expect((await store.read(scope)).document.nodes).toEqual({});
@@ -333,9 +365,10 @@ describe('PostgreSQL hunt store', () => {
 	it('assigns a database status timestamp rather than accepting a client clock', async () => {
 		await seed();
 		const result = await submit(101, {
-			type: 'set-status',
+			type: 'set-property',
+			property: 'status',
 			nodeId: puzzleId,
-			status: 'Working',
+			value: 'Working',
 		});
 		const node = result.snapshot.document.nodes[puzzleId];
 		expect(node.type).toBe('puzzle');
@@ -369,29 +402,34 @@ describe('PostgreSQL hunt store', () => {
 			],
 		});
 		await submit(102, {
-			type: 'set-sheet',
+			type: 'set-property',
+			property: 'sheetId',
 			nodeId: puzzleId,
-			sheetId: 'sheet',
+			value: 'sheet',
 		});
 		await submit(103, {
-			type: 'solve',
+			type: 'set-property',
+			property: 'answer',
 			nodeId: puzzleId,
-			answer: 'ANSWER',
+			value: 'ANSWER',
 		});
 		await submit(104, {
-			type: 'set-status',
+			type: 'set-property',
+			property: 'status',
 			nodeId: puzzleId,
-			status: 'Rechecking',
+			value: 'Rechecking',
 		});
 		await store.submitIntegration(scope, id(105), {
-			type: 'set-discord',
+			type: 'set-property',
+			property: 'discord',
 			nodeId: puzzleId,
-			discord: { channelId: 'puzzle-channel', roleId: 'puzzle-role' },
+			value: { channelId: 'puzzle-channel', roleId: 'puzzle-role' },
 		});
 		const committed = await store.submitIntegration(scope, id(106), {
-			type: 'set-discord',
+			type: 'set-property',
+			property: 'discord',
 			nodeId: rootId,
-			discord: {
+			value: {
 				channelId: 'category',
 				roleId: 'round-role',
 				indexChannelId: 'index',
@@ -430,20 +468,28 @@ describe('PostgreSQL hunt store', () => {
 			},
 		]);
 		await submit(107, {
-			type: 'set-sheet',
+			type: 'set-property',
+			property: 'sheetId',
 			nodeId: puzzleId,
-			sheetId: null,
+			value: null,
 		});
 		await submit(108, {
-			type: 'set-status',
+			type: 'set-property',
+			property: 'status',
 			nodeId: puzzleId,
-			status: null,
+			value: null,
 		});
-		await submit(109, { type: 'unsolve', nodeId: puzzleId });
-		const cleared = await store.submitIntegration(scope, id(110), {
-			type: 'set-discord',
+		await submit(109, {
+			type: 'set-property',
+			property: 'answer',
+			value: null,
 			nodeId: puzzleId,
-			discord: null,
+		});
+		const cleared = await store.submitIntegration(scope, id(110), {
+			type: 'set-property',
+			property: 'discord',
+			nodeId: puzzleId,
+			value: null,
 		});
 		const reread = await store.read(scope);
 		expect(reread).toEqual(cleared.snapshot);
@@ -468,9 +514,10 @@ describe('PostgreSQL hunt store', () => {
 			).rows;
 		const before = await versions();
 		await submit(101, {
-			type: 'rename',
+			type: 'set-property',
+			property: 'name',
 			nodeId: puzzleId,
-			name: 'Changed',
+			value: 'Changed',
 		});
 		const after = await versions();
 		expect(after[0]).toEqual(before[0]);
@@ -507,7 +554,7 @@ describe('PostgreSQL hunt store', () => {
 		expect(snapshot.revision).toBe(3);
 		expect(snapshot.document.nodes[rootId].parentId).toBe(id(12));
 		expect(snapshot.document.nodes[id(12)].parentId).toBeNull();
-		assertHuntDocument(snapshot.document);
+		validateHuntDocument(snapshot.document);
 	});
 });
 

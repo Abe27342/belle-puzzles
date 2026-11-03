@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
 	applyHuntCommand,
-	assertHuntDocument,
+	validateHuntDocument,
 	documentChildren,
 	projectHuntDocument,
 } from '../document.js';
 import type { HuntCommand, HuntDocument, HuntSnapshot } from '../document.js';
+import { projectPuzzlehuntView } from '../model/types.js';
 
 const id = (n: number) =>
 	`00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -75,14 +76,16 @@ describe('database document commands', () => {
 			],
 		}).document;
 		const renamed = apply(second, {
-			type: 'rename',
+			type: 'set-property',
+			property: 'name',
 			nodeId: puzzleId,
-			name: 'Renamed',
+			value: 'Renamed',
 		}).document;
 		const linked = apply(renamed, {
-			type: 'set-url',
+			type: 'set-property',
+			property: 'url',
 			nodeId: puzzleId,
-			url: 'https://example.com',
+			value: 'https://example.com',
 		}).document;
 		expect(
 			documentChildren(linked, rootId).map((node) => node.name)
@@ -94,27 +97,35 @@ describe('database document commands', () => {
 
 	it('uses application order for solves, clears status atomically, and preserves unrelated fields', () => {
 		const linked = apply(seed(), {
-			type: 'set-sheet',
+			type: 'set-property',
+			property: 'sheetId',
 			nodeId: puzzleId,
-			sheetId: 'sheet',
+			value: 'sheet',
 		}).document;
 		const status = apply(linked, {
-			type: 'set-status',
+			type: 'set-property',
+			property: 'status',
 			nodeId: puzzleId,
-			status: 'Working',
+			value: 'Working',
 		});
 		expect(status.document.nodes[puzzleId]).toMatchObject({
 			status: 'Working',
 			lastStatusUpdate: 1234,
 		});
 		const first = apply(status.document, {
-			type: 'solve',
+			type: 'set-property',
+			property: 'answer',
 			nodeId: puzzleId,
-			answer: 'FIRST',
+			value: 'FIRST',
 		});
 		const last = applyHuntCommand(
 			first.document,
-			{ type: 'solve', nodeId: puzzleId, answer: 'LAST' },
+			{
+				type: 'set-property',
+				property: 'answer',
+				nodeId: puzzleId,
+				value: 'LAST',
+			},
 			1000
 		);
 		expect(last.document.nodes[puzzleId]).toMatchObject({
@@ -133,16 +144,23 @@ describe('database document commands', () => {
 
 	it('clears status/timestamp together and unsolves without removing a later status', () => {
 		const solved = apply(seed(), {
-			type: 'solve',
+			type: 'set-property',
+			property: 'answer',
 			nodeId: puzzleId,
-			answer: 'ANSWER',
+			value: 'ANSWER',
 		}).document;
 		const status = apply(solved, {
-			type: 'set-status',
+			type: 'set-property',
+			property: 'status',
 			nodeId: puzzleId,
-			status: 'Rechecking',
+			value: 'Rechecking',
 		}).document;
-		const unsolved = apply(status, { type: 'unsolve', nodeId: puzzleId });
+		const unsolved = apply(status, {
+			type: 'set-property',
+			property: 'answer',
+			value: null,
+			nodeId: puzzleId,
+		});
 		expect(unsolved.document.nodes[puzzleId]).not.toHaveProperty('answer');
 		expect(unsolved.document.nodes[puzzleId]).toMatchObject({
 			status: 'Rechecking',
@@ -150,9 +168,10 @@ describe('database document commands', () => {
 		});
 		expect(unsolved.events).toEqual([]);
 		const cleared = apply(unsolved.document, {
-			type: 'set-status',
+			type: 'set-property',
+			property: 'status',
 			nodeId: puzzleId,
-			status: null,
+			value: null,
 		});
 		expect(cleared.document.nodes[puzzleId]).not.toHaveProperty('status');
 		expect(cleared.document.nodes[puzzleId]).not.toHaveProperty(
@@ -192,16 +211,18 @@ describe('database document commands', () => {
 
 	it('captures recursive deletion tombstones including associations and retained sheets', () => {
 		const linked = apply(seed(), {
-			type: 'set-sheet',
+			type: 'set-property',
+			property: 'sheetId',
 			nodeId: puzzleId,
-			sheetId: 'keep-this-sheet',
+			value: 'keep-this-sheet',
 		}).document;
 		const associated = applyHuntCommand(
 			linked,
 			{
-				type: 'set-discord',
+				type: 'set-property',
+				property: 'discord',
 				nodeId: puzzleId,
-				discord: { channelId: 'channel', roleId: 'role' },
+				value: { channelId: 'channel', roleId: 'role' },
 			},
 			1234
 		).document;
@@ -239,10 +260,20 @@ describe('database document commands', () => {
 			apply(document, { type: 'move', nodeId: puzzleId, parentId: id(9) })
 		).toThrow(/does not exist/);
 		expect(() =>
-			apply(document, { type: 'solve', nodeId: rootId, answer: 'x' })
+			apply(document, {
+				type: 'set-property',
+				property: 'answer',
+				nodeId: rootId,
+				value: 'x',
+			})
 		).toThrow(/requires a puzzle/);
 		expect(() =>
-			apply(document, { type: 'solve', nodeId: puzzleId, answer: '' })
+			apply(document, {
+				type: 'set-property',
+				property: 'answer',
+				nodeId: puzzleId,
+				value: '',
+			})
 		).toThrow(/requires an answer/);
 		expect(document).toEqual(seed());
 	});
@@ -291,7 +322,7 @@ describe('database document commands', () => {
 		const document = seed();
 		const puzzle = document.nodes[puzzleId];
 		expect(() =>
-			assertHuntDocument({
+			validateHuntDocument({
 				nodes: {
 					...document.nodes,
 					[puzzleId]: {
@@ -307,9 +338,10 @@ describe('database document commands', () => {
 			applyHuntCommand(
 				document,
 				{
-					type: 'set-discord',
+					type: 'set-property',
+					property: 'discord',
 					nodeId: rootId,
-					discord: { channelId: 'category', roleId: 'role' },
+					value: { channelId: 'category', roleId: 'role' },
 				},
 				100
 			)
@@ -318,9 +350,10 @@ describe('database document commands', () => {
 			applyHuntCommand(
 				document,
 				{
-					type: 'set-discord',
+					type: 'set-property',
+					property: 'discord',
 					nodeId: puzzleId,
-					discord: {
+					value: {
 						channelId: 'channel',
 						roleId: 'role',
 						indexChannelId: 'index',
@@ -333,6 +366,55 @@ describe('database document commands', () => {
 });
 
 describe('database document view', () => {
+	it.each([
+		projectHuntDocument,
+		(snapshot: HuntSnapshot) => projectPuzzlehuntView(snapshot.document),
+	])(
+		'indexes children without scanning the entire document per round %#',
+		(project) => {
+			const nodes: Record<string, HuntDocument['nodes'][string]> = {};
+			for (let index = 1; index <= 100; index++) {
+				const roundId = id(index);
+				nodes[roundId] = {
+					id: roundId,
+					type: 'round',
+					name: 'Round',
+					url: '',
+					parentId: null,
+					position: index,
+				};
+				const childId = id(index + 100);
+				nodes[childId] = {
+					id: childId,
+					type: 'puzzle',
+					name: 'Puzzle',
+					url: '',
+					parentId: roundId,
+					position: 0,
+				};
+			}
+			let scans = 0;
+			const indexedNodes = new Proxy(nodes, {
+				ownKeys(target) {
+					scans++;
+					return Reflect.ownKeys(target);
+				},
+			});
+			const view = project({
+				huntId: id(1000),
+				guildId: 'guild',
+				schemaVersion: 1,
+				revision: 1,
+				name: 'Hunt',
+				configuration: {},
+				document: { nodes: indexedNodes },
+			});
+			expect(view.rounds).toHaveLength(100);
+			expect(view.puzzles).toHaveLength(100);
+			expect(scans).toBeLessThanOrEqual(2);
+		}
+	);
+
 	it('projects nested children from a JSON snapshot without Fluid IDs or handles', () => {
 		const snapshot: HuntSnapshot = {
 			huntId: id(10),

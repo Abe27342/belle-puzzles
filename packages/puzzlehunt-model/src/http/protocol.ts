@@ -1,18 +1,16 @@
+import { z } from 'zod';
 import {
-	assertHuntDocument,
+	validateHuntDocument,
 	HuntCommandError,
 	isDocumentId,
 } from '../document.js';
 import type {
-	DocumentDiscordAssociation,
-	DocumentNode,
 	HuntCommand,
 	HuntCommandRequest,
 	HuntCommandResult,
-	HuntConfiguration,
+	HuntDocument,
 	HuntScope,
 	HuntSnapshot,
-	NewDocumentNode,
 } from '../document.js';
 
 /** Invalid responses are uncertain outcomes, never authoritative command rejections. */
@@ -23,239 +21,173 @@ export class HuntProtocolError extends Error {
 	}
 }
 
-function requireValue(condition: boolean, message: string): asserts condition {
-	if (!condition) {
-		throw new HuntProtocolError(message);
-	}
+const id = z.string().refine(isDocumentId, 'Expected a lowercase UUID.');
+// Keep nullable fields required even in the legacy non-strict TypeScript build.
+const nullableId: z.ZodType<string | null> = id.nullable();
+const nullableString: z.ZodType<string | null> = z.string().nullable();
+const integer = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
+const newNodeFields = { id, name: z.string(), url: z.string() };
+const newNode = z.discriminatedUnion('type', [
+	z.strictObject({
+		...newNodeFields,
+		type: z.literal('round'),
+		parentId: nullableId,
+	}),
+	z.strictObject({
+		...newNodeFields,
+		type: z.literal('puzzle'),
+		parentId: id,
+	}),
+]);
+
+function propertyCommand<Property extends string, Value extends z.ZodType>(
+	property: Property,
+	value: Value
+) {
+	return z.strictObject({
+		type: z.literal('set-property'),
+		nodeId: id,
+		property: z.literal(property),
+		value,
+	});
 }
 
-function object(value: unknown): Record<string, unknown> {
-	requireValue(
-		typeof value === 'object' && value !== null && !Array.isArray(value),
-		'Expected a JSON object.'
+const command: z.ZodType<HuntCommand> = z.discriminatedUnion('type', [
+	z.strictObject({ type: z.literal('add'), nodes: z.array(newNode) }),
+	z.strictObject({ type: z.literal('delete'), nodeId: id }),
+	z.strictObject({
+		type: z.literal('move'),
+		nodeId: id,
+		parentId: nullableId,
+	}),
+	z.discriminatedUnion('property', [
+		propertyCommand('name', z.string()),
+		propertyCommand('url', z.string()),
+		propertyCommand('answer', nullableString),
+		propertyCommand('status', nullableString),
+		propertyCommand('sheetId', nullableString),
+	]),
+]);
+
+export const huntCommandRequestSchema: z.ZodType<HuntCommandRequest> =
+	z.strictObject({
+		commandId: id,
+		command,
+	});
+
+const configuration = z.object({
+	googleFolderId: z.string().optional(),
+	indexId: z.string().optional(),
+	allPuzzlesRoleId: z.string().optional(),
+	loggingChannelIds: z
+		.object({
+			puzzleAdd: z.string(),
+			puzzleSolve: z.string(),
+			puzzleStatusUpdate: z.string(),
+		})
+		.optional(),
+});
+const discordFields = { channelId: z.string(), roleId: z.string() };
+const nodeFields = { ...newNodeFields, position: integer };
+const node = z.discriminatedUnion('type', [
+	z.object({
+		...nodeFields,
+		type: z.literal('round'),
+		parentId: nullableId,
+		discord: z
+			.object({ ...discordFields, indexChannelId: z.string() })
+			.optional(),
+		answer: z.never().optional(),
+		status: z.never().optional(),
+		lastStatusUpdate: z.never().optional(),
+		sheetId: z.never().optional(),
+	}),
+	z.object({
+		...nodeFields,
+		type: z.literal('puzzle'),
+		parentId: id,
+		answer: z.string().optional(),
+		status: z.string().optional(),
+		lastStatusUpdate: integer.optional(),
+		sheetId: z.string().optional(),
+		discord: z
+			.object({ ...discordFields, indexChannelId: z.never().optional() })
+			.optional(),
+	}),
+]);
+const document: z.ZodType<HuntDocument> = z
+	.object({ nodes: z.record(id, node) })
+	.superRefine((value, context) => {
+		try {
+			validateHuntDocument(value);
+		} catch (error) {
+			if (!(error instanceof HuntCommandError)) {
+				throw error;
+			}
+			context.addIssue({ code: 'custom', message: error.message });
+		}
+	});
+
+export const huntSnapshotSchema: z.ZodType<HuntSnapshot> = z.object({
+	huntId: id,
+	guildId: z.string().min(1),
+	schemaVersion: z.literal(1),
+	revision: integer,
+	name: z.string(),
+	configuration,
+	document,
+});
+
+export const huntCommandResultSchema: z.ZodType<HuntCommandResult> = z
+	.object({
+		receipt: z.object({ commandId: id, committedRevision: integer }),
+		snapshot: huntSnapshotSchema,
+		replayed: z.boolean(),
+	})
+	.refine(
+		(value) => value.receipt.committedRevision <= value.snapshot.revision,
+		{
+			message: 'Receipt revision exceeds the snapshot revision.',
+			path: ['receipt', 'committedRevision'],
+		}
 	);
-	return value as Record<string, unknown>;
-}
 
-function keys(
-	value: Record<string, unknown>,
-	allowed: readonly string[]
-): void {
-	requireValue(
-		Object.keys(value).every((key) => allowed.includes(key)),
-		'Unexpected JSON property.'
-	);
-}
-
-function string(value: unknown): string {
-	requireValue(typeof value === 'string', 'Expected a string.');
-	return value;
-}
-
-function id(value: unknown): string {
-	const result = string(value);
-	requireValue(isDocumentId(result), 'Expected a lowercase UUID.');
-	return result;
-}
-
-function parent(value: unknown): string | null {
-	return value === null ? null : id(value);
-}
-
-function integer(value: unknown): number {
-	requireValue(
-		typeof value === 'number' && Number.isSafeInteger(value) && value >= 0,
-		'Expected a nonnegative safe integer.'
-	);
-	return value;
-}
-
-function newNode(value: unknown): NewDocumentNode {
-	const node = object(value);
-	keys(node, ['id', 'type', 'name', 'url', 'parentId']);
-	const common = {
-		id: id(node.id),
-		name: string(node.name),
-		url: string(node.url),
-	};
-	if (node.type === 'round') {
-		return { ...common, type: 'round', parentId: parent(node.parentId) };
+function response<Value>(schema: z.ZodType<Value>, value: unknown): Value {
+	const result = schema.safeParse(value);
+	if (!result.success) {
+		throw new HuntProtocolError('Invalid puzzlehunt API response.', {
+			cause: result.error,
+		});
 	}
-	requireValue(node.type === 'puzzle', 'Expected a round or puzzle.');
-	return { ...common, type: 'puzzle', parentId: id(node.parentId) };
-}
-
-function command(value: unknown): HuntCommand {
-	const input = object(value);
-	if (input.type === 'add') {
-		keys(input, ['type', 'nodes']);
-		requireValue(Array.isArray(input.nodes), 'Expected a node array.');
-		return { type: 'add', nodes: input.nodes.map(newNode) };
-	}
-	const nodeId = id(input.nodeId);
-	switch (input.type) {
-		case 'delete':
-		case 'unsolve':
-			keys(input, ['type', 'nodeId']);
-			return { type: input.type, nodeId };
-		case 'rename':
-			keys(input, ['type', 'nodeId', 'name']);
-			return { type: 'rename', nodeId, name: string(input.name) };
-		case 'set-url':
-			keys(input, ['type', 'nodeId', 'url']);
-			return { type: 'set-url', nodeId, url: string(input.url) };
-		case 'move':
-			keys(input, ['type', 'nodeId', 'parentId']);
-			return { type: 'move', nodeId, parentId: parent(input.parentId) };
-		case 'solve':
-			keys(input, ['type', 'nodeId', 'answer']);
-			return { type: 'solve', nodeId, answer: string(input.answer) };
-		case 'set-status':
-			keys(input, ['type', 'nodeId', 'status']);
-			return {
-				type: 'set-status',
-				nodeId,
-				status: input.status === null ? null : string(input.status),
-			};
-		case 'set-sheet':
-			keys(input, ['type', 'nodeId', 'sheetId']);
-			return {
-				type: 'set-sheet',
-				nodeId,
-				sheetId: input.sheetId === null ? null : string(input.sheetId),
-			};
-		default:
-			throw new HuntProtocolError('Unknown public hunt command.');
-	}
+	return result.data;
 }
 
 /** Public writes cannot include ownership, replacement state, or worker commands. */
 export function decodeHuntCommandRequest(value: unknown): HuntCommandRequest {
-	try {
-		const request = object(value);
-		keys(request, ['commandId', 'command']);
-		return {
-			commandId: id(request.commandId),
-			command: command(request.command),
-		};
-	} catch (error) {
-		if (error instanceof HuntProtocolError) {
-			throw new HuntCommandError('invalid-command', error.message);
-		}
-		throw error;
-	}
-}
-
-function configuration(value: unknown): HuntConfiguration {
-	const input = object(value);
-	const logging = input.loggingChannelIds;
-	let loggingChannelIds: HuntConfiguration['loggingChannelIds'];
-	if (logging !== undefined) {
-		const channels = object(logging);
-		loggingChannelIds = {
-			puzzleAdd: string(channels.puzzleAdd),
-			puzzleSolve: string(channels.puzzleSolve),
-			puzzleStatusUpdate: string(channels.puzzleStatusUpdate),
-		};
-	}
-	return {
-		...(input.googleFolderId === undefined
-			? {}
-			: { googleFolderId: string(input.googleFolderId) }),
-		...(input.indexId === undefined
-			? {}
-			: { indexId: string(input.indexId) }),
-		...(input.allPuzzlesRoleId === undefined
-			? {}
-			: { allPuzzlesRoleId: string(input.allPuzzlesRoleId) }),
-		...(loggingChannelIds === undefined ? {} : { loggingChannelIds }),
-	};
-}
-
-function discord(value: unknown): DocumentDiscordAssociation {
-	const input = object(value);
-	return {
-		channelId: string(input.channelId),
-		roleId: string(input.roleId),
-		...(input.indexChannelId === undefined
-			? {}
-			: { indexChannelId: string(input.indexChannelId) }),
-	};
-}
-
-function node(value: unknown): DocumentNode {
-	const input = object(value);
-	const common = {
-		id: id(input.id),
-		name: string(input.name),
-		url: string(input.url),
-		position: integer(input.position),
-		...(input.discord === undefined
-			? {}
-			: { discord: discord(input.discord) }),
-	};
-	if (input.type === 'round') {
-		requireValue(
-			['answer', 'status', 'lastStatusUpdate', 'sheetId'].every(
-				(key) => input[key] === undefined
-			),
-			'Rounds cannot have puzzle properties.'
+	const result = huntCommandRequestSchema.safeParse(value);
+	if (!result.success) {
+		throw new HuntCommandError(
+			'invalid-command',
+			z.prettifyError(result.error)
 		);
-		return { ...common, type: 'round', parentId: parent(input.parentId) };
 	}
-	requireValue(input.type === 'puzzle', 'Expected a round or puzzle.');
-	return {
-		...common,
-		type: 'puzzle',
-		parentId: id(input.parentId),
-		...(input.answer === undefined ? {} : { answer: string(input.answer) }),
-		...(input.status === undefined ? {} : { status: string(input.status) }),
-		...(input.lastStatusUpdate === undefined
-			? {}
-			: { lastStatusUpdate: integer(input.lastStatusUpdate) }),
-		...(input.sheetId === undefined
-			? {}
-			: { sheetId: string(input.sheetId) }),
-	};
+	return result.data;
 }
 
 export function decodeHuntSnapshot(
 	value: unknown,
 	scope?: HuntScope
 ): HuntSnapshot {
-	const input = object(value);
-	const huntId = id(input.huntId);
-	const guildId = string(input.guildId);
-	requireValue(guildId.length > 0, 'Expected a guild ID.');
-	requireValue(input.schemaVersion === 1, 'Unsupported hunt schema version.');
-	requireValue(
-		scope === undefined ||
-			(scope.huntId === huntId && scope.guildId === guildId),
-		'Response returned a different hunt scope.'
-	);
-	const source = object(object(input.document).nodes);
-	const nodes: Record<string, DocumentNode> = {};
-	for (const [key, value] of Object.entries(source)) {
-		const decoded = node(value);
-		requireValue(key === decoded.id, 'Node key does not match its ID.');
-		nodes[key] = decoded;
+	const snapshot = response(huntSnapshotSchema, value);
+	if (
+		scope &&
+		(snapshot.huntId !== scope.huntId || snapshot.guildId !== scope.guildId)
+	) {
+		throw new HuntProtocolError(
+			'Response returned a different hunt scope.'
+		);
 	}
-	try {
-		assertHuntDocument({ nodes });
-	} catch (error) {
-		throw new HuntProtocolError('Invalid hunt document in response.', {
-			cause: error,
-		});
-	}
-	return {
-		huntId,
-		guildId,
-		schemaVersion: 1,
-		revision: integer(input.revision),
-		name: string(input.name),
-		configuration: configuration(input.configuration),
-		document: { nodes },
-	};
+	return snapshot;
 }
 
 export function decodeHuntCommandResult(
@@ -263,24 +195,17 @@ export function decodeHuntCommandResult(
 	scope: HuntScope,
 	commandId: string
 ): HuntCommandResult {
-	const input = object(value);
-	const receipt = object(input.receipt);
-	const snapshot = decodeHuntSnapshot(input.snapshot, scope);
-	const committedRevision = integer(receipt.committedRevision);
-	requireValue(
-		receipt.commandId === commandId &&
-			committedRevision <= snapshot.revision,
-		'Invalid command receipt.'
-	);
-	requireValue(
-		typeof input.replayed === 'boolean',
-		'Expected a replay flag.'
-	);
-	return {
-		receipt: { commandId, committedRevision },
-		snapshot,
-		replayed: input.replayed,
-	};
+	const result = response(huntCommandResultSchema, value);
+	if (
+		result.snapshot.huntId !== scope.huntId ||
+		result.snapshot.guildId !== scope.guildId ||
+		result.receipt.commandId !== commandId
+	) {
+		throw new HuntProtocolError(
+			'Response returned a different hunt scope or command receipt.'
+		);
+	}
+	return result;
 }
 
 export const huntRejectionStatuses: Readonly<
@@ -292,35 +217,33 @@ export const huntRejectionStatuses: Readonly<
 	unauthorized: [401],
 	forbidden: [403],
 };
+const rejection = z.object({
+	error: z.object({
+		code: z.enum([
+			'invalid-command',
+			'not-found',
+			'conflict',
+			'unauthorized',
+			'forbidden',
+		]),
+		message: z.string(),
+	}),
+});
 
 /** Only explicit, matching API rejections prove that a command was not applied. */
 export function decodeHuntRejection(
 	value: unknown,
 	status: number
 ): HuntCommandError | undefined {
-	if (typeof value !== 'object' || value === null || !('error' in value)) {
-		return undefined;
-	}
-	const error = value.error;
+	const result = rejection.safeParse(value);
 	if (
-		typeof error !== 'object' ||
-		error === null ||
-		!('code' in error) ||
-		!('message' in error)
+		result.success &&
+		huntRejectionStatuses[result.data.error.code].includes(status)
 	) {
-		return undefined;
-	}
-	for (const [code, statuses] of Object.entries(huntRejectionStatuses)) {
-		if (
-			error.code === code &&
-			statuses.includes(status) &&
-			typeof error.message === 'string'
-		) {
-			return new HuntCommandError(
-				code as HuntCommandError['code'],
-				error.message
-			);
-		}
+		return new HuntCommandError(
+			result.data.error.code,
+			result.data.error.message
+		);
 	}
 	return undefined;
 }
