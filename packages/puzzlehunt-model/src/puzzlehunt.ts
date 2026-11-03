@@ -865,7 +865,9 @@ class Puzzlehunt
 			const handle = new TreeNodeHandle(view, id);
 			const readString = (label: TraitLabel): string | undefined => {
 				const value = readOptional(handle.traits[label]);
-				return value === undefined ? undefined : str(value.payload);
+				return value?.payload === undefined
+					? undefined
+					: str(value.payload);
 			};
 			const nodeId = stableId(id);
 			const channelId = readString(traitLabels.channelId);

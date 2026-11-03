@@ -37,6 +37,7 @@ type FailureStage =
 interface ExportFailure {
 	stage: FailureStage;
 	message: string;
+	stack?: string;
 }
 
 export interface GuildOutcome {
@@ -75,6 +76,7 @@ function failure(error: unknown, stage: FailureStage): ExportFailure {
 	return {
 		stage,
 		message: error instanceof Error ? error.message : String(error),
+		stack: error instanceof Error ? error.stack : undefined,
 	};
 }
 
