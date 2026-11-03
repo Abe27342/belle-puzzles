@@ -39,7 +39,6 @@
 		"uuid": "^9.0.0"
 	},
 	"devDependencies": {
-		"@electric-sql/pglite": "^0.3.14",
 		"@types/async": "^3.2.20",
 		"@types/debug": "^4.1.5",
 		"@types/cors": "^2.8.13",

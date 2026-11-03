@@ -2,7 +2,7 @@
 
 ## Opt-in database foundation
 
-`src/database/schema.sql` and `PostgresPuzzlehuntStore` provide the initial
+The model package's `postgres` entry point and schema provide the initial
 PostgreSQL persistence path, without opening connections or switching existing
 commands at startup. See the [database model specification](../puzzlehunt-model/DATABASE_MODEL.md)
 for the transaction protocol, required integration worker work, and cutover boundaries.
@@ -10,7 +10,7 @@ The schema is not automatically applied.
 
 The store tests use ephemeral in-memory PostgreSQL through PGlite, not a live service:
 build the model with `pnpm --filter @belle-puzzles/puzzlehunt-model build`, then run
-`pnpm --filter @belle-puzzles/bot exec vitest run puzzlehuntStore.spec.ts`.
+`pnpm --filter @belle-puzzles/puzzlehunt-model exec vitest run src/test/postgres/store.spec.ts`.
 
 TODO: Better telemetry story.
 TODO: Show error messages in a channel for the server?

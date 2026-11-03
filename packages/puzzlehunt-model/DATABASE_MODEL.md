@@ -11,11 +11,12 @@ Implemented:
 - The Fluid-independent `@belle-puzzles/puzzlehunt-model/document` entry point:
   snapshots, semantic commands, invariant checks, command application, async
   read/write contracts, and a synchronous view projection.
-- `PostgresPuzzlehuntStore` in the bot: scoped reads and serialized transactional
+- `PostgresPuzzlehuntStore` in the model package's server-only `postgres` entry
+  point: scoped reads and serialized transactional
   commands, retry receipts, durable integration intent, and conditional
   reconciliation acknowledgement. Its injected pool is a structural subset of
   `pg.Pool`; a production driver/bootstrap is deliberately not wired yet.
-- An initial PostgreSQL schema in `packages/bot/src/database/schema.sql`, exercised
+- An initial PostgreSQL schema in `packages/puzzlehunt-model/src/postgres/schema.sql`, exercised
   with an ephemeral in-memory PGlite database. PGlite is a test dependency, not the
   proposed production database. This revises the initial, unapplied schema;
   it is not an upgrade migration for an existing JSONB database.
@@ -24,6 +25,9 @@ Not implemented: HTTP routes/JSON decoding, authentication policy, React binding
 SSE delivery, external integration workers, hunt provisioning/import, database
 migration tooling, and deployment. These must be completed before enabling the
 new path. The independent Fluid export format is not a dependency or this schema.
+
+See [the architectural decision record](ARCHITECTURE_DECISIONS.md) for package
+boundaries, the optimistic model direction, and the local-service test strategy.
 
 ## Representation
 
@@ -169,12 +173,14 @@ freely editable document JSON. Map domain errors to user-facing 400/404/409
 responses, propagate other errors explicitly, and do not report success until
 the transaction commits.
 
-For the website, add a separate RTK Query snapshot endpoint rather than adapting
-the synchronous `IPuzzlehunt` setters into fire-and-forget promises. Render a
-memoized projection of committed data. Modal submission must await the command,
-disable duplicate submission while pending, retain input and show the error on
-failure, and close only on success. Use string IDs (`data-node-id`), not numeric
-DOM-ID parsing. Do not mark optimistic data as committed.
+The shared model may expose synchronous mutations over an optimistic projection:
+the latest committed snapshot with pending semantic commands reapplied. Local
+visibility is not durable commitment, just as with Fluid. Pending changes,
+authoritative rejection, and settlement must be observable; callers that announce
+success must await settlement. The model submits commands, not its projected
+snapshot, and reconciles acknowledgements before reapplying pending commands.
+Use string IDs (`data-node-id`), not numeric DOM-ID parsing. Do not mark optimistic
+data as committed. React/modal wiring remains outside this prototype.
 
 Only replace a cached snapshot if its scope matches and its revision is not
 older. Command responses and refetches can arrive out of order. A replay response
@@ -185,10 +191,13 @@ leave a client permanently stale. On guild/hunt navigation, discard old-scope
 requests and subscriptions. No offline command queue or disconnected-edit merge
 protocol is planned.
 
-The bot must use the same command service for slash commands, bulk creation,
+The bot and website should use the same authenticated HTTP command service for
+slash commands, bulk creation,
 Discord drag/reparent events (`client.ts`), and integration association writes.
 Do not continue interpreting low-level Fluid deltas on this path. Its renderers
-can use the same snapshot projection without depending on React.
+can use the same snapshot projection without depending on React. Integration
+workers belong to the application service, not specifically the Discord gateway
+process; initial cohosting does not require keeping those responsibilities coupled.
 
 ## Durable Discord and Google work
 

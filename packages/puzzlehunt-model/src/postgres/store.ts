@@ -3,7 +3,7 @@ import {
 	assertHuntDocument,
 	HuntCommandError,
 	isDocumentId,
-} from '@belle-puzzles/puzzlehunt-model/document';
+} from '../document.js';
 import type {
 	DocumentDiscordAssociation,
 	DocumentNode,
@@ -16,7 +16,7 @@ import type {
 	HuntIntegrationCommand,
 	HuntScope,
 	HuntSnapshot,
-} from '@belle-puzzles/puzzlehunt-model/document';
+} from '../document.js';
 
 /** Structural subset of a pg Pool/PoolClient; constructing a store opens no connection. */
 export interface HuntDatabaseConnection {

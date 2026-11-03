@@ -1,16 +1,16 @@
 import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { PostgresPuzzlehuntStore } from '../database/puzzlehuntStore.js';
-import type { HuntDatabasePool } from '../database/puzzlehuntStore.js';
+import { PostgresPuzzlehuntStore } from '../../postgres/store.js';
+import type { HuntDatabasePool } from '../../postgres/store.js';
 import type {
 	HuntCommand,
 	HuntScope,
-} from '@belle-puzzles/puzzlehunt-model/document';
+} from '../../document.js';
 import {
 	assertHuntDocument,
 	projectHuntDocument,
-} from '@belle-puzzles/puzzlehunt-model/document';
+} from '../../document.js';
 
 const id = (n: number) =>
 	`00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -80,7 +80,7 @@ async function seed() {
 beforeAll(async () => {
 	database = new PGlite();
 	const schema = await readFile(
-		new URL('../database/schema.sql', import.meta.url),
+		new URL('../../postgres/schema.sql', import.meta.url),
 		'utf8'
 	);
 	await database.exec(schema);
