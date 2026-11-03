@@ -266,9 +266,11 @@ for the legacy non-strict TypeScript build without weakening runtime validation.
 
 ## 12. Change notification architectures
 
-**Status:** SSE plus PostgreSQL `LISTEN` selected by the user. The
-[wire protocol](DATABASE_MODEL.md#proposed-change-notification-protocol) is a
-proposal for review; notification delivery is not implemented.
+**Status:** SSE plus PostgreSQL `LISTEN` and revision-relative state
+synchronization selected by the user. The
+[protocol specification](DATABASE_MODEL.md#proposed-change-notification-protocol)
+records the direction; detailed envelopes/storage choices remain implementation
+details. Incremental synchronization and notification delivery are not implemented.
 
 Separate two requirements: open webpages need to learn that their snapshot is
 stale; Discord/Google synchronization must eventually perform durable work even
@@ -315,6 +317,16 @@ also re-read current state. Recovery does not depend on replaying missed hints.
 On database-listener failure, close affected streams so that reconnecting clients
 receive a fresh baseline after listening resumes. Disconnect slow clients instead
 of buffering an unbounded notification history.
+
+The user rejected repeated full-snapshot fetching for normal synchronization.
+Keep the revision hint, but serve committed-base changes containing authoritative
+node replacements, deleted IDs, and current hunt metadata/configuration. Use the
+same mechanism in command responses. Initial loads and clients outside bounded
+change-history retention receive a full snapshot. Record change tracking
+transactionally alongside mutations; the integration outbox is not that history.
+The cursor is a read-progress hint outside command intent/deduplication, not an
+expected-version condition on writes. Exact storage/envelope choices can be
+settled during implementation without another architectural design round.
 
 Use a fetch-based SSE client to retain the current bearer-token authorization;
 native browser `EventSource` cannot set the required Authorization header. Do not

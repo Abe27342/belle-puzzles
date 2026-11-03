@@ -258,14 +258,17 @@ process; initial cohosting does not require keeping those responsibilities coupl
 
 ## Proposed change notification protocol
 
-**Status:** Protocol proposal for the user-confirmed SSE plus PostgreSQL `LISTEN`
-architecture. No route, subscription client, or reconnection behavior is
+**Status:** The user has confirmed SSE plus PostgreSQL `LISTEN`, with
+revision-relative state updates rather than full snapshots for normal
+synchronization. Detailed envelopes and storage choices remain implementation
+details. No incremental read, SSE route/client, or reconnection behavior is
 implemented by this specification.
 
-Keep snapshot reads and command submission unchanged. Add one observation-only
-stream per hunt, with one application event type: `revision`. Its first message
-also serves as the initial synchronization handshake; no separate ready, reset,
-snapshot, or command-acknowledgement events are needed.
+Keep initial full-snapshot reads and mutation semantics. Extend reads and command
+responses to support incremental synchronization. Add one observation-only stream
+per hunt, with one application event type: `revision`. Its first message also
+serves as the initial synchronization handshake; no separate ready, reset,
+snapshot, or command-acknowledgement events are needed in that stream.
 
 ### Wire shape
 
@@ -305,8 +308,41 @@ promptly rather than buffering the whole HTTP response.
 A revision message means **the hunt has committed at least this revision**.
 Messages may skip revisions or coalesce many changes; they contain neither
 document patches nor durable integration work. There are no SSE `id` fields,
-replay cursors, `Last-Event-ID` semantics, or client acknowledgements. Recover by
-reading current state, not by requesting missing messages.
+stream replay cursors, `Last-Event-ID` semantics, or client acknowledgements.
+Recover through revision-relative state reads, not by requesting missed SSE
+messages.
+
+### Incremental state synchronization
+
+The original full-snapshot refresh proposal has a cost proportional to the whole
+hunt for each refresh; notification coalescing alone does not address it. Instead,
+the client supplies its committed revision as a synchronization cursor. The
+response covers a complete interval from `baseRevision` to `revision`, with
+`upsertNodes` containing complete authoritative records for affected surviving
+nodes and `deletedNodeIds` identifying removals. Include current hunt metadata and
+configuration as well, rather than losing changes outside node properties.
+
+Coalesce each affected node to its final state for that interval. These are state
+replacements, not domain commands or property patches: clients need not reproduce
+server timestamps, solve/status side effects, or integration behavior. Assemble
+the update and its ending revision from the same consistent database snapshot.
+
+Initial loads return a full snapshot. Retain bounded, transactionally recorded
+change tracking, including deletions, for catch-up reads. Reuse the store's
+existing changed/removed-node detection, recording synchronization tracking in
+the same transaction as state, receipts, integration intent, and notification.
+Its representation and retention limit can be selected during implementation.
+Do not repurpose the integration outbox: it has different contents and retention
+semantics. If the retained tracking cannot cover the entire requested interval,
+return an explicit full-snapshot fallback, never a partial delta.
+
+Use the same full-or-incremental response mechanism for command acknowledgements,
+so editing clients also avoid repeated full transfers. The synchronization
+cursor is outside command intent and receipt deduplication: it is not an
+expected-version write precondition. Apply commands to fresh authoritative state
+regardless of how far behind the client's cursor is. Retrying retains the
+original command ID and intent; return its receipt with an update to current
+state without reapplying the command.
 
 ### Subscription ordering and recovery
 
@@ -320,7 +356,7 @@ database `LISTEN`. For each connection:
 3. Begin the 200 stream and send the higher of the read revision and any buffered
    notification. Thereafter send only increasing revisions for that connection.
 
-This closes the read/subscribe race without a replay log. Clients may load the
+This closes the read/subscribe race without an SSE replay log. Clients may load the
 ordinary snapshot first, then connect: a commit in between appears in the first
 revision message or a subsequent one. Reconnecting to any replica uses the same
 procedure. Slow subscribers need only a bounded high-water mark, not a growing
@@ -336,9 +372,14 @@ finishing its handshake.
 
 Track the highest announced revision. If `committedSnapshot.revision` is already
 at least that value, no read is needed. Otherwise mark a refresh needed and
-coalesce notifications into one outstanding queued refresh. A command response
-may catch the model up without an additional read. Continue consuming the stream
-while waiting for the model queue.
+coalesce notifications into one outstanding queued catch-up read from the
+committed revision. A command response may catch the model up without an
+additional read. Continue consuming the stream while waiting for the model queue.
+
+Apply a delta only against its stated committed base revision, validate the
+resulting authoritative state, and then rebase pending commands. A mismatched
+base requires resynchronization, not applying an update to optimistic state or
+rejecting an otherwise valid mutation.
 
 The current `refresh()` promise describes batch settlement, not completion of
 one refresh operation. In particular, a rejected promise while a command is
@@ -378,7 +419,7 @@ Suggested implementation defaults, not additional wire fields: a keepalive every
 These bound authorization lifetime and accommodate the documented Container Apps
 request timeout; verify proxy streaming behavior before deployment. The existing
 30-second REST request timeout must not be applied to the stream. Also coalesce
-snapshot safety refreshes about once a minute while the page is visible and on
+incremental safety refreshes about once a minute while the page is visible and on
 focus/network recovery, so a missed hint cannot leave a client permanently stale.
 
 ### Bot and worker scope
