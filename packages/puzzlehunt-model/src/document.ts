@@ -149,7 +149,9 @@ export type HuntDocumentEvent =
 	| { readonly type: 'puzzle-solved'; readonly node: DocumentPuzzle }
 	| { readonly type: 'puzzle-status-updated'; readonly node: DocumentPuzzle };
 
-/** A definitive rejection, not an uncertain transport or commit failure. */
+/**
+ * Represents definitively rejected commands with an associated reason.
+ */
 export class HuntCommandError extends Error {
 	constructor(
 		public readonly code:
@@ -207,7 +209,11 @@ function requireParent(document: HuntDocument, parentId: string | null): void {
 	}
 }
 
-/** Children are a projection, never a second persisted authority. */
+/**
+ * @param document The hunt document containing the nodes.
+ * @param parentId The ID of the parent round, or null for top-level round nodes.
+ * @returns An array of child nodes sorted by position and ID.
+ */
 export function documentChildren(
 	document: HuntDocument,
 	parentId: string | null

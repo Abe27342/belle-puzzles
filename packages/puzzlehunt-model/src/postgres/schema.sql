@@ -28,7 +28,7 @@ CREATE TABLE hunt_nodes (
     name text NOT NULL,
     url text NOT NULL,
     parent_id uuid,
-    -- Only rounds may be parents; this generated value participates in the foreign key.
+    -- Only rounds may be parents; this value participates in the foreign key below referencing hunt_nodes.
     parent_type text GENERATED ALWAYS AS ('round'::text) STORED,
     position bigint NOT NULL CHECK (position BETWEEN 0 AND 9007199254740991),
     answer text,
