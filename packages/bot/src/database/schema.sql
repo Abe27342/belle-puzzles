@@ -24,13 +24,6 @@ CREATE TABLE active_hunts (
     FOREIGN KEY (hunt_id, guild_id) REFERENCES hunts(id, guild_id)
 );
 
--- Never reuse an entity ID, including after deletion or a worker restart.
-CREATE TABLE node_identities (
-    hunt_id uuid NOT NULL REFERENCES hunts(id),
-    node_id uuid NOT NULL,
-    PRIMARY KEY (hunt_id, node_id)
-);
-
 CREATE TABLE command_receipts (
     hunt_id uuid NOT NULL REFERENCES hunts(id),
     command_id uuid NOT NULL,

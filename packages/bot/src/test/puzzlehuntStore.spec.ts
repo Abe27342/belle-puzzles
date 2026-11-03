@@ -201,7 +201,7 @@ describe('PostgreSQL hunt store', () => {
 		expect((await store.read(scope)).revision).toBe(2);
 	});
 
-	it('rolls back document, receipt, identities, and queued work when durable event recording fails', async () => {
+	it('rolls back document, receipt, and queued work when durable event recording fails', async () => {
 		failEventInsert = true;
 		await expect(seed()).rejects.toThrow('division by zero');
 		failEventInsert = false;
@@ -209,7 +209,6 @@ describe('PostgreSQL hunt store', () => {
 		expect((await store.read(scope)).document.nodes).toEqual({});
 		for (const table of [
 			'command_receipts',
-			'node_identities',
 			'integration_jobs',
 			'integration_events',
 		]) {
@@ -285,20 +284,25 @@ describe('PostgreSQL hunt store', () => {
 				(row) => row.payload.event.node.discord?.channelId === 'channel'
 			)
 		).toBe(true);
-		await expect(
-			submit(104, {
-				type: 'add',
-				nodes: [
-					{
-						id: rootId,
-						type: 'round',
-						name: 'Reused',
-						url: '',
-						parentId: null,
-					},
-				],
-			})
-		).rejects.toMatchObject({ code: 'conflict' });
+	});
+
+	it('does not retain reservations for deleted node IDs', async () => {
+		await seed();
+		await submit(101, { type: 'delete', nodeId: rootId });
+		const result = await submit(102, {
+			type: 'add',
+			nodes: [
+				{
+					id: rootId,
+					type: 'round',
+					name: 'New round',
+					url: '',
+					parentId: null,
+				},
+			],
+		});
+		expect(result.snapshot.document.nodes[rootId].name).toBe('New round');
+		expect(result.snapshot.revision).toBe(3);
 	});
 
 	it('assigns a database status timestamp rather than accepting a client clock', async () => {

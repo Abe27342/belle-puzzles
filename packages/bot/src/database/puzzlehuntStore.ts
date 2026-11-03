@@ -206,23 +206,6 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 				command,
 				Number(clock[0].now_ms)
 			);
-			if (command.type === 'add') {
-				for (const node of command.nodes) {
-					const { rows: reserved } = await connection.query<{
-						node_id: string;
-					}>(
-						`INSERT INTO node_identities (hunt_id, node_id) VALUES ($1, $2)
-						 ON CONFLICT DO NOTHING RETURNING node_id`,
-						[scope.huntId, node.id]
-					);
-					if (reserved.length === 0) {
-						throw new HuntCommandError(
-							'conflict',
-							`Node ID ${node.id} was already used.`
-						);
-					}
-				}
-			}
 			const committed: HuntSnapshot = {
 				...snapshot,
 				revision: snapshot.revision + 1,

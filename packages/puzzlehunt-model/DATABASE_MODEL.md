@@ -45,8 +45,9 @@ The JSONB document contains `nodes`, keyed by lowercase application UUIDs. A nod
 has `type: 'round' | 'puzzle'`, name, URL, parent ID, and sibling position. Only
 rounds can be roots or parents. Stable IDs are not Fluid local node numbers or
 Discord IDs. An importer must allocate/remap IDs, preserve external associations
-and provenance, validate the resulting graph, and reserve every imported ID in
-`node_identities`. IDs must never be reused after deletion.
+and provenance, and validate the resulting graph. New node creations use fresh
+random UUIDs. The store rejects IDs already in the document, but does not retain
+a permanent record of IDs after deletion.
 
 Persist only parent pointers; derive children. Additions and reparenting append
 to the current destination's sibling positions. Positions need not be contiguous
@@ -80,15 +81,15 @@ default READ COMMITTED isolation:
    with `replayed: true`; it does not apply the command again. Reusing an ID for
    different JSON intent is a conflict.
 3. Apply the command to freshly read authoritative state. Sample database time
-   after acquiring the lock for status timestamps. Reserve newly allocated node
-   identities. Validate the complete graph before writing.
+   after acquiring the lock for status timestamps. Validate the complete graph
+   before writing.
 4. Update the document and increment its revision; insert the command receipt,
    coalescing integration jobs, and separate lifecycle/log events.
 5. Transactionally `pg_notify` a small hunt/revision hint and commit. Return only
    committed state. On failure roll back all the records together.
 
 Use a new command UUID for each intentional action and keep that same UUID and
-payload across a network retry. Keep receipts and node identities indefinitely
+payload across a network retry. Keep receipts indefinitely
 initially; pruning requires an explicit retry-expiration protocol. A request
 whose commit result is unknown is retried with the same ID, never a fresh one.
 
@@ -96,7 +97,7 @@ Ordinary assignments have no blanket expected-node-version requirement. If two
 clients solve the same puzzle, the later serialized database write wins,
 regardless of their clocks, request start times, or stale reads. Independent
 adds both survive; changing one field preserves fresh values of other fields.
-Structural invalidity (missing parent, cycle, reused ID) fails explicitly rather
+Structural invalidity (missing parent, cycle, duplicate existing ID) fails explicitly rather
 than silently dropping a command. Each newly accepted command advances the hunt
 revision, even if its assignment happens to equal the existing value.
 
@@ -195,7 +196,7 @@ progress and worker ownership/leases, not just a loop over pending rows:
   and can produce duplicates; document detection/repair rather than claiming
   exactly-once delivery.
 - A create racing with deletion must not attach an external resource to a missing
-  or reincarnated node. IDs are never reused; a journaled resource that can no
+  node. New creations use fresh UUIDs; a journaled resource that can no
   longer be attached becomes cleanup work. Deletion events alone cannot know
   about resources created after their tombstone was recorded. Retain the journal
   until those resources are accounted for. Resource attachment also needs a
@@ -231,7 +232,7 @@ no resources are provisioned by this change.
 Before cutover: test the store against real PostgreSQL with independently leased
 connections, complete scoped auth/JSON decoding and async UI adapters, implement
 and failure-test the resource journal/worker protocol, create an audited import
-with ID/provenance mapping and ledger seeding, and define backup/restore and
+with ID/provenance mapping, and define backup/restore and
 rollback procedures. The current embedded tests execute PostgreSQL SQL and
 transaction rollback but use a size-one pool; they are not evidence of production
 multi-connection locking, external API idempotence, or a completed migration.
