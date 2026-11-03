@@ -18,6 +18,7 @@
 	"scripts": {
 		"build": "pnpm --stream --filter @belle-puzzles/* run build",
 		"start:bot": "pnpm --filter @belle-puzzles/bot run start",
+		"start:puzzlehunt-service": "pnpm --filter @belle-puzzles/puzzlehunt-service run start",
 		"start:localserver": "npx @fluidframework/azure-local-service",
 		"test": "pnpm --stream --filter @belle-puzzles/* run test"
 	},
