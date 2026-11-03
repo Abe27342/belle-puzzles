@@ -27,7 +27,7 @@ describe('Puzzlehunts', () => {
 			connection: {
 				type: 'local',
 				tokenProvider: new InsecureTokenProvider('', user),
-				endpoint: 'http://localhost:7070',
+				endpoint: process.env.PUZZLEHUNT_FLUID_ENDPOINT ?? 'http://localhost:7070',
 			},
 			logger,
 		});

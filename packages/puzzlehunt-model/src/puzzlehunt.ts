@@ -143,6 +143,7 @@ export interface IPuzzlehunt extends TypedEventEmitter<IPuzzlehuntEvents> {
 		parentRound: Round
 	): void;
 	solve(id: NodeId, answer: string): Puzzle;
+	unsolve(id: NodeId): Puzzle;
 	updateStatus(puzzle: Puzzle, status: string): void;
 	clearStatus(puzzle: Puzzle): void;
 	move(obj: Puzzle | Round, newParent: Round): void;
@@ -634,6 +635,18 @@ class Puzzlehunt
 		const answerTraitLocation = { parent: id, label: traitLabels.answer };
 		this.checkout.applyEdit(
 			...replace(makeString(answer), answerTraitLocation)
+		);
+		return new PuzzleHandle(this.checkout.currentView, id);
+	}
+
+	public unsolve(id: NodeId): Puzzle {
+		this.checkout.applyEdit(
+			Change.delete(
+				StableRange.all({
+					parent: id,
+					label: traitLabels.answer,
+				})
+			)
 		);
 		return new PuzzleHandle(this.checkout.currentView, id);
 	}

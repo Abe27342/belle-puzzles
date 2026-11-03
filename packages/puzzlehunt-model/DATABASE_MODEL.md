@@ -11,6 +11,10 @@ Implemented:
 - The Fluid-independent `@belle-puzzles/puzzlehunt-model/document` entry point:
   snapshots, semantic commands, invariant checks, command application, async
   read/write contracts, and a synchronous view projection.
+- A common `IPuzzlehuntModel` with plain views and synchronous local mutations.
+  `PuzzlehuntModel` in the `model` entry point tracks optimistic commands over
+  `HuntDocumentClient`; `FluidPuzzlehuntModel` in `fluid` delegates to the existing
+  Fluid implementation with stable string IDs and storage-neutral notifications.
 - `PostgresPuzzlehuntStore` in the model package's server-only `postgres` entry
   point: scoped reads and serialized transactional
   commands, retry receipts, durable integration intent, and conditional
@@ -20,6 +24,9 @@ Implemented:
   with an ephemeral in-memory PGlite database. PGlite is a test dependency, not the
   proposed production database. This revises the initial, unapplied schema;
   it is not an upgrade migration for an existing JSONB database.
+- One representation-independent behavioral suite against the local Fluid
+  ordering service and a disposable, multi-connection PostgreSQL service, plus
+  focused optimistic-client and authoritative concurrency tests.
 
 Not implemented: HTTP routes/JSON decoding, authentication policy, React bindings,
 SSE delivery, external integration workers, hunt provisioning/import, database
@@ -155,6 +162,29 @@ Fluid handles, or `TreeView`. Its objects are read-only by TypeScript contract,
 not recursively frozen/copied. Treat a snapshot as immutable and replace it when
 a newer committed snapshot arrives.
 
+The optional model facade adds familiar getters/mutations over this boundary:
+
+```ts
+import { PuzzlehuntModel } from '@belle-puzzles/puzzlehunt-model/model';
+
+const model = await PuzzlehuntModel.load(client, scope);
+const stopListening = model.subscribe(() => render(model.view));
+const round = model.addRound('Round', 'round-url');
+model.addPuzzle('Puzzle', 'puzzle-url', round); // visible locally immediately
+await model.flush(); // confirmation, not a fire-and-forget write
+stopListening();
+```
+
+`client` implements the existing `HuntDocumentClient`; it may be a local store or,
+once implemented, an authenticated HTTP adapter. Public model code imports no
+PostgreSQL or Fluid implementation. `committedSnapshot` remains authoritative;
+`view` includes provisional changes, and `isPending`/`pendingChanges` distinguish
+them. Definitive failures roll back and stay in `failures`; dependent edits fail
+explicitly and independent edits survive. Unknown outcomes pause with the
+original command ID for `retryPending()`. `refresh()` shares the command queue to
+avoid applying accepted pending commands twice. See the decision record for this
+simple protocol's latency trade-off and the legacy Fluid adapter's semantics.
+
 Proposed authenticated routes, deliberately not yet registered:
 
 | Route | Contract |
@@ -192,12 +222,26 @@ requests and subscriptions. No offline command queue or disconnected-edit merge
 protocol is planned.
 
 The bot and website should use the same authenticated HTTP command service for
-slash commands, bulk creation,
-Discord drag/reparent events (`client.ts`), and integration association writes.
+slash commands, bulk creation, and Discord drag/reparent events (`client.ts`).
+Integration association writes use a separate worker-only service boundary.
 Do not continue interpreting low-level Fluid deltas on this path. Its renderers
 can use the same snapshot projection without depending on React. Integration
 workers belong to the application service, not specifically the Discord gateway
 process; initial cohosting does not require keeping those responsibilities coupled.
+
+## Local model evaluation
+
+Run `pnpm --filter @belle-puzzles/puzzlehunt-model test:contract` for the same
+behavioral assertions on both model implementations. Run
+`pnpm --filter @belle-puzzles/puzzlehunt-model test` for the full model suite,
+including the existing Fluid tests, PGlite schema tests, optimistic failure/retry
+tests, and real PostgreSQL contention tests.
+
+The runner starts and checks an isolated local ordering service; database fixtures
+start real PostgreSQL on dynamic loopback ports and clear their own tables before
+each test. They never accept an external database URL or reset a user database.
+Services and their temporary data are cleaned up afterward. Native PostgreSQL
+test binaries are development dependencies; use a non-root account on Unix.
 
 ## Durable Discord and Google work
 

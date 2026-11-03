@@ -1,4 +1,4 @@
-/** Opt-in database model. This module has no Fluid or platform dependencies. */
+/** Document types and domain commands, without Fluid or platform dependencies. */
 export interface HuntScope {
 	readonly huntId: string;
 	readonly guildId: string;
@@ -39,7 +39,7 @@ export interface DocumentPuzzle extends DocumentNodeBase {
 	readonly parentId: string;
 	readonly answer?: string;
 	readonly status?: string;
-	/** Server-assigned Unix milliseconds; present exactly when status is present. */
+	/** Unix milliseconds; PostgreSQL commits use server time. Present exactly when status is present. */
 	readonly lastStatusUpdate?: number;
 	readonly sheetId?: string;
 }
@@ -324,8 +324,10 @@ export function assertHuntDocument(document: HuntDocument): void {
 }
 
 /**
- * Apply once to fresh state while holding the hunt row lock. Receipt deduplication
+ * On the server, apply once to fresh state while holding the hunt row lock. Receipt deduplication
  * belongs to that same transaction and must happen before calling this function.
+ * Optimistic projections reuse this reducer with provisional time; only committed
+ * server events may enqueue external integration work.
  */
 export function applyHuntCommand(
 	document: HuntDocument,
