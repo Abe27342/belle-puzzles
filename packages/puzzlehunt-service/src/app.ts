@@ -7,9 +7,17 @@ import {
 } from '@belle-puzzles/puzzlehunt-model/document';
 import {
 	decodeHuntCommandRequest,
+	decodeHuntRevision,
 	huntRejectionStatuses,
 } from '@belle-puzzles/puzzlehunt-model/http';
 import type { PostgresPuzzlehuntStore } from '@belle-puzzles/puzzlehunt-model/postgres';
+import { HuntChangesUnavailableError } from './changes.js';
+import type { HuntChangeFeed } from './changes.js';
+export {
+	HuntChangesUnavailableError,
+	PostgresHuntChangeFeed,
+} from './changes.js';
+export type { HuntChangeFeed, HuntListenerConnection } from './changes.js';
 
 export type HuntAuthorizer = (
 	authorization: string | undefined,
@@ -19,8 +27,14 @@ export type HuntAuthorizer = (
 export interface PuzzlehuntAppOptions {
 	readonly store: Pick<
 		PostgresPuzzlehuntStore,
-		'read' | 'readActive' | 'submit'
+		| 'read'
+		| 'readActive'
+		| 'submit'
+		| 'readUpdates'
+		| 'submitUpdates'
+		| 'readRevision'
 	>;
+	readonly changes: HuntChangeFeed;
 	readonly authorize: HuntAuthorizer;
 	readonly allowedOrigins?: readonly string[];
 	readonly onError?: (error: unknown) => void;
@@ -64,6 +78,7 @@ export function createPuzzlehuntApp(
 			origin: [...origins],
 			methods: ['GET', 'POST'],
 			allowedHeaders: ['Authorization', 'Content-Type'],
+			exposedHeaders: ['Retry-After'],
 			maxAge: 600,
 		})
 	);
@@ -106,11 +121,17 @@ export function createPuzzlehuntApp(
 	app.route('/guilds/:guildId/hunts/:huntId')
 		.get(
 			route(async (req, res) => {
+				const scope = {
+					guildId: req.params.guildId,
+					huntId: req.params.huntId,
+				};
 				res.json(
-					await options.store.read({
-						guildId: req.params.guildId,
-						huntId: req.params.huntId,
-					})
+					req.query.since === undefined
+						? await options.store.read(scope)
+						: await options.store.readUpdates(
+								scope,
+								decodeHuntRevision(req.query.since)
+						  )
 				);
 			})
 		)
@@ -121,6 +142,104 @@ export function createPuzzlehuntApp(
 					error: {
 						code: 'invalid-command',
 						message: 'Use GET to read a hunt.',
+					},
+				});
+		});
+	app.route('/guilds/:guildId/hunts/:huntId/changes')
+		.get(
+			route(async (req, res) => {
+				if (res.destroyed) return;
+				const scope = {
+					guildId: req.params.guildId,
+					huntId: req.params.huntId,
+				};
+				let highest = -1;
+				let disconnected = false;
+				let cleaned = false;
+				let heartbeat: ReturnType<typeof setInterval> | undefined;
+				let rotation: ReturnType<typeof setTimeout> | undefined;
+				let unsubscribe: (() => void) | undefined;
+				const cleanup = () => {
+					if (cleaned) return;
+					cleaned = true;
+					clearInterval(heartbeat);
+					clearTimeout(rotation);
+					unsubscribe?.();
+				};
+				const write = (revision: number) => {
+					if (cleaned || revision <= highest) return;
+					highest = revision;
+					if (
+						!res.write(
+							`event: revision\ndata: ${JSON.stringify({
+								huntId: scope.huntId,
+								revision,
+							})}\n\n`
+						)
+					) {
+						cleanup();
+						res.end();
+					}
+				};
+				res.once('close', cleanup);
+				// Register before the baseline read; hints received during that read are coalesced.
+				unsubscribe = options.changes.subscribe(
+					scope.huntId,
+					(revision) => {
+						if (res.headersSent) write(revision);
+						else highest = Math.max(highest, revision);
+					},
+					() => {
+						disconnected = true;
+						cleanup();
+						if (res.headersSent) res.end();
+					}
+				);
+				if (cleaned) unsubscribe();
+				try {
+					const baseline = await options.store.readRevision(scope);
+					if (disconnected) throw new HuntChangesUnavailableError();
+					if (cleaned) return;
+					const initial = Math.max(baseline, highest);
+					highest = -1;
+					res.status(200).set({
+						'Content-Type': 'text/event-stream; charset=utf-8',
+						'Cache-Control': 'no-store, no-transform',
+						'X-Accel-Buffering': 'no',
+					});
+					if (req.method === 'HEAD') {
+						cleanup();
+						res.end();
+						return;
+					}
+					res.flushHeaders();
+					write(initial);
+					if (cleaned) return;
+					heartbeat = setInterval(() => {
+						if (!res.write(': keepalive\n\n')) {
+							cleanup();
+							res.end();
+						}
+					}, 15000);
+					heartbeat.unref();
+					rotation = setTimeout(() => {
+						cleanup();
+						res.end();
+					}, 180000);
+					rotation.unref();
+				} catch (error) {
+					cleanup();
+					throw error;
+				}
+			})
+		)
+		.all((_req, res) => {
+			res.set('Allow', 'GET, HEAD')
+				.status(405)
+				.json({
+					error: {
+						code: 'invalid-command',
+						message: 'Use GET to observe a hunt.',
 					},
 				});
 		});
@@ -140,15 +259,23 @@ export function createPuzzlehuntApp(
 			},
 			express.json({ limit: 1024 * 1024, strict: true, inflate: false }),
 			route(async (req, res) => {
+				const since =
+					req.query.since === undefined
+						? undefined
+						: decodeHuntRevision(req.query.since);
 				const request = decodeHuntCommandRequest(req.body);
+				const scope = {
+					guildId: req.params.guildId,
+					huntId: req.params.huntId,
+				};
 				res.json(
-					await options.store.submit(
-						{
-							guildId: req.params.guildId,
-							huntId: req.params.huntId,
-						},
-						request
-					)
+					since === undefined
+						? await options.store.submit(scope, request)
+						: await options.store.submitUpdates(
+								scope,
+								request,
+								since
+						  )
 				);
 			})
 		)
@@ -174,7 +301,16 @@ export function createPuzzlehuntApp(
 		next
 	) => {
 		if (res.headersSent) {
-			next(error);
+			(options.onError ?? console.error)(error);
+			res.end();
+			return;
+		}
+		if (error instanceof HuntChangesUnavailableError) {
+			res.set('Retry-After', '1')
+				.status(503)
+				.json({
+					error: { code: 'unavailable', message: error.message },
+				});
 			return;
 		}
 		if (error instanceof HuntCommandError) {

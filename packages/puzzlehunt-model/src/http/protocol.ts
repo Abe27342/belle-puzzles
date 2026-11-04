@@ -8,9 +8,12 @@ import type {
 	HuntCommand,
 	HuntCommandRequest,
 	HuntCommandResult,
+	HuntCommandUpdateResult,
+	HuntDelta,
 	HuntDocument,
 	HuntScope,
 	HuntSnapshot,
+	HuntStateUpdate,
 } from '../document.js';
 
 /** Invalid responses are uncertain outcomes, never authoritative command rejections. */
@@ -18,6 +21,14 @@ export class HuntProtocolError extends Error {
 	constructor(message: string, options?: ErrorOptions) {
 		super(message, options);
 		this.name = 'HuntProtocolError';
+	}
+}
+
+/** An HTTP failure without proof that a command was rejected before committing. */
+export class HuntHttpError extends Error {
+	constructor(public readonly status: number) {
+		super(`Puzzlehunt API returned HTTP ${status}.`);
+		this.name = 'HuntHttpError';
 	}
 }
 
@@ -138,6 +149,83 @@ export const huntSnapshotSchema: z.ZodType<HuntSnapshot> = z.object({
 	document,
 });
 
+const delta: z.ZodType<HuntDelta> = z
+	.object({
+		huntId: id,
+		guildId: z.string().min(1),
+		schemaVersion: z.literal(1),
+		baseRevision: integer,
+		revision: integer,
+		name: z.string(),
+		configuration,
+		upsertNodes: z.array(node),
+		deletedNodeIds: z.array(id),
+	})
+	.refine((value) => value.revision >= value.baseRevision, {
+		message: 'Delta revision precedes its base.',
+	});
+
+export const huntStateUpdateSchema: z.ZodType<HuntStateUpdate> =
+	z.discriminatedUnion('type', [
+		z.object({ type: z.literal('snapshot'), snapshot: huntSnapshotSchema }),
+		z.object({ type: z.literal('delta'), delta }),
+	]);
+
+export function huntUpdateRevision(update: HuntStateUpdate): number {
+	return update.type === 'snapshot'
+		? update.snapshot.revision
+		: update.delta.revision;
+}
+
+export const huntCommandUpdateResultSchema: z.ZodType<HuntCommandUpdateResult> =
+	z
+		.object({
+			receipt: z.object({ commandId: id, committedRevision: integer }),
+			update: huntStateUpdateSchema,
+			replayed: z.boolean(),
+		})
+		.refine(
+			(value) =>
+				value.receipt.committedRevision <=
+				huntUpdateRevision(value.update),
+			{
+				message: 'Receipt revision exceeds the state revision.',
+			}
+		);
+
+export const huntRevisionNotificationSchema = z.object({
+	huntId: id,
+	revision: integer,
+});
+
+export function decodeHuntRevisionNotification(
+	value: unknown,
+	huntId: string
+): number {
+	const notification = response(huntRevisionNotificationSchema, value);
+	if (notification.huntId !== huntId) {
+		throw new HuntProtocolError('Notification returned a different hunt.');
+	}
+	return notification.revision;
+}
+
+/** A synchronization cursor is not part of command identity or a write precondition. */
+export function decodeHuntRevision(value: unknown): number {
+	const result = z
+		.string()
+		.regex(/^(0|[1-9][0-9]*)$/)
+		.transform(Number)
+		.pipe(integer)
+		.safeParse(value);
+	if (!result.success) {
+		throw new HuntCommandError(
+			'invalid-command',
+			'Expected a nonnegative safe integer revision.'
+		);
+	}
+	return result.data;
+}
+
 export const huntCommandResultSchema: z.ZodType<HuntCommandResult> = z
 	.object({
 		receipt: z.object({ commandId: id, committedRevision: integer }),
@@ -203,6 +291,39 @@ export function decodeHuntCommandResult(
 	) {
 		throw new HuntProtocolError(
 			'Response returned a different hunt scope or command receipt.'
+		);
+	}
+	return result;
+}
+
+export function decodeHuntStateUpdate(
+	value: unknown,
+	scope: HuntScope
+): HuntStateUpdate {
+	const update = response(huntStateUpdateSchema, value);
+	checkUpdateScope(update, scope);
+	return update;
+}
+
+function checkUpdateScope(update: HuntStateUpdate, scope: HuntScope): void {
+	const state = update.type === 'snapshot' ? update.snapshot : update.delta;
+	if (state.huntId !== scope.huntId || state.guildId !== scope.guildId) {
+		throw new HuntProtocolError(
+			'Response returned a different hunt scope.'
+		);
+	}
+}
+
+export function decodeHuntCommandUpdateResult(
+	value: unknown,
+	scope: HuntScope,
+	commandId: string
+): HuntCommandUpdateResult {
+	const result = response(huntCommandUpdateResultSchema, value);
+	checkUpdateScope(result.update, scope);
+	if (result.receipt.commandId !== commandId) {
+		throw new HuntProtocolError(
+			'Response returned a different command receipt.'
 		);
 	}
 	return result;

@@ -1,17 +1,33 @@
-import { isDocumentId } from '../document.js';
+import { applyHuntStateUpdate, isDocumentId } from '../document.js';
 import type {
 	HuntCommandRequest,
 	HuntCommandResult,
 	HuntDocumentClient,
 	HuntScope,
 	HuntSnapshot,
+	HuntStateUpdate,
 } from '../document.js';
 import {
 	decodeHuntCommandResult,
+	decodeHuntCommandUpdateResult,
 	decodeHuntRejection,
 	decodeHuntSnapshot,
+	decodeHuntStateUpdate,
+	HuntHttpError,
 	HuntProtocolError,
 } from './protocol.js';
+import {
+	HuntWatchCredentialError,
+	watchHuntChanges,
+	watchPuzzlehuntModel,
+} from './changes.js';
+import type {
+	HuntChangeSubscription,
+	HuntChangeWatchOptions,
+	HuntModelWatchOptions,
+} from './changes.js';
+import type { PuzzlehuntModel } from '../model/puzzlehunt.js';
+export { HuntHttpError } from './protocol.js';
 
 export interface HttpHuntDocumentClientOptions {
 	readonly baseUrl: string;
@@ -22,18 +38,11 @@ export interface HttpHuntDocumentClientOptions {
 	readonly timeoutMs?: number;
 }
 
-/** An HTTP failure without proof that a command was rejected before committing. */
-export class HuntHttpError extends Error {
-	constructor(public readonly status: number) {
-		super(`Puzzlehunt API returned HTTP ${status}.`);
-		this.name = 'HuntHttpError';
-	}
-}
-
 export class HttpHuntDocumentClient implements HuntDocumentClient {
 	private readonly baseUrl: string;
 	private readonly fetch: typeof globalThis.fetch;
 	private readonly timeoutMs: number;
+	private readonly snapshots = new Map<string, HuntSnapshot>();
 
 	constructor(private readonly options: HttpHuntDocumentClientOptions) {
 		const url = new URL(options.baseUrl);
@@ -71,13 +80,21 @@ export class HttpHuntDocumentClient implements HuntDocumentClient {
 				'Active hunt response returned a different guild.'
 			);
 		}
-		return snapshot;
+		return this.remember(snapshot);
 	}
 
 	async read(scope: HuntScope): Promise<HuntSnapshot> {
-		return decodeHuntSnapshot(
-			await this.request(this.huntPath(scope)),
-			scope
+		const path = this.huntPath(scope);
+		const base = this.snapshots.get(path);
+		if (base) {
+			const update = decodeHuntStateUpdate(
+				await this.request(`${path}?since=${base.revision}`),
+				scope
+			);
+			return this.assemble(base, update);
+		}
+		return this.remember(
+			decodeHuntSnapshot(await this.request(path), scope)
 		);
 	}
 
@@ -85,11 +102,104 @@ export class HttpHuntDocumentClient implements HuntDocumentClient {
 		scope: HuntScope,
 		request: HuntCommandRequest
 	): Promise<HuntCommandResult> {
-		return decodeHuntCommandResult(
-			await this.request(`${this.huntPath(scope)}/commands`, request),
+		const path = this.huntPath(scope);
+		const base = this.snapshots.get(path);
+		if (base) {
+			const result = decodeHuntCommandUpdateResult(
+				await this.request(
+					`${path}/commands?since=${base.revision}`,
+					request
+				),
+				scope,
+				request.commandId
+			);
+			return {
+				receipt: result.receipt,
+				replayed: result.replayed,
+				snapshot: await this.assemble(base, result.update),
+			};
+		}
+		const result = decodeHuntCommandResult(
+			await this.request(`${path}/commands`, request),
 			scope,
 			request.commandId
 		);
+		this.remember(result.snapshot);
+		return result;
+	}
+
+	watch(
+		scope: HuntScope,
+		options: HuntChangeWatchOptions
+	): HuntChangeSubscription {
+		const path = `${this.huntPath(scope)}/changes`;
+		return watchHuntChanges(
+			scope,
+			async (signal) => {
+				let authorization: string;
+				try {
+					authorization = await this.authorization();
+				} catch (error) {
+					throw new HuntWatchCredentialError(error);
+				}
+				signal.throwIfAborted();
+				return this.fetch(`${this.baseUrl}${path}`, {
+					method: 'GET',
+					headers: {
+						Accept: 'text/event-stream',
+						Authorization: authorization,
+					},
+					cache: 'no-store',
+					credentials: 'omit',
+					redirect: 'error',
+					signal,
+				});
+			},
+			options
+		);
+	}
+
+	watchModel(
+		model: PuzzlehuntModel,
+		options: HuntModelWatchOptions
+	): HuntChangeSubscription {
+		return watchPuzzlehuntModel(this, model, options);
+	}
+
+	private remember(snapshot: HuntSnapshot): HuntSnapshot {
+		const key = this.huntPath(snapshot);
+		const previous = this.snapshots.get(key);
+		if (!previous || snapshot.revision >= previous.revision) {
+			this.snapshots.set(key, snapshot);
+		}
+		return snapshot;
+	}
+
+	private async assemble(
+		base: HuntSnapshot,
+		update: HuntStateUpdate
+	): Promise<HuntSnapshot> {
+		try {
+			if (
+				update.type === 'delta' &&
+				update.delta.baseRevision !== base.revision
+			) {
+				// Recover state with a read, never by resubmitting the acknowledged command.
+				update = {
+					type: 'snapshot',
+					snapshot: decodeHuntSnapshot(
+						await this.request(this.huntPath(base)),
+						base
+					),
+				};
+			}
+			return this.remember(applyHuntStateUpdate(base, update));
+		} catch (error) {
+			throw new HuntProtocolError(
+				'Could not apply the authoritative hunt update.',
+				{ cause: error }
+			);
+		}
 	}
 
 	private guildPath(guildId: string): string {
@@ -110,17 +220,12 @@ export class HttpHuntDocumentClient implements HuntDocumentClient {
 		path: string,
 		command?: HuntCommandRequest
 	): Promise<unknown> {
-		const token = await this.options.getToken();
-		if (typeof token !== 'string' || token.length === 0) {
-			throw new Error('No puzzlehunt API credential is available.');
-		}
+		const authorization = await this.authorization();
 		const response = await this.fetch(`${this.baseUrl}${path}`, {
 			method: command === undefined ? 'GET' : 'POST',
 			headers: {
 				Accept: 'application/json',
-				Authorization: `${
-					this.options.authScheme ?? 'Bearer'
-				} ${token}`,
+				Authorization: authorization,
 				...(command === undefined
 					? {}
 					: { 'Content-Type': 'application/json' }),
@@ -161,5 +266,13 @@ export class HttpHuntDocumentClient implements HuntDocumentClient {
 			);
 		}
 		return value;
+	}
+
+	private async authorization(): Promise<string> {
+		const token = await this.options.getToken();
+		if (typeof token !== 'string' || token.length === 0) {
+			throw new Error('No puzzlehunt API credential is available.');
+		}
+		return `${this.options.authScheme ?? 'Bearer'} ${token}`;
 	}
 }
