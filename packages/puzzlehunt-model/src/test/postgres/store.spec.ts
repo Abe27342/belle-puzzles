@@ -8,6 +8,8 @@ import type {
 	HuntScope,
 } from '../../document.js';
 import {
+	applyHuntStateUpdate,
+	HuntCommandError,
 	validateHuntDocument,
 	projectHuntDocument,
 } from '../../document.js';
@@ -101,6 +103,190 @@ afterAll(async () => {
 });
 
 describe('PostgreSQL hunt store', () => {
+	it('returns only affected final-state nodes and deletion IDs across a revision interval', async () => {
+		await seed();
+		const base = await store.read(scope);
+		await submit(101, {
+			type: 'set-property',
+			property: 'name',
+			nodeId: puzzleId,
+			value: 'First',
+		});
+		await submit(102, {
+			type: 'set-property',
+			property: 'name',
+			nodeId: puzzleId,
+			value: 'Last',
+		});
+		const update = await store.readUpdates(scope, base.revision);
+		expect(update.type).toBe('delta');
+		if (update.type !== 'delta') throw new Error('Expected delta.');
+		expect(update.delta.upsertNodes).toHaveLength(1);
+		expect(update.delta.upsertNodes[0].name).toBe('Last');
+		expect(applyHuntStateUpdate(base, update)).toEqual(
+			await store.read(scope)
+		);
+		await submit(103, { type: 'delete', nodeId: rootId });
+		const deleted = await store.readUpdates(scope, base.revision);
+		if (deleted.type !== 'delta') throw new Error('Expected delta.');
+		expect(deleted.delta.upsertNodes).toEqual([]);
+		expect(deleted.delta.deletedNodeIds).toEqual([rootId, puzzleId]);
+		expect(applyHuntStateUpdate(base, deleted).document.nodes).toEqual({});
+	});
+
+	it('tracks empty revisions, includes metadata, and returns empty updates at the current revision', async () => {
+		await seed();
+		await submit(101, { type: 'move', nodeId: rootId, parentId: null });
+		await database.query(
+			'UPDATE hunts SET name = \'Metadata\', configuration = \'{"indexId":"index"}\' WHERE id = $1',
+			[scope.huntId]
+		);
+		const update = await store.readUpdates(scope, 1);
+		if (update.type !== 'delta') throw new Error('Expected delta.');
+		expect(update.delta).toMatchObject({
+			baseRevision: 1,
+			revision: 2,
+			name: 'Metadata',
+			configuration: { indexId: 'index' },
+			upsertNodes: [],
+			deletedNodeIds: [],
+		});
+		expect(await store.readRevision(scope)).toBe(2);
+		expect(await store.readUpdates(scope, 2)).toMatchObject({
+			type: 'delta',
+			delta: { baseRevision: 2, revision: 2, upsertNodes: [] },
+		});
+	});
+
+	it('retains 1000 revisions without expiring receipts or integration events, with explicit fallback for gaps', async () => {
+		await seed();
+		await database.query(
+			'INSERT INTO hunt_changes SELECT $1, r, ARRAY[]::uuid[] FROM generate_series(2, 1001) r',
+			[scope.huntId]
+		);
+		await database.query('UPDATE hunts SET revision = 1001 WHERE id = $1', [
+			scope.huntId,
+		]);
+		await submit(101, { type: 'move', nodeId: rootId, parentId: null });
+		const { rows } = await database.query<{ count: number }>(
+			'SELECT count(*)::int AS count FROM hunt_changes'
+		);
+		expect(rows[0].count).toBe(1000);
+		expect((await store.readUpdates(scope, 1)).type).toBe('snapshot');
+		expect((await store.readUpdates(scope, 2)).type).toBe('delta');
+		expect((await store.readUpdates(scope, 1003)).type).toBe('snapshot');
+		await database.query('DELETE FROM hunt_changes WHERE revision = 500');
+		expect((await store.readUpdates(scope, 2)).type).toBe('snapshot');
+		const receipt = await submit(100, {
+			type: 'add',
+			nodes: [
+				{
+					id: rootId,
+					type: 'round',
+					name: 'Root',
+					url: '',
+					parentId: null,
+				},
+				{
+					id: puzzleId,
+					type: 'puzzle',
+					name: 'Puzzle',
+					url: '',
+					parentId: rootId,
+				},
+			],
+		});
+		expect(receipt).toMatchObject({
+			replayed: true,
+			receipt: { committedRevision: 1 },
+			snapshot: { revision: 1002 },
+		});
+		expect(
+			(await database.query('SELECT * FROM integration_events')).rows
+		).toHaveLength(2);
+	});
+
+	it('does not turn a different synchronization cursor into a fresh retry', async () => {
+		await seed();
+		const request = {
+			commandId: id(101),
+			command: {
+				type: 'set-property' as const,
+				property: 'answer' as const,
+				nodeId: puzzleId,
+				value: 'FIRST',
+			},
+		};
+		await store.submitUpdates(scope, request, 1);
+		await submit(102, {
+			type: 'set-property',
+			property: 'answer',
+			nodeId: puzzleId,
+			value: 'LATER',
+		});
+		const result = await store.submitUpdates(scope, request, 2);
+		expect(result).toMatchObject({
+			replayed: true,
+			receipt: { committedRevision: 2 },
+		});
+		if (result.update.type !== 'delta') throw new Error('Expected delta.');
+		expect(result.update.delta.upsertNodes[0]).toMatchObject({
+			answer: 'LATER',
+		});
+		expect(await store.readRevision(scope)).toBe(3);
+	});
+
+	it('never reports a post-commit state read failure as a definitive command rejection', async () => {
+		await seed();
+		const readUpdates = store.readUpdates;
+		store.readUpdates = async () => {
+			throw new HuntCommandError(
+				'not-found',
+				'Read failed after commit.'
+			);
+		};
+		try {
+			const result = store.submitUpdates(
+				scope,
+				{
+					commandId: id(101),
+					command: {
+						type: 'set-property',
+						property: 'name',
+						nodeId: puzzleId,
+						value: 'Committed',
+					},
+				},
+				1
+			);
+			await expect(result).rejects.not.toBeInstanceOf(HuntCommandError);
+			expect(
+				(await store.read(scope)).document.nodes[puzzleId].name
+			).toBe('Committed');
+		} finally {
+			store.readUpdates = readUpdates;
+		}
+	});
+
+	it('rolls synchronization tracking back with failed integration intent', async () => {
+		failEventInsert = true;
+		await expect(seed()).rejects.toThrow();
+		expect(
+			(await database.query('SELECT * FROM hunt_changes')).rows
+		).toEqual([]);
+		expect(await store.readRevision(scope)).toBe(0);
+		await expect(
+			store.readUpdates({ ...scope, guildId: 'other' }, 0)
+		).rejects.toMatchObject({ code: 'not-found' });
+		await expect(
+			store.submitUpdates(
+				scope,
+				{ commandId: id(101), command: { type: 'add', nodes: [] } },
+				-1
+			)
+		).rejects.toMatchObject({ code: 'invalid-command' });
+	});
+
 	it('resolves an active hunt and its document within the requested guild', async () => {
 		await seed();
 		await database.query(

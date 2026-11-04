@@ -268,9 +268,10 @@ for the legacy non-strict TypeScript build without weakening runtime validation.
 
 **Status:** SSE plus PostgreSQL `LISTEN` and revision-relative state
 synchronization selected by the user. The
-[protocol specification](DATABASE_MODEL.md#proposed-change-notification-protocol)
-records the direction; detailed envelopes/storage choices remain implementation
-details. Incremental synchronization and notification delivery are not implemented.
+[protocol specification](DATABASE_MODEL.md#change-notification-protocol)
+records the implemented protocol. Incremental synchronization, dedicated LISTEN
+recovery, and opt-in client observations are implemented; worker execution and
+consumer cutover are not.
 
 Separate two requirements: open webpages need to learn that their snapshot is
 stale; Discord/Google synchronization must eventually perform durable work even
@@ -306,7 +307,7 @@ not a transaction-pooled connection. This supports fan-out across replicas;
 process-local events alone would miss writes handled by another replica or
 worker.
 
-For browsers, propose an authorized, hunt-scoped `/changes` stream carrying only
+For browsers, use an authorized, hunt-scoped `/changes` stream carrying only
 revision hints. Establish and commit database `LISTEN`, then attach the
 server-side subscription before reading its initial revision. This first message
 also closes the race when a client loads its snapshot before opening the stream.
@@ -325,8 +326,36 @@ same mechanism in command responses. Initial loads and clients outside bounded
 change-history retention receive a full snapshot. Record change tracking
 transactionally alongside mutations; the integration outbox is not that history.
 The cursor is a read-progress hint outside command intent/deduplication, not an
-expected-version condition on writes. Exact storage/envelope choices can be
-settled during implementation without another architectural design round.
+expected-version condition on writes.
+
+**Implementation choices:** `hunt_changes` records revision coverage and affected
+node UUIDs, not another JSON document or permanent identity ledger. Keep the newest
+1000 revisions per hunt; receipt and integration retention are unaffected. A single
+MVCC query verifies complete coverage and reads authoritative typed after-images,
+deletions, and metadata, with explicit full fallback for missing history.
+
+`since` is a query parameter on reads/command submissions, outside command intent.
+The HTTP adapter reconstructs immutable authoritative snapshots against each
+request's captured base and preserves the existing model transport contract.
+The model remains the only optimistic facade; its refresh queue now coalesces
+revision targets, and observations never resolve or retry uncertain commands.
+Post-commit synchronization read failures remain uncertain 5xx responses.
+
+The host owns one dedicated reconnecting LISTEN client and closes streams when
+it fails. Streams register before reading their baseline, close on backpressure,
+send 15-second heartbeats, and rotate after 180 seconds. Fetch observations have
+a separate 45-second inactivity watchdog, bounded jittered reconnect backoff,
+`Retry-After` support, and explicit auth/protocol pause/stop behavior. Model
+observations add visible-page/focus/online safety reads; bot observations use the
+same flow without browser lifecycle hooks.
+
+Evaluation includes the shared Fluid/PostgreSQL model contracts, native
+PostgreSQL commit-order/MVCC checks, and focused stream/route/lifecycle tests.
+A manual two-client local HTTP/database check also covered listener termination
+and reconnection, uncertainty/retry without overwriting a later solve, and
+recursive deletion. One property change in a 100-puzzle hunt transferred 433 bytes
+instead of a 19,658-byte snapshot. The separately requested application-level
+HTTP plus database automated suite remains deferred.
 
 Use a fetch-based SSE client to retain the current bearer-token authorization;
 native browser `EventSource` cannot set the required Authorization header. Do not

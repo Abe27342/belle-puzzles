@@ -103,6 +103,35 @@ function transport() {
 }
 
 describe('Optimistic puzzlehunt model', () => {
+	it('coalesces repeated refresh requests behind an uncertain command', async () => {
+		const backend = transport();
+		backend.client.submit.mockRejectedValueOnce(new Error('Uncertain.'));
+		const model = new PuzzlehuntModel(backend.client, backend.snapshot());
+		model.changeName(model.getPuzzle(puzzleId), 'Changed');
+		await expect(model.flush()).rejects.toThrow('Uncertain.');
+		await Promise.allSettled(
+			Array.from({ length: 100 }, () => model.refresh())
+		);
+		expect(backend.client.read).not.toHaveBeenCalled();
+		await model.retryPending();
+		expect(backend.client.read).toHaveBeenCalledOnce();
+	});
+
+	it('skips a notified revision already covered by a command acknowledgement', async () => {
+		const backend = transport();
+		const first = deferred<HuntCommandResult>();
+		backend.client.submit.mockImplementationOnce(() => first.promise);
+		const model = new PuzzlehuntModel(backend.client, backend.snapshot());
+		model.changeName(model.getPuzzle(puzzleId), 'Changed');
+		const refresh = model.refresh(1);
+		await vi.waitFor(() =>
+			expect(backend.client.submit).toHaveBeenCalledOnce()
+		);
+		first.resolve(backend.commit(model.pendingChanges[0].request));
+		await refresh;
+		expect(backend.client.read).not.toHaveBeenCalled();
+	});
+
 	it('shows pending changes synchronously but keeps committed state separate', async () => {
 		const backend = transport();
 		const response = deferred<HuntCommandResult>();

@@ -1,9 +1,10 @@
 import { createServer } from 'node:http';
-import { Pool } from 'pg';
+import { Client, Pool } from 'pg';
 import { PostgresPuzzlehuntStore } from '@belle-puzzles/puzzlehunt-model/postgres';
 import { createPuzzlehuntApp } from './app.js';
 import { createDiscordHuntAuthorizer } from './auth.js';
 import { readServiceConfiguration } from './config.js';
+import { PostgresHuntChangeFeed } from './changes.js';
 
 async function main(): Promise<void> {
 	const config = readServiceConfiguration(process.env);
@@ -16,8 +17,18 @@ async function main(): Promise<void> {
 	pool.on('error', (error) =>
 		console.error('Idle PostgreSQL connection failed.', error)
 	);
+	const changes = new PostgresHuntChangeFeed(
+		() =>
+			new Client({
+				connectionString: config.databaseUrl,
+				connectionTimeoutMillis: 10000,
+				statement_timeout: 15000,
+				keepAlive: true,
+			})
+	);
 	const app = createPuzzlehuntApp({
 		store: new PostgresPuzzlehuntStore(pool),
+		changes,
 		authorize: createDiscordHuntAuthorizer(config),
 		allowedOrigins: config.allowedOrigins,
 	});
@@ -26,7 +37,8 @@ async function main(): Promise<void> {
 	server.requestTimeout = 30000;
 	try {
 		// Schema application is explicit; never create or migrate a database at service startup.
-		await pool.query('SELECT 1 FROM hunts LIMIT 0');
+		await pool.query('SELECT 1 FROM hunts, hunt_changes LIMIT 0');
+		changes.start();
 		await new Promise<void>((resolve, reject) => {
 			server.once('error', reject);
 			server.listen(config.port, config.host, () => {
@@ -35,7 +47,11 @@ async function main(): Promise<void> {
 			});
 		});
 	} catch (error) {
-		await pool.end();
+		try {
+			await changes.close();
+		} finally {
+			await pool.end();
+		}
 		throw error;
 	}
 	let closing = false;
@@ -51,11 +67,15 @@ async function main(): Promise<void> {
 		timeout.unref();
 		try {
 			try {
-				await new Promise<void>((resolve, reject) => {
-					server.close((error) =>
-						error ? reject(error) : resolve()
-					);
-				});
+				try {
+					await changes.close();
+				} finally {
+					await new Promise<void>((resolve, reject) => {
+						server.close((error) =>
+							error ? reject(error) : resolve()
+						);
+					});
+				}
 			} finally {
 				await pool.end();
 			}

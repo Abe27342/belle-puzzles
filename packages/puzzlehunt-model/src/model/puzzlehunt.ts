@@ -39,7 +39,9 @@ interface CommandOperation {
 	error?: Error;
 }
 
-type Operation = CommandOperation | { type: 'refresh' };
+type Operation =
+	| CommandOperation
+	| { type: 'refresh'; targetRevision?: number };
 
 function asError(error: unknown): Error {
 	return error instanceof Error
@@ -300,8 +302,25 @@ export class PuzzlehuntModel implements IPuzzlehuntModel {
 	}
 
 	/** Refreshes share the command pipeline so a read cannot double-project an in-flight add. */
-	refresh(): Promise<void> {
-		this.operations.push({ type: 'refresh' });
+	refresh(targetRevision?: number): Promise<void> {
+		if (targetRevision !== undefined) {
+			if (!Number.isSafeInteger(targetRevision) || targetRevision < 0) {
+				return Promise.reject(new Error('Invalid refresh revision.'));
+			}
+			if (targetRevision <= this.committed.revision) {
+				return Promise.resolve();
+			}
+		}
+		const queued = this.operations.find((op) => op.type === 'refresh');
+		if (queued?.type === 'refresh') {
+			queued.targetRevision =
+				targetRevision === undefined ||
+				queued.targetRevision === undefined
+					? undefined
+					: Math.max(queued.targetRevision, targetRevision);
+		} else {
+			this.operations.push({ type: 'refresh', targetRevision });
+		}
 		this.start();
 		return this.flush();
 	}
@@ -347,12 +366,35 @@ export class PuzzlehuntModel implements IPuzzlehuntModel {
 		while (this.operations.length > 0) {
 			const operation = this.operations[0];
 			if (operation.type === 'refresh') {
+				const target = operation.targetRevision;
 				try {
-					this.accept(await this.client.read(this.scope));
+					if (
+						target === undefined ||
+						target > this.committed.revision
+					) {
+						this.accept(await this.client.read(this.scope));
+						if (
+							target !== undefined &&
+							this.committed.revision < target
+						) {
+							throw new Error(
+								'Hunt refresh did not reach the notified revision.'
+							);
+						}
+					}
 				} catch (error) {
 					this.recordFailure(undefined, error, errors);
+					this.operations.shift();
+					this.rebase(errors);
+					this.publish();
+					continue;
 				}
-				this.operations.shift();
+				if (
+					operation.targetRevision === undefined ||
+					operation.targetRevision <= this.committed.revision
+				) {
+					this.operations.shift();
+				}
 			} else {
 				try {
 					const result = await this.client.submit(

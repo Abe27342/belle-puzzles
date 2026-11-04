@@ -7,7 +7,11 @@ import {
 	it,
 	vi,
 } from 'vitest';
-import { validateHuntDocument, HuntCommandError } from '../../document.js';
+import {
+	applyHuntStateUpdate,
+	validateHuntDocument,
+	HuntCommandError,
+} from '../../document.js';
 import type { HuntScope } from '../../document.js';
 import { PuzzlehuntModel } from '../../model/puzzlehunt.js';
 import { startLocalPostgres } from '../fixtures/postgres.js';
@@ -53,6 +57,83 @@ beforeEach(async () => {
 });
 
 describe('Authoritative commands on multiple PostgreSQL connections', () => {
+	it('publishes only committed revision hints and reads one consistent incremental state', async () => {
+		const base = await database.store.read(scope);
+		const listener = await database.pool.connect();
+		const hints: string[] = [];
+		const notified = (notification: {
+			channel: string;
+			payload?: string;
+		}) => {
+			if (notification.channel === 'hunt_changed')
+				hints.push(notification.payload ?? '');
+		};
+		listener.on('notification', notified);
+		await listener.query('LISTEN hunt_changed');
+		const writer = await database.pool.connect();
+		let open = false;
+		try {
+			await writer.query('BEGIN');
+			open = true;
+			await writer.query(
+				"UPDATE hunts SET name = 'Changed hunt', revision = 2 WHERE id = $1",
+				[scope.huntId]
+			);
+			await writer.query(
+				"UPDATE hunt_nodes SET name = 'Changed puzzle' WHERE hunt_id = $1 AND id = $2",
+				[scope.huntId, puzzleId]
+			);
+			await writer.query(
+				'INSERT INTO hunt_changes (hunt_id, revision, node_ids) VALUES ($1, 2, $2::uuid[])',
+				[scope.huntId, [puzzleId]]
+			);
+			await writer.query("SELECT pg_notify('hunt_changed', $1)", [
+				JSON.stringify({ huntId: scope.huntId, revision: 2 }),
+			]);
+			const before = await database.store.readUpdates(scope, 1);
+			expect(applyHuntStateUpdate(base, before)).toEqual(base);
+			expect(hints).toEqual([]);
+			await writer.query('COMMIT');
+			open = false;
+			await vi.waitFor(() => expect(hints).toHaveLength(1));
+			expect(JSON.parse(hints[0])).toEqual({
+				huntId: scope.huntId,
+				revision: 2,
+			});
+			const update = await database.store.readUpdates(scope, 1);
+			if (update.type !== 'delta') throw new Error('Expected delta.');
+			expect(update.delta.upsertNodes).toHaveLength(1);
+			expect(update.delta).toMatchObject({
+				name: 'Changed hunt',
+				revision: 2,
+			});
+			expect(applyHuntStateUpdate(base, update)).toEqual(
+				await database.store.read(scope)
+			);
+			await writer.query('BEGIN');
+			open = true;
+			await writer.query("SELECT pg_notify('hunt_changed', $1)", [
+				JSON.stringify({ huntId: scope.huntId, revision: 3 }),
+			]);
+			await writer.query('ROLLBACK');
+			open = false;
+			// An ordered barrier proves the rolled-back notification never arrived.
+			await writer.query("SELECT pg_notify('hunt_changed', $1)", [
+				JSON.stringify({ huntId: scope.huntId, revision: 2 }),
+			]);
+			await vi.waitFor(() => expect(hints).toHaveLength(2));
+			expect(hints.map((value) => JSON.parse(value).revision)).toEqual([
+				2, 2,
+			]);
+		} finally {
+			if (open) await writer.query('ROLLBACK');
+			writer.release();
+			await listener.query('UNLISTEN hunt_changed');
+			listener.removeListener('notification', notified);
+			listener.release();
+		}
+	});
+
 	it('preserves both additions after two transactions actually wait on the hunt lock', async () => {
 		const blocker = await database.pool.connect();
 		await blocker.query('BEGIN');

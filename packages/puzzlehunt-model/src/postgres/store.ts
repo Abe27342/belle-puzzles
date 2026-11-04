@@ -10,13 +10,17 @@ import type {
 	HuntCommand,
 	HuntCommandRequest,
 	HuntCommandResult,
+	HuntCommandUpdateResult,
 	HuntConfiguration,
 	HuntDocument,
 	HuntDocumentClient,
 	HuntIntegrationCommand,
 	HuntScope,
 	HuntSnapshot,
+	HuntStateUpdate,
 } from '../document.js';
+
+const retainedChangeRevisions = 1000;
 
 /** Structural subset of a pg Pool/PoolClient; constructing a store opens no connection. */
 export interface HuntDatabaseConnection {
@@ -159,7 +163,7 @@ async function writeDocumentChanges(
 	huntId: string,
 	before: HuntDocument,
 	after: HuntDocument
-): Promise<void> {
+): Promise<string[]> {
 	const removed = Object.keys(before.nodes).filter(
 		(id) => after.nodes[id] === undefined
 	);
@@ -173,7 +177,7 @@ async function writeDocumentChanges(
 		(node) => node !== before.nodes[node.id]
 	);
 	if (changed.length === 0) {
-		return;
+		return removed;
 	}
 	const values = changed.map((node) => ({
 		id: node.id,
@@ -213,6 +217,16 @@ async function writeDocumentChanges(
 			discord_index_channel_id = EXCLUDED.discord_index_channel_id`,
 		[huntId, JSON.stringify(values)]
 	);
+	return [...removed, ...changed.map((node) => node.id)];
+}
+
+function validateRevision(revision: number): void {
+	if (!Number.isSafeInteger(revision) || revision < 0) {
+		throw new HuntCommandError(
+			'invalid-command',
+			'Invalid synchronization revision.'
+		);
+	}
 }
 
 function validateScope(scope: HuntScope): void {
@@ -260,11 +274,130 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 		}
 	}
 
+	public async readRevision(scope: HuntScope): Promise<number> {
+		validateScope(scope);
+		const connection = await this.pool.connect();
+		try {
+			const { rows } = await connection.query<{ revision: string }>(
+				'SELECT revision::text FROM hunts WHERE id = $1 AND guild_id = $2',
+				[scope.huntId, scope.guildId]
+			);
+			if (rows.length === 0) {
+				throw new HuntCommandError(
+					'not-found',
+					'Hunt not found in this guild.'
+				);
+			}
+			const revision = Number(rows[0].revision);
+			validateRevision(revision);
+			return revision;
+		} finally {
+			connection.release();
+		}
+	}
+
+	public async readUpdates(
+		scope: HuntScope,
+		baseRevision: number
+	): Promise<HuntStateUpdate> {
+		validateScope(scope);
+		validateRevision(baseRevision);
+		const connection = await this.pool.connect();
+		try {
+			// Coverage, metadata, after-images and deletions share one MVCC snapshot.
+			const { rows } = await connection.query<
+				HuntRow & {
+					complete: boolean;
+					deleted_node_ids: string[];
+				}
+			>(
+				`WITH scoped AS (
+					SELECT * FROM hunts WHERE id = $1 AND guild_id = $2
+				 ), coverage AS (
+					SELECT h.*, ($3::bigint <= h.revision AND
+						(SELECT count(*) FROM hunt_changes c
+						 WHERE c.hunt_id = h.id AND c.revision > $3 AND c.revision <= h.revision)
+						= h.revision - $3::bigint) AS complete
+					FROM scoped h
+				 ), affected AS (
+					SELECT DISTINCT unnest(c.node_ids) AS id FROM hunt_changes c
+					JOIN coverage h ON h.id = c.hunt_id
+					WHERE h.complete AND c.revision > $3 AND c.revision <= h.revision
+				 )
+				 SELECT h.id, h.guild_id, h.name, h.schema_version, h.revision::text,
+					h.configuration, h.complete,
+					(SELECT COALESCE(jsonb_agg(n ORDER BY n.id), '[]'::jsonb)
+					 FROM hunt_nodes n WHERE n.hunt_id = h.id
+					 AND (NOT h.complete OR n.id IN (SELECT id FROM affected))) AS nodes,
+					ARRAY(SELECT a.id FROM affected a WHERE NOT EXISTS
+						(SELECT 1 FROM hunt_nodes n WHERE n.hunt_id = h.id AND n.id = a.id)
+						ORDER BY a.id) AS deleted_node_ids
+				 FROM coverage h`,
+				[scope.huntId, scope.guildId, baseRevision]
+			);
+			if (rows.length === 0) {
+				throw new HuntCommandError(
+					'not-found',
+					'Hunt not found in this guild.'
+				);
+			}
+			const row = rows[0];
+			if (!row.complete) {
+				return { type: 'snapshot', snapshot: snapshotFromRow(row) };
+			}
+			if (row.schema_version !== 1) {
+				throw new Error(
+					`Unsupported hunt schema version: ${row.schema_version}`
+				);
+			}
+			return {
+				type: 'delta',
+				delta: {
+					huntId: row.id,
+					guildId: row.guild_id,
+					schemaVersion: 1,
+					baseRevision,
+					revision: Number(row.revision),
+					name: row.name,
+					configuration: row.configuration,
+					upsertNodes: row.nodes.map(nodeFromRow),
+					deletedNodeIds: row.deleted_node_ids,
+				},
+			};
+		} finally {
+			connection.release();
+		}
+	}
+
 	public submit(
 		scope: HuntScope,
 		request: HuntCommandRequest
 	): Promise<HuntCommandResult> {
 		return this.commit(scope, request.commandId, request.command);
+	}
+
+	public async submitUpdates(
+		scope: HuntScope,
+		request: HuntCommandRequest,
+		baseRevision: number
+	): Promise<HuntCommandUpdateResult> {
+		validateRevision(baseRevision);
+		const result = await this.submit(scope, request);
+		// A later consistent read may include newer writes; the original receipt stays intact.
+		try {
+			const update = await this.readUpdates(scope, baseRevision);
+			return {
+				receipt: result.receipt,
+				replayed: result.replayed,
+				update,
+			};
+		} catch (error) {
+			// Even a not-found read is not a rejection of the already committed command.
+			throw new Error(
+				'Hunt command committed but its synchronization response failed.',
+				{ cause: error }
+			);
+		}
 	}
 
 	/** Keep this method behind a worker-only service boundary. */
@@ -370,11 +503,19 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 				revision: snapshot.revision + 1,
 				document: applied.document,
 			};
-			await writeDocumentChanges(
+			const changedIds = await writeDocumentChanges(
 				connection,
 				scope.huntId,
 				snapshot.document,
 				committed.document
+			);
+			await connection.query(
+				'INSERT INTO hunt_changes (hunt_id, revision, node_ids) VALUES ($1, $2, $3::uuid[])',
+				[scope.huntId, committed.revision, changedIds]
+			);
+			await connection.query(
+				'DELETE FROM hunt_changes WHERE hunt_id = $1 AND revision <= $2',
+				[scope.huntId, committed.revision - retainedChangeRevisions]
 			);
 			await connection.query(
 				`UPDATE hunts SET revision = $3, updated_at = clock_timestamp()

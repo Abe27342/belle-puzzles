@@ -12,6 +12,11 @@ another SQL tool. The service never
 creates, migrates, seeds, or clears databases. Hunt import/provisioning and active
 hunt selection are still separate work.
 
+For a database created from the earlier prototype, explicitly add the
+`hunt_changes` table from the updated schema before restarting. Do not rerun
+the entire creation script against an existing database. Old revisions need no
+backfill: clients receive a full snapshot until retained coverage is sufficient.
+
 From the repository root, after installing dependencies:
 
 ```powershell
@@ -36,8 +41,10 @@ pnpm start:puzzlehunt-service
 Supply secrets through the hosting environment, not source files. This entry point
 reads the environment directly; it does not automatically load `.env` files.
 Terminate public HTTPS at the container ingress/reverse proxy. The service uses
-a five-connection PostgreSQL pool, checks database/schema availability before
-listening, and drains HTTP requests before closing the pool on shutdown.
+a five-connection PostgreSQL pool plus one dedicated, session-affine LISTEN
+connection. Transaction-pooled connections cannot supply LISTEN. It checks
+database/schema availability before listening, and closes change streams before
+draining HTTP requests and closing the database connections on shutdown.
 `GET /liveness` checks the HTTP process, not ongoing database or Discord health.
 Azure provisioning and deployment configuration are not included.
 
@@ -63,6 +70,9 @@ to belong to that guild.
 | `GET /guilds/:guildId/hunts/active`            | Current `HuntSnapshot` selected by `active_hunts`, or 404 if none is selected. |
 | `GET /guilds/:guildId/hunts/:huntId`           | Scoped `HuntSnapshot`.                                                         |
 | `POST /guilds/:guildId/hunts/:huntId/commands` | `HuntCommandRequest` in, committed `HuntCommandResult` out.                    |
+| `GET /guilds/:guildId/hunts/:huntId?since=R` | Revision-relative `HuntStateUpdate`, with explicit full fallback. |
+| `POST /guilds/:guildId/hunts/:huntId/commands?since=R` | `{ receipt, replayed, update: HuntStateUpdate }`; unchanged command body. |
+| `GET /guilds/:guildId/hunts/:huntId/changes` | Authorized SSE revision hints, including a current baseline on every connection. |
 
 Commands require `application/json`, have a 1 MiB request limit, and reject
 unknown properties and integration-only commands. No ownership, configuration,
@@ -91,9 +101,14 @@ const client = new HttpHuntDocumentClient({
 });
 const snapshot = await client.readActive(guildId);
 const model = new PuzzlehuntModel(client, snapshot);
+const observations = client.watchModel(model, {
+	onError: (error) => console.error('Hunt observations failed.', error),
+});
 
 model.addRound('Round', 'https://example.test/round');
 await model.flush();
+// On page/model disposal:
+observations.close();
 ```
 
 Alternatively use `PuzzlehuntModel.load(client, { guildId, huntId })` when the
@@ -110,22 +125,36 @@ recognized rejection envelope with a matching HTTP status becomes
 responses, and 5xx responses remain uncertain; the model keeps the original
 command ID and exposes `retryPending()`.
 
-No automatic change notifications, polling, reconnect handling, or consumer
-cutover is implemented. Use explicit `model.refresh()` to obtain other clients'
-changes for now.
+`watchModel` consumes authenticated SSE hints and coalesces catch-up through the
+existing model queue. Reads and command acknowledgements transfer complete
+affected-node records/deletions, not full documents, while keeping the model's
+snapshot contract unchanged. The store retains 1000 revisions of synchronization
+tracking per hunt; expired/missing history explicitly returns a full snapshot.
+
+Subscriptions reconnect with fresh credentials on EOF/network/429/5xx failures.
+401 pauses until credentials are renewed and `observations.reconnect()` is called;
+403/404 and malformed known events stop the subscription. `observations.done`
+completes on close or terminal failure. A separate 45-second stream inactivity
+watchdog replaces the REST lifetime timeout; the service sends 15-second heartbeats
+and rotates streams after 180 seconds. Visible-page/focus/online safety refreshes
+recover missed hints. Node bot clients use the same API with periodic safety reads.
+Observations never retry or acknowledge uncertain mutations. Legacy consumer
+cutover remains unimplemented.
 
 ## Testability
 
 `createPuzzlehuntApp` from `@belle-puzzles/puzzlehunt-service/app` is the same app
 used by the executable. Importing it reads no environment, connects to nothing,
 and does not listen. Its host supplies a store, an authorizer, and optional CORS
-origins/error reporting.
+origins/error reporting, and an injectable change feed.
 
 A future local application fixture can construct `PostgresPuzzlehuntStore` with
 its own disposable PostgreSQL pool, inject a test authorizer, bind this app to
 loopback on port `0`, and point the real HTTP client at that port. The host owns
 shutdown and database reset; the application never resets a supplied database.
-Tests can therefore exercise the real HTTP/domain/SQL path without Discord or
+The local host can construct `PostgresHuntChangeFeed` using a dedicated `pg.Client`
+for its disposable database and close it before closing the HTTP server/database.
+Tests can therefore exercise the real HTTP/domain/SQL/LISTEN path without Discord or
 Azure. Production startup always installs the Discord authorizer; there is no
 environment-variable authentication bypass.
 
@@ -133,4 +162,6 @@ Discord authorization itself is an external dependency, so substituting the
 authorizer is necessary for completely local, deterministic application tests.
 There is no other known architectural blocker. Those application tests are
 intentionally deferred at the user's request; focused protocol, HTTP transport,
-authorization, and configuration tests exercise their individual boundaries.
+authorization, configuration, and injected-store SSE route tests exercise their
+individual boundaries. Model tests independently verify real PostgreSQL
+notification commit ordering and incremental MVCC reads.

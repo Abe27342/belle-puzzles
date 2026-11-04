@@ -58,6 +58,74 @@ export interface HuntSnapshot extends HuntScope {
 	readonly document: HuntDocument;
 }
 
+export interface HuntDelta extends Omit<HuntSnapshot, 'document'> {
+	readonly baseRevision: number;
+	readonly upsertNodes: readonly DocumentNode[];
+	readonly deletedNodeIds: readonly string[];
+}
+
+export type HuntStateUpdate =
+	| { readonly type: 'snapshot'; readonly snapshot: HuntSnapshot }
+	| { readonly type: 'delta'; readonly delta: HuntDelta };
+
+export interface HuntCommandUpdateResult {
+	readonly receipt: HuntCommandResult['receipt'];
+	readonly update: HuntStateUpdate;
+	readonly replayed: boolean;
+}
+
+/** Assemble authoritative state only; optimistic commands belong to the model. */
+export function applyHuntStateUpdate(
+	base: HuntSnapshot,
+	update: HuntStateUpdate
+): HuntSnapshot {
+	const state = update.type === 'snapshot' ? update.snapshot : update.delta;
+	if (
+		state.huntId !== base.huntId ||
+		state.guildId !== base.guildId ||
+		state.schemaVersion !== base.schemaVersion ||
+		!Number.isSafeInteger(state.revision) ||
+		state.revision < base.revision
+	) {
+		throw new Error('Invalid hunt update scope, schema, or revision.');
+	}
+	if (update.type === 'snapshot') {
+		validateHuntDocument(update.snapshot.document);
+		return update.snapshot;
+	}
+	const delta = update.delta;
+	if (delta.baseRevision !== base.revision) {
+		throw new Error('Hunt delta does not match the committed base.');
+	}
+	const nodes = { ...base.document.nodes };
+	const affected = new Set<string>();
+	for (const id of delta.deletedNodeIds) {
+		if (!isDocumentId(id) || affected.has(id)) {
+			throw new Error('Invalid or repeated hunt deletion.');
+		}
+		affected.add(id);
+		delete nodes[id];
+	}
+	for (const node of delta.upsertNodes) {
+		if (affected.has(node.id)) {
+			throw new Error('Hunt delta repeats an affected node.');
+		}
+		affected.add(node.id);
+		nodes[node.id] = node;
+	}
+	const snapshot: HuntSnapshot = {
+		huntId: delta.huntId,
+		guildId: delta.guildId,
+		schemaVersion: delta.schemaVersion,
+		revision: delta.revision,
+		name: delta.name,
+		configuration: delta.configuration,
+		document: { nodes },
+	};
+	validateHuntDocument(snapshot.document);
+	return snapshot;
+}
+
 export type NewDocumentNode =
 	| {
 			readonly id: string;

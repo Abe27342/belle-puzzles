@@ -222,13 +222,13 @@ network failures, invalid responses, and 5xx results as uncertain, keeping the
 original command ID. Only matching explicit API rejection envelopes allow rollback.
 
 All responses use `Cache-Control: no-store`; there is no ETag/cache protocol yet.
-Authorized SSE invalidations at `/guilds/:guildId/hunts/:huntId/changes` and
-reconnection handling are proposed follow-up work, not registered routes.
+Authorized SSE notifications at `/guilds/:guildId/hunts/:huntId/changes` and
+HTTP model reconnection/catch-up handling are implemented as opt-in APIs.
 The [decision record, sections 12-13](ARCHITECTURE_DECISIONS.md#12-change-notification-architectures)
 compares polling, PostgreSQL-backed SSE, and managed fan-out, and evaluates SQL
 organization/type-generation alternatives. SSE plus PostgreSQL `LISTEN` is now the
-user-selected direction. The protocol below remains a proposal, not implemented
-notification infrastructure; no query tool has been selected.
+user-selected direction. The protocol below describes the implementation;
+no query tool has been selected.
 
 The shared model may expose synchronous mutations over an optimistic projection:
 the latest committed snapshot with pending semantic commands reapplied. Local
@@ -256,13 +256,11 @@ can use the same snapshot projection without depending on React. Integration
 workers belong to the application service, not specifically the Discord gateway
 process; initial cohosting does not require keeping those responsibilities coupled.
 
-## Proposed change notification protocol
+## Change notification protocol
 
-**Status:** The user has confirmed SSE plus PostgreSQL `LISTEN`, with
-revision-relative state updates rather than full snapshots for normal
-synchronization. Detailed envelopes and storage choices remain implementation
-details. No incremental read, SSE route/client, or reconnection behavior is
-implemented by this specification.
+**Status:** Implemented in the PostgreSQL store, standalone service, and HTTP
+adapter. Legacy Fluid consumers are unchanged; deployment and integration worker
+execution remain separate work.
 
 Keep initial full-snapshot reads and mutation semantics. Extend reads and command
 responses to support incremental synchronization. Add one observation-only stream
@@ -331,7 +329,11 @@ Initial loads return a full snapshot. Retain bounded, transactionally recorded
 change tracking, including deletions, for catch-up reads. Reuse the store's
 existing changed/removed-node detection, recording synchronization tracking in
 the same transaction as state, receipts, integration intent, and notification.
-Its representation and retention limit can be selected during implementation.
+The `hunt_changes` table records affected UUIDs for each revision, including
+empty lists for no-op revisions. Retain the newest 1000 revisions per hunt;
+older tracking is removed by subsequent command transactions. IDs are not
+reserved after deletion. Reads join affected IDs to current typed node rows to
+obtain final after-images and deletions, instead of storing another JSON document.
 Do not repurpose the integration outbox: it has different contents and retention
 semantics. If the retained tracking cannot cover the entire requested interval,
 return an explicit full-snapshot fallback, never a partial delta.
@@ -343,6 +345,26 @@ expected-version write precondition. Apply commands to fresh authoritative state
 regardless of how far behind the client's cursor is. Retrying retains the
 original command ID and intent; return its receipt with an update to current
 state without reapplying the command.
+
+`GET /guilds/:guildId/hunts/:huntId?since=R` returns `HuntStateUpdate`, either
+`{ type: 'delta', delta: { huntId, guildId, schemaVersion, baseRevision, revision,
+name, configuration, upsertNodes, deletedNodeIds } }` or
+`{ type: 'snapshot', snapshot: HuntSnapshot }`. Without `since`, GET retains its
+original full `HuntSnapshot` response.
+
+`POST /guilds/:guildId/hunts/:huntId/commands?since=R` returns
+`{ receipt, replayed, update: HuntStateUpdate }`. Without `since`, it retains
+`{ receipt, replayed, snapshot }`. Query cursors are validated before application
+and never included in the command body. The incremental acknowledgement reads
+current state after commit; any failure of that read is a 5xx uncertainty, not
+a definitive command rejection.
+
+The HTTP adapter keeps immutable authoritative snapshots by scope and uses the
+captured request base to assemble updates. It still exposes the original
+`HuntDocumentClient` snapshot/receipt contract to `PuzzlehuntModel`, avoiding a
+second optimistic facade or transport-specific model branches. Concurrent
+responses cannot change another request's assembly base or regress this cache.
+An unexpected delta base triggers a full read, never another command submission.
 
 ### Subscription ordering and recovery
 
@@ -383,9 +405,9 @@ rejecting an otherwise valid mutation.
 
 The current `refresh()` promise describes batch settlement, not completion of
 one refresh operation. In particular, a rejected promise while a command is
-uncertain does not remove its queued refresh. The implementation must coalesce
-against the actual queue, retain the dirty revision while paused, and avoid
-repeatedly enqueueing refreshes in response to that rejection.
+uncertain does not remove its queued refresh. `refresh(targetRevision?)` now coalesces against the actual queue and skips hints
+covered by command responses. The watcher retains the dirty revision while
+paused and does not request another refresh behind an uncertain command.
 
 Never install a snapshot directly from this path, retire a command because of a
 revision hint, or automatically call `retryPending()`. A command with an uncertain
@@ -413,7 +435,7 @@ do not silently discard malformed `revision` messages. Read credentials again
 for every connection. Reconnection applies to observation requests only, not
 automatic retries of mutation requests.
 
-Suggested implementation defaults, not additional wire fields: a keepalive every
+Implemented defaults, not additional wire fields: a keepalive every
 15 seconds, a 45-second no-data watchdog, planned stream rotation after about
 180 seconds, and failure backoff growing from about 1 to 30 seconds with jitter.
 These bound authorization lifetime and accommodate the documented Container Apps
@@ -434,6 +456,13 @@ contracts remain separate.
 The stream follows the explicit hunt ID, not changes to a guild's active-hunt
 selection. A guild-wide selection feed or multi-hunt multiplexing is outside
 this first protocol.
+
+Use `client.watchModel(model, { onError })` to opt into notifications and safety
+refreshes, or `client.watch(scope, { onRevision, onError })` for raw hints.
+Both return `{ close, reconnect, done }`. Call `close()` on disposal/scope change;
+after renewing credentials, `reconnect()` resumes a 401-paused subscription.
+Terminal scope/protocol failures complete `done`; starting a new subscription
+is explicit. These observations never call `retryPending()`.
 
 Reference: [standard SSE framing](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events).
 

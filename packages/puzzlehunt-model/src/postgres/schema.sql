@@ -74,6 +74,15 @@ CREATE UNIQUE INDEX hunt_nodes_child_positions ON hunt_nodes (hunt_id, parent_id
 CREATE UNIQUE INDEX hunt_nodes_root_positions ON hunt_nodes (hunt_id, position)
     WHERE parent_id IS NULL;
 
+-- Bounded synchronization tracking, not an identity reservation or integration outbox.
+-- Empty ID lists still record revision coverage (including metadata-only changes).
+CREATE TABLE hunt_changes (
+    hunt_id uuid NOT NULL REFERENCES hunts(id),
+    revision bigint NOT NULL CHECK (revision BETWEEN 1 AND 9007199254740991),
+    node_ids uuid[] NOT NULL,
+    PRIMARY KEY (hunt_id, revision)
+);
+
 CREATE TABLE command_receipts (
     hunt_id uuid NOT NULL REFERENCES hunts(id),
     command_id uuid NOT NULL,
