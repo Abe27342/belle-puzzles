@@ -1,7 +1,11 @@
 import { SharedTree } from '@fluid-experimental/tree';
 import type { IFluidContainer } from '@fluidframework/fluid-static';
 import { HuntCommandError } from '../document.js';
-import type { DocumentNode, DocumentPuzzle } from '../document.js';
+import type {
+	DocumentDiscordAssociation,
+	DocumentNode,
+	DocumentPuzzle,
+} from '../document.js';
 import type { IPuzzlehunt, Puzzle, Round } from '../puzzlehunt.js';
 import { projectPuzzlehuntView } from '../model/types.js';
 import type {
@@ -40,7 +44,13 @@ export class FluidPuzzlehuntModel implements IPuzzlehuntModel {
 				url: round.url,
 				parentId,
 				position,
-				...(round.discordInfo ? { discord: round.discordInfo } : {}),
+				...(round.discordInfo
+					? {
+							// TODO: Cast here is because discord association types are currently duplicated with only one copy being branded.
+							discord:
+								round.discordInfo as DocumentDiscordAssociation,
+					  }
+					: {}),
 			};
 			round.children.forEach((child, index) => {
 				if (child.type === 'round') {
@@ -67,7 +77,11 @@ export class FluidPuzzlehuntModel implements IPuzzlehuntModel {
 							? {}
 							: { sheetId: child.sheetId }),
 						...(child.discordInfo
-							? { discord: child.discordInfo }
+							? {
+									// TODO: Cast here is because discord association types are currently duplicated with only one copy being branded.
+									discord:
+										child.discordInfo as DocumentDiscordAssociation,
+							  }
 							: {}),
 					};
 				}

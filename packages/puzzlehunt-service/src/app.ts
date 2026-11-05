@@ -3,7 +3,9 @@ import type { ErrorRequestHandler, RequestHandler } from 'express';
 import cors from 'cors';
 import {
 	HuntCommandError,
-	isDocumentId,
+	type HuntScope,
+	isUuid,
+	snowflake,
 } from '@belle-puzzles/puzzlehunt-model/document';
 import {
 	decodeHuntCommandRequest,
@@ -91,7 +93,7 @@ export function createPuzzlehuntApp(
 			.then(() => next(), next);
 	});
 	app.param('huntId', (_req, _res, next, huntId: string) => {
-		if (!isDocumentId(huntId)) {
+		if (!isUuid(huntId)) {
 			next(
 				new HuntCommandError(
 					'invalid-command',
@@ -121,8 +123,8 @@ export function createPuzzlehuntApp(
 	app.route('/guilds/:guildId/hunts/:huntId')
 		.get(
 			route(async (req, res) => {
-				const scope = {
-					guildId: req.params.guildId,
+				const scope: HuntScope = {
+					guildId: snowflake(req.params.guildId),
 					huntId: req.params.huntId,
 				};
 				res.json(
@@ -149,8 +151,8 @@ export function createPuzzlehuntApp(
 		.get(
 			route(async (req, res) => {
 				if (res.destroyed) return;
-				const scope = {
-					guildId: req.params.guildId,
+				const scope: HuntScope = {
+					guildId: snowflake(req.params.guildId),
 					huntId: req.params.huntId,
 				};
 				let highest = -1;
@@ -264,8 +266,8 @@ export function createPuzzlehuntApp(
 						? undefined
 						: decodeHuntRevision(req.query.since);
 				const request = decodeHuntCommandRequest(req.body);
-				const scope = {
-					guildId: req.params.guildId,
+				const scope: HuntScope = {
+					guildId: snowflake(req.params.guildId),
 					huntId: req.params.huntId,
 				};
 				res.json(

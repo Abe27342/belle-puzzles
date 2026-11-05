@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect } from 'vitest';
 import { PuzzlehuntModel } from '../../model/puzzlehunt.js';
 import { comparableView, puzzlehuntModelContract } from '../model/contract.js';
 import { startLocalPostgres } from '../fixtures/postgres.js';
+import { snowflake } from '../../document.js';
 
 let database: Awaited<ReturnType<typeof startLocalPostgres>>;
 beforeAll(async () => {
@@ -16,7 +17,7 @@ puzzlehuntModelContract(
 	async () => {
 		const scope = {
 			huntId: crypto.randomUUID(),
-			guildId: 'contract-guild',
+			guildId: snowflake('contract-guild'),
 		};
 		await database.reset(scope);
 		const model = await PuzzlehuntModel.load(database.store, scope);

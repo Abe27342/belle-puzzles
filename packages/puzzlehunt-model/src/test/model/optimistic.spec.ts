@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { applyHuntCommand, HuntCommandError } from '../../document.js';
+import {
+	applyHuntCommand,
+	HuntCommandError,
+	snowflake,
+} from '../../document.js';
 import type {
 	HuntCommandRequest,
 	HuntCommandResult,
@@ -16,7 +20,7 @@ const puzzleId = id(3);
 function initialSnapshot(): HuntSnapshot {
 	return {
 		huntId: id(1),
-		guildId: 'guild',
+		guildId: snowflake('guild'),
 		schemaVersion: 1,
 		revision: 0,
 		name: 'Hunt',
@@ -340,14 +344,14 @@ describe('Optimistic puzzlehunt model', () => {
 		const model = new PuzzlehuntModel(backend.client, backend.snapshot());
 		backend.client.read.mockResolvedValue({
 			...backend.snapshot(),
-			guildId: 'different-guild',
+			guildId: snowflake('different-guild'),
 		});
 		await expect(
 			PuzzlehuntModel.load(backend.client, backend.snapshot())
 		).rejects.toThrow('different scope');
 		await expect(model.refresh()).rejects.toBeInstanceOf(AggregateError);
 		expect(model.failures[0].error.message).toContain('scope');
-		expect(model.committedSnapshot.guildId).toBe('guild');
+		expect(model.committedSnapshot.guildId).toBe(snowflake('guild'));
 	});
 
 	it('keeps malformed acknowledgements uncertain instead of dropping the command', async () => {

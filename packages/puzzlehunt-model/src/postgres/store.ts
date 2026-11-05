@@ -3,6 +3,7 @@ import {
 	validateHuntDocument,
 	HuntCommandError,
 	isUuid,
+	snowflake,
 } from '../document.js';
 import type {
 	DocumentDiscordAssociation,
@@ -70,11 +71,11 @@ function nodeFromRow(row: HuntNodeRow): DocumentNode {
 			throw new Error('Stored Discord association has no role.');
 		}
 		discord = {
-			channelId: row.discord_channel_id,
-			roleId: row.discord_role_id,
+			channelId: snowflake(row.discord_channel_id),
+			roleId: snowflake(row.discord_role_id),
 			...(row.discord_index_channel_id === null
 				? {}
-				: { indexChannelId: row.discord_index_channel_id }),
+				: { indexChannelId: snowflake(row.discord_index_channel_id) }),
 		};
 	}
 	const common = {
@@ -126,7 +127,7 @@ function snapshotFromRow(row: HuntRow): HuntSnapshot {
 	}
 	return {
 		huntId: row.id,
-		guildId: row.guild_id,
+		guildId: snowflake(row.guild_id),
 		name: row.name,
 		schemaVersion: row.schema_version,
 		revision,
@@ -354,7 +355,7 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 				type: 'delta',
 				delta: {
 					huntId: row.id,
-					guildId: row.guild_id,
+					guildId: snowflake(row.guild_id),
 					schemaVersion: 1,
 					baseRevision,
 					revision: Number(row.revision),

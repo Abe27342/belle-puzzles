@@ -3,20 +3,18 @@ import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PostgresPuzzlehuntStore } from '../../postgres/store.js';
 import type { HuntDatabasePool } from '../../postgres/store.js';
-import type {
-	HuntCommand,
-	HuntScope,
-} from '../../document.js';
+import type { HuntCommand, HuntScope, Snowflake } from '../../document.js';
 import {
 	applyHuntStateUpdate,
 	HuntCommandError,
 	validateHuntDocument,
 	projectHuntDocument,
+	snowflake,
 } from '../../document.js';
 
 const id = (n: number) =>
 	`00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const scope: HuntScope = { huntId: id(1), guildId: 'guild' };
+const scope: HuntScope = { huntId: id(1), guildId: snowflake('guild') };
 const rootId = id(10);
 const puzzleId = id(11);
 let database: PGlite;
@@ -276,7 +274,7 @@ describe('PostgreSQL hunt store', () => {
 		).toEqual([]);
 		expect(await store.readRevision(scope)).toBe(0);
 		await expect(
-			store.readUpdates({ ...scope, guildId: 'other' }, 0)
+			store.readUpdates({ ...scope, guildId: snowflake('other') }, 0)
 		).rejects.toMatchObject({ code: 'not-found' });
 		await expect(
 			store.submitUpdates(
@@ -489,7 +487,8 @@ describe('PostgreSQL hunt store', () => {
 
 	it('enforces hunt/guild ownership and preserves durable deletion snapshots', async () => {
 		await seed();
-		const wrongScope = { ...scope, guildId: 'other-guild' };
+		const otherGuildId = snowflake('other-guild');
+		const wrongScope = { ...scope, guildId: otherGuildId };
 		await expect(store.read(wrongScope)).rejects.toMatchObject({
 			code: 'not-found',
 		});
@@ -505,14 +504,17 @@ describe('PostgreSQL hunt store', () => {
 		await expect(
 			database.query(
 				'INSERT INTO active_hunts (guild_id, hunt_id) VALUES ($1, $2)',
-				['other-guild', scope.huntId]
+				[otherGuildId, scope.huntId]
 			)
 		).rejects.toThrow();
 		await store.submitIntegration(scope, id(102), {
 			type: 'set-property',
 			property: 'discord',
 			nodeId: puzzleId,
-			value: { channelId: 'channel', roleId: 'role' },
+			value: {
+				channelId: snowflake('channel'),
+				roleId: snowflake('role'),
+			},
 		});
 		await submit(103, { type: 'delete', nodeId: rootId });
 		expect((await store.read(scope)).document.nodes).toEqual({});
@@ -609,16 +611,19 @@ describe('PostgreSQL hunt store', () => {
 			type: 'set-property',
 			property: 'discord',
 			nodeId: puzzleId,
-			value: { channelId: 'puzzle-channel', roleId: 'puzzle-role' },
+			value: {
+				channelId: snowflake('puzzle-channel'),
+				roleId: snowflake('puzzle-role'),
+			},
 		});
 		const committed = await store.submitIntegration(scope, id(106), {
 			type: 'set-property',
 			property: 'discord',
 			nodeId: rootId,
 			value: {
-				channelId: 'category',
-				roleId: 'round-role',
-				indexChannelId: 'index',
+				channelId: snowflake('category'),
+				roleId: snowflake('round-role'),
+				indexChannelId: snowflake('index'),
 			},
 		});
 		const snapshot = await store.read(scope);
@@ -627,7 +632,10 @@ describe('PostgreSQL hunt store', () => {
 			answer: 'ANSWER',
 			status: 'Rechecking',
 			sheetId: 'sheet',
-			discord: { channelId: 'puzzle-channel', roleId: 'puzzle-role' },
+			discord: {
+				channelId: snowflake('puzzle-channel'),
+				roleId: 'puzzle-role',
+			},
 		});
 		const view = projectHuntDocument(snapshot);
 		expect(view.rootRounds.map((node) => node.id)).toEqual([rootId]);

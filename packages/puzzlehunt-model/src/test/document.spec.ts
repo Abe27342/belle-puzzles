@@ -4,6 +4,7 @@ import {
 	validateHuntDocument,
 	documentChildren,
 	projectHuntDocument,
+	snowflake,
 } from '../document.js';
 import type { HuntCommand, HuntDocument, HuntSnapshot } from '../document.js';
 import { projectPuzzlehuntView } from '../model/types.js';
@@ -222,7 +223,10 @@ describe('database document commands', () => {
 				type: 'set-property',
 				property: 'discord',
 				nodeId: puzzleId,
-				value: { channelId: 'channel', roleId: 'role' },
+				value: {
+					channelId: snowflake('channel'),
+					roleId: snowflake('role'),
+				},
 			},
 			1234
 		).document;
@@ -234,7 +238,10 @@ describe('database document commands', () => {
 			node: expect.objectContaining({
 				id: puzzleId,
 				sheetId: 'keep-this-sheet',
-				discord: { channelId: 'channel', roleId: 'role' },
+				discord: {
+					channelId: snowflake('channel'),
+					roleId: snowflake('role'),
+				},
 			}),
 		});
 		expect(associated.nodes[puzzleId]).toBeDefined();
@@ -341,7 +348,10 @@ describe('database document commands', () => {
 					type: 'set-property',
 					property: 'discord',
 					nodeId: rootId,
-					value: { channelId: 'category', roleId: 'role' },
+					value: {
+						channelId: snowflake('category'),
+						roleId: snowflake('role'),
+					},
 				},
 				100
 			)
@@ -354,9 +364,9 @@ describe('database document commands', () => {
 					property: 'discord',
 					nodeId: puzzleId,
 					value: {
-						channelId: 'channel',
-						roleId: 'role',
-						indexChannelId: 'index',
+						channelId: snowflake('channel'),
+						roleId: snowflake('role'),
+						indexChannelId: snowflake('index'),
 					},
 				},
 				100
@@ -402,7 +412,7 @@ describe('database document view', () => {
 			});
 			const view = project({
 				huntId: id(1000),
-				guildId: 'guild',
+				guildId: snowflake('guild'),
 				schemaVersion: 1,
 				revision: 1,
 				name: 'Hunt',
@@ -418,7 +428,7 @@ describe('database document view', () => {
 	it('projects nested children from a JSON snapshot without Fluid IDs or handles', () => {
 		const snapshot: HuntSnapshot = {
 			huntId: id(10),
-			guildId: 'guild',
+			guildId: snowflake('guild'),
 			schemaVersion: 1,
 			revision: 3,
 			name: 'Hunt',

@@ -28,6 +28,11 @@ export interface HuntScope {
  */
 export type Snowflake = string & { brand: 'discordSnowflake' };
 
+export function snowflake(s: string): Snowflake {
+	// TODO: We could consider validating the format here, though it would put additional burden on tests.
+	return s as Snowflake;
+}
+
 /**
  * Top-level configuration for a puzzlehunt. This data generally only needs to be configured at hunt creation time.
  */
@@ -269,28 +274,12 @@ export function applyHuntStateUpdate(
 	return snapshot;
 }
 
-export type NewDocumentNode =
-	| {
-			readonly id: string;
-			readonly type: 'round';
-			readonly name: string;
-			readonly url: string;
-			readonly parentId: string | null;
-	  }
-	| {
-			readonly id: string;
-			readonly type: 'puzzle';
-			readonly name: string;
-			readonly url: string;
-			readonly parentId: string;
-	  };
-
 /**
  * Intent to add new nodes to the puzzlehunt tree.
  */
 export type HuntAddCommand = {
 	readonly type: 'add';
-	readonly nodes: readonly NewDocumentNode[];
+	readonly nodes: readonly Omit<DocumentNode, 'position'>[];
 };
 /**
  * Intent to delete a node including all its children in the puzzlehunt tree.

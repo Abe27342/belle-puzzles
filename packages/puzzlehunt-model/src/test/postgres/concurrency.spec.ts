@@ -11,6 +11,7 @@ import {
 	applyHuntStateUpdate,
 	validateHuntDocument,
 	HuntCommandError,
+	snowflake,
 } from '../../document.js';
 import type { HuntScope } from '../../document.js';
 import { PuzzlehuntModel } from '../../model/puzzlehunt.js';
@@ -28,7 +29,10 @@ afterAll(async () => {
 	await database?.close();
 }, 30000);
 beforeEach(async () => {
-	scope = { huntId: crypto.randomUUID(), guildId: 'concurrency-guild' };
+	scope = {
+		huntId: crypto.randomUUID(),
+		guildId: snowflake('concurrency-guild'),
+	};
 	rootId = crypto.randomUUID();
 	puzzleId = crypto.randomUUID();
 	await database.reset(scope);
