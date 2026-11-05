@@ -2,7 +2,7 @@ import {
 	applyHuntCommand,
 	validateHuntDocument,
 	HuntCommandError,
-	isDocumentId,
+	isUuid,
 } from '../document.js';
 import type {
 	DocumentDiscordAssociation,
@@ -230,7 +230,7 @@ function validateRevision(revision: number): void {
 }
 
 function validateScope(scope: HuntScope): void {
-	if (!isDocumentId(scope.huntId) || !scope.guildId) {
+	if (!isUuid(scope.huntId) || !scope.guildId) {
 		throw new HuntCommandError('invalid-command', 'Invalid hunt scope.');
 	}
 }
@@ -437,7 +437,7 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 		command: HuntCommand | HuntIntegrationCommand
 	): Promise<HuntCommandResult> {
 		validateScope(scope);
-		if (!isDocumentId(commandId)) {
+		if (!isUuid(commandId)) {
 			throw new HuntCommandError(
 				'invalid-command',
 				'Command IDs must be lowercase UUIDs.'
