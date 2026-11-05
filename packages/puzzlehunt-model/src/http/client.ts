@@ -1,4 +1,4 @@
-import { applyHuntStateUpdate, isDocumentId } from '../document.js';
+import { applyHuntStateUpdate, isUuid } from '../document.js';
 import type {
 	HuntCommandRequest,
 	HuntCommandResult,
@@ -210,7 +210,7 @@ export class HttpHuntDocumentClient implements HuntDocumentClient {
 	}
 
 	private huntPath(scope: HuntScope): string {
-		if (!isDocumentId(scope.huntId)) {
+		if (!isUuid(scope.huntId)) {
 			throw new Error('Expected a lowercase hunt UUID.');
 		}
 		return `${this.guildPath(scope.guildId)}/hunts/${scope.huntId}`;

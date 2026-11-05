@@ -1,9 +1,5 @@
 import { z } from 'zod';
-import {
-	validateHuntDocument,
-	HuntCommandError,
-	isDocumentId,
-} from '../document.js';
+import { validateHuntDocument, HuntCommandError, isUuid } from '../document.js';
 import type {
 	HuntCommand,
 	HuntCommandRequest,
@@ -32,7 +28,7 @@ export class HuntHttpError extends Error {
 	}
 }
 
-const id = z.string().refine(isDocumentId, 'Expected a lowercase UUID.');
+const id = z.string().refine(isUuid, 'Expected a lowercase UUID.');
 // Keep nullable fields required even in the legacy non-strict TypeScript build.
 const nullableId: z.ZodType<string | null> = id.nullable();
 const nullableString: z.ZodType<string | null> = z.string().nullable();
