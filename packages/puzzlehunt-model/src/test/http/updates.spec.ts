@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { applyHuntStateUpdate, HuntCommandError } from '../../document.js';
+import {
+	applyHuntStateUpdate,
+	HuntCommandError,
+	snowflake,
+} from '../../document.js';
 import type { DocumentRound, HuntDelta, HuntSnapshot } from '../../document.js';
 import { HttpHuntDocumentClient } from '../../http/client.js';
 import {
@@ -11,7 +15,7 @@ import { PuzzlehuntModel } from '../../model/puzzlehunt.js';
 
 const id = (n: number) =>
 	`00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const scope = { huntId: id(1), guildId: 'guild' };
+const scope = { huntId: id(1), guildId: snowflake('guild') };
 const root: DocumentRound = {
 	id: id(2),
 	type: 'round',
@@ -34,7 +38,7 @@ const delta: HuntDelta = {
 	baseRevision: 1,
 	revision: 3,
 	name: 'Renamed hunt',
-	configuration: { indexId: 'index' },
+	configuration: { indexId: snowflake('index') },
 	upsertNodes: [{ ...root, name: 'Renamed root' }],
 	deletedNodeIds: [],
 };

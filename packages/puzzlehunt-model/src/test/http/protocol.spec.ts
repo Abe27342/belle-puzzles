@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HuntCommandError } from '../../document.js';
+import { HuntCommandError, snowflake } from '../../document.js';
 import type { HuntCommand, HuntSnapshot } from '../../document.js';
 import {
 	decodeHuntCommandRequest,
@@ -12,7 +12,7 @@ import {
 const huntId = '00000000-0000-4000-8000-000000000001';
 const nodeId = '00000000-0000-4000-8000-000000000002';
 const commandId = '00000000-0000-4000-8000-000000000003';
-const scope = { huntId, guildId: 'guild' };
+const scope = { huntId, guildId: snowflake('guild') };
 const snapshot: HuntSnapshot = {
 	...scope,
 	schemaVersion: 1,
@@ -175,12 +175,12 @@ describe('Hunt HTTP protocol', () => {
 			...snapshot,
 			configuration: {
 				googleFolderId: 'folder',
-				indexId: 'index',
-				allPuzzlesRoleId: 'all',
+				indexId: snowflake('index'),
+				allPuzzlesRoleId: snowflake('all'),
 				loggingChannelIds: {
-					puzzleAdd: 'add',
-					puzzleSolve: 'solve',
-					puzzleStatusUpdate: 'status',
+					puzzleAdd: snowflake('add'),
+					puzzleSolve: snowflake('solve'),
+					puzzleStatusUpdate: snowflake('status'),
 				},
 			},
 			document: {
@@ -193,9 +193,9 @@ describe('Hunt HTTP protocol', () => {
 						parentId: null,
 						position: 0,
 						discord: {
-							channelId: 'category',
-							roleId: 'role',
-							indexChannelId: 'index',
+							channelId: snowflake('category'),
+							roleId: snowflake('role'),
+							indexChannelId: snowflake('index'),
 						},
 					},
 					[puzzleId]: {
@@ -209,7 +209,10 @@ describe('Hunt HTTP protocol', () => {
 						status: 'Working',
 						lastStatusUpdate: 1234,
 						sheetId: 'sheet',
-						discord: { channelId: 'channel', roleId: 'role' },
+						discord: {
+							channelId: snowflake('channel'),
+							roleId: snowflake('role'),
+						},
 					},
 				},
 			},

@@ -10,6 +10,7 @@ import type {
 	HuntScope,
 	HuntSnapshot,
 	HuntStateUpdate,
+	Snowflake,
 } from '../document.js';
 
 /** Invalid responses are uncertain outcomes, never authoritative command rejections. */
@@ -28,11 +29,21 @@ export class HuntHttpError extends Error {
 	}
 }
 
+const snowflake: z.ZodType<Snowflake> = z.string().min(0) as any;
+const optionalString: z.ZodOptional<z.ZodString> = z.string().optional();
+/**
+ * Useful to represent that specific properties should not be set.
+ *
+ * If wanting to reject keys more generally, consider using z.strictObject with z.never() for the unwanted keys.
+ */
+const optionalNever: z.ZodOptional<z.ZodNever> = z.never().optional();
+
 const id = z.string().refine(isUuid, 'Expected a lowercase UUID.');
 // Keep nullable fields required even in the legacy non-strict TypeScript build.
 const nullableId: z.ZodType<string | null> = id.nullable();
 const nullableString: z.ZodType<string | null> = z.string().nullable();
 const integer = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
+
 const newNodeFields = { id, name: z.string(), url: z.string() };
 const newNode = z.discriminatedUnion('type', [
 	z.strictObject({
@@ -83,18 +94,19 @@ export const huntCommandRequestSchema: z.ZodType<HuntCommandRequest> =
 	});
 
 const configuration = z.object({
-	googleFolderId: z.string().optional(),
-	indexId: z.string().optional(),
-	allPuzzlesRoleId: z.string().optional(),
+	googleFolderId: optionalString,
+	indexId: snowflake.optional(),
+	allPuzzlesRoleId: snowflake.optional(),
 	loggingChannelIds: z
 		.object({
-			puzzleAdd: z.string(),
-			puzzleSolve: z.string(),
-			puzzleStatusUpdate: z.string(),
+			puzzleAdd: snowflake,
+			puzzleSolve: snowflake,
+			puzzleStatusUpdate: snowflake,
 		})
 		.optional(),
 });
-const discordFields = { channelId: z.string(), roleId: z.string() };
+
+const discordFields = { channelId: snowflake, roleId: snowflake };
 const nodeFields = { ...newNodeFields, position: integer };
 const node = z.discriminatedUnion('type', [
 	z.object({
@@ -102,23 +114,23 @@ const node = z.discriminatedUnion('type', [
 		type: z.literal('round'),
 		parentId: nullableId,
 		discord: z
-			.object({ ...discordFields, indexChannelId: z.string() })
+			.object({ ...discordFields, indexChannelId: snowflake })
 			.optional(),
-		answer: z.never().optional(),
-		status: z.never().optional(),
-		lastStatusUpdate: z.never().optional(),
-		sheetId: z.never().optional(),
+		answer: optionalNever,
+		status: optionalNever,
+		lastStatusUpdate: optionalNever,
+		sheetId: optionalNever,
 	}),
 	z.object({
 		...nodeFields,
 		type: z.literal('puzzle'),
 		parentId: id,
-		answer: z.string().optional(),
-		status: z.string().optional(),
+		answer: optionalString,
+		status: optionalString,
 		lastStatusUpdate: integer.optional(),
-		sheetId: z.string().optional(),
+		sheetId: optionalString,
 		discord: z
-			.object({ ...discordFields, indexChannelId: z.never().optional() })
+			.object({ ...discordFields, indexChannelId: optionalNever })
 			.optional(),
 	}),
 ]);
@@ -137,7 +149,7 @@ const document: z.ZodType<HuntDocument> = z
 
 export const huntSnapshotSchema: z.ZodType<HuntSnapshot> = z.object({
 	huntId: id,
-	guildId: z.string().min(1),
+	guildId: snowflake,
 	schemaVersion: z.literal(1),
 	revision: integer,
 	name: z.string(),
@@ -148,7 +160,7 @@ export const huntSnapshotSchema: z.ZodType<HuntSnapshot> = z.object({
 const delta: z.ZodType<HuntDelta> = z
 	.object({
 		huntId: id,
-		guildId: z.string().min(1),
+		guildId: snowflake,
 		schemaVersion: z.literal(1),
 		baseRevision: integer,
 		revision: integer,

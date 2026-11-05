@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { applyHuntCommand, HuntCommandError } from '../../document.js';
+import {
+	applyHuntCommand,
+	HuntCommandError,
+	snowflake,
+} from '../../document.js';
 import type { HuntCommandRequest, HuntSnapshot } from '../../document.js';
 import { HttpHuntDocumentClient, HuntHttpError } from '../../http/client.js';
 import {
@@ -10,7 +14,7 @@ import { PuzzlehuntModel } from '../../model/puzzlehunt.js';
 
 const scope = {
 	huntId: '00000000-0000-4000-8000-000000000001',
-	guildId: 'guild',
+	guildId: snowflake('guild'),
 };
 const snapshot: HuntSnapshot = {
 	...scope,
