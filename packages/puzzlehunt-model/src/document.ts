@@ -626,7 +626,11 @@ export function applyHuntCommand(
 				'Add requires at least one node.'
 			);
 			for (const input of command.nodes) {
-				if (nodes[input.id] !== undefined) {
+				requireCommand(
+					isUuid(input.id),
+					'Node identity should be a UUID.'
+				);
+				if (Object.hasOwnProperty.call(nodes, input.id)) {
 					throw new HuntCommandError(
 						'conflict',
 						`Node ${input.id} already exists.`
