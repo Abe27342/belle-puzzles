@@ -1,10 +1,33 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IPuzzlehuntModel, PuzzlehuntView } from '../../model/types.js';
 
+/**
+ * Minimal interface for testing an `IPuzzlehuntModel` implementation.
+ *
+ * All clients connect to the same document.
+ */
 export interface ModelFixture {
+	/**
+	 * Initial model.
+	 *
+	 * @remarks
+	 * This exists for convenience, as without it callers could generally load their own with {@link connect}.
+	 */
 	model: IPuzzlehuntModel;
+	/**
+	 * Connect a new client and return it.
+	 */
 	connect(): Promise<IPuzzlehuntModel>;
+	/**
+	 * Synchronize all clients, ensuring any pending edits are flushed.
+	 *
+	 * @remarks
+	 * Contract tests should avoid assuming edits remain pending until this method is called.
+	 */
 	synchronize(): Promise<void>;
+	/**
+	 * Close all puzzlehunt models and dispose any associated resources.
+	 */
 	close(): Promise<void>;
 }
 
@@ -20,7 +43,10 @@ export function comparableView(view: PuzzlehuntView) {
 	};
 }
 
-/** All behavioral assertions are shared; fixtures only adapt services and synchronization. */
+/**
+ * Run a fixture of test suites that validate an {@link IPuzzlehuntModel} implementation satisfies
+ * the interface contract.
+ */
 export function puzzlehuntModelContract(
 	name: string,
 	createFixture: () => Promise<ModelFixture>
