@@ -3,6 +3,14 @@
 	"version": "0.0.1",
 	"description": "Puzzlehunt model for belle bot and website",
 	"main": "dist/index.js",
+	"exports": {
+		".": "./dist/index.js",
+		"./document": "./dist/document.js",
+		"./postgres": "./dist/postgres/index.js",
+		"./model": "./dist/model/index.js",
+		"./fluid": "./dist/fluid/index.js",
+		"./postgres/schema.sql": "./src/postgres/schema.sql"
+	},
 	"type": "module",
 	"engines": {
 		"node": ">=20.15.0"
@@ -12,9 +20,10 @@
 		"build": "tsc",
 		"format": "prettier --write src",
 		"start:localserver": "azure-local-service > azure-local-service.log 2>&1",
-		"test": "start-server-and-test start:localserver 7070 test:run",
-		"test:coverage": "start-server-and-test start:localserver 7070 test:coverage:run",
+		"test": "vitest run",
+		"test:coverage": "vitest run --coverage",
 		"test:run": "vitest run",
+		"test:contract": "vitest run model.spec.ts",
 		"test:coverage:run": "vitest run --coverage",
 		"start": "node ./dist/index.js"
 	},
@@ -25,15 +34,19 @@
 		"@fluidframework/common-utils": "^0.32.2",
 		"@fluidframework/container-loader": "^1.3.5",
 		"@fluidframework/fluid-static": "^1.3.5",
-		"fluid-framework": "^1.3.3"
+		"fluid-framework": "^1.3.3",
+		"zod": "^4.6.7"
 	},
 	"devDependencies": {
+		"@electric-sql/pglite": "^0.3.14",
 		"@fluidframework/azure-local-service": "^1.1.1",
 		"@fluidframework/test-client-utils": "^1.3.5",
 		"@types/debug": "^4.1.5",
 		"@types/node": "^16.9.0",
+		"@types/pg": "^8.15.5",
+		"embedded-postgres": "18.6.0-beta.19",
+		"pg": "^8.23.1",
 		"prettier": "^2.7.1",
-		"start-server-and-test": "^1.11.7",
 		"typescript": "^5.2.2",
 		"vite": "^7.2.7",
 		"vitest": "^4.0.16"
