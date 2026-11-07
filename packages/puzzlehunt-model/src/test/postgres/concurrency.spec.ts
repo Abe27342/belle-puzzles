@@ -299,6 +299,7 @@ describe('Authoritative commands on multiple PostgreSQL connections', () => {
 		}
 	});
 
+	// TODO: Seems like this test can be flaky.
 	it('replaces a skewed optimistic status timestamp with database time', async () => {
 		const before = Date.now();
 		const model = await PuzzlehuntModel.load(database.store, scope);

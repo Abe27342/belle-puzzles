@@ -141,13 +141,23 @@ const snapshotQuery = `SELECT h.id, h.guild_id, h.name, h.schema_version, h.revi
 	 FROM hunt_nodes n WHERE n.hunt_id = h.id) AS nodes
 	FROM hunts h`;
 
+const queries = {
+	read: {
+		snapshotByScope: `${snapshotQuery} WHERE h.id = $1 AND h.guild_id = $2`,
+		activeSnapshotByGuildId: `${snapshotQuery}
+			JOIN active_hunts a ON a.hunt_id = h.id AND a.guild_id = h.guild_id
+			WHERE a.guild_id = $1`,
+		latestRevisionByScope:
+			'SELECT revision::text FROM hunts WHERE id = $1 AND guild_id = $2',
+	},
+};
+
 async function readSnapshot(
 	connection: HuntDatabaseConnection,
 	scope: HuntScope
 ): Promise<HuntSnapshot> {
-	// One statement keeps hunt metadata and node rows on the same MVCC snapshot.
 	const { rows } = await connection.query<HuntRow>(
-		`${snapshotQuery} WHERE h.id = $1 AND h.guild_id = $2`,
+		queries.read.snapshotByScope,
 		[scope.huntId, scope.guildId]
 	);
 	if (rows.length === 0) {
@@ -244,12 +254,10 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 		if (!guildId) {
 			throw new HuntCommandError('invalid-command', 'Invalid guild ID.');
 		}
-		const connection = await this.pool.connect();
-		try {
+
+		return await this.#withConnection(async (connection) => {
 			const { rows } = await connection.query<HuntRow>(
-				`${snapshotQuery}
-				 JOIN active_hunts a ON a.hunt_id = h.id AND a.guild_id = h.guild_id
-				 WHERE a.guild_id = $1`,
+				queries.read.activeSnapshotByGuildId,
 				[guildId]
 			);
 			if (rows.length === 0) {
@@ -259,17 +267,23 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 				);
 			}
 			return snapshotFromRow(rows[0]);
-		} finally {
-			connection.release();
-		}
+		});
 	}
 
 	/** The caller must authorize the guild/hunt scope before invoking the store. */
 	public async read(scope: HuntScope): Promise<HuntSnapshot> {
 		validateScope(scope);
+		return await this.#withConnection(
+			async (connection) => await readSnapshot(connection, scope)
+		);
+	}
+
+	async #withConnection<TReturn>(
+		cb: (connection: HuntDatabaseConnection) => Promise<TReturn>
+	): Promise<TReturn> {
 		const connection = await this.pool.connect();
 		try {
-			return await readSnapshot(connection, scope);
+			return await cb(connection);
 		} finally {
 			connection.release();
 		}
@@ -277,10 +291,9 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 
 	public async readRevision(scope: HuntScope): Promise<number> {
 		validateScope(scope);
-		const connection = await this.pool.connect();
-		try {
+		return await this.#withConnection(async (connection) => {
 			const { rows } = await connection.query<{ revision: string }>(
-				'SELECT revision::text FROM hunts WHERE id = $1 AND guild_id = $2',
+				queries.read.latestRevisionByScope,
 				[scope.huntId, scope.guildId]
 			);
 			if (rows.length === 0) {
@@ -292,9 +305,7 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 			const revision = Number(rows[0].revision);
 			validateRevision(revision);
 			return revision;
-		} finally {
-			connection.release();
-		}
+		});
 	}
 
 	public async readUpdates(
@@ -303,8 +314,7 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 	): Promise<HuntStateUpdate> {
 		validateScope(scope);
 		validateRevision(baseRevision);
-		const connection = await this.pool.connect();
-		try {
+		return await this.#withConnection(async (connection) => {
 			// Coverage, metadata, after-images and deletions share one MVCC snapshot.
 			const { rows } = await connection.query<
 				HuntRow & {
@@ -365,9 +375,7 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 					deletedNodeIds: row.deleted_node_ids,
 				},
 			};
-		} finally {
-			connection.release();
-		}
+		});
 	}
 
 	public submit(
@@ -417,8 +425,7 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 		requestedRevision: number
 	): Promise<boolean> {
 		validateScope(scope);
-		const connection = await this.pool.connect();
-		try {
+		return await this.#withConnection(async (connection) => {
 			const { rows } = await connection.query<{ hunt_id: string }>(
 				`DELETE FROM integration_jobs j USING hunts h
 				 WHERE j.hunt_id = h.id AND h.id = $1 AND h.guild_id = $2
@@ -427,9 +434,39 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 				[scope.huntId, scope.guildId, target, requestedRevision]
 			);
 			return rows.length > 0;
-		} finally {
-			connection.release();
+		});
+	}
+
+	async #tryGetExistingReceipt(
+		scope: HuntScope,
+		commandId: string,
+		// json stringified HuntIntegrationCommand or HuntCommand
+		encodedCommand: string,
+		connection: HuntDatabaseConnection
+	): Promise<HuntCommandResult['receipt'] | undefined> {
+		const { rows: receipts } = await connection.query<{
+			committed_revision: string;
+			matches: boolean;
+		}>(
+			`SELECT committed_revision::text, command = $3::jsonb AS matches
+				 FROM command_receipts WHERE hunt_id = $1 AND command_id = $2`,
+			[scope.huntId, commandId, encodedCommand]
+		);
+		if (receipts.length > 0) {
+			const receipt = receipts[0];
+			if (!receipt.matches) {
+				throw new HuntCommandError(
+					'conflict',
+					'Command ID was already used for a different command.'
+				);
+			}
+
+			return {
+				commandId,
+				committedRevision: Number(receipt.committed_revision),
+			};
 		}
+		return undefined;
 	}
 
 	private async commit(
@@ -463,34 +500,24 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 			}
 			// A new statement after the lock wait reads the winner's committed node changes.
 			const snapshot = await readSnapshot(connection, scope);
+
 			const encodedCommand = JSON.stringify(command);
-			const { rows: receipts } = await connection.query<{
-				committed_revision: string;
-				matches: boolean;
-			}>(
-				`SELECT committed_revision::text, command = $3::jsonb AS matches
-				 FROM command_receipts WHERE hunt_id = $1 AND command_id = $2`,
-				[scope.huntId, commandId, encodedCommand]
+			let receipt = await this.#tryGetExistingReceipt(
+				scope,
+				commandId,
+				encodedCommand,
+				connection
 			);
-			if (receipts.length > 0) {
-				const receipt = receipts[0];
-				if (!receipt.matches) {
-					throw new HuntCommandError(
-						'conflict',
-						'Command ID was already used for a different command.'
-					);
-				}
+			if (receipt !== undefined) {
 				await connection.query('COMMIT');
 				transactionOpen = false;
 				return {
-					receipt: {
-						commandId,
-						committedRevision: Number(receipt.committed_revision),
-					},
+					receipt,
 					snapshot,
 					replayed: true,
 				};
 			}
+
 			const { rows: clock } = await connection.query<{ now_ms: string }>(
 				`SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint::text AS now_ms`
 			);
@@ -551,7 +578,9 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 					]
 				);
 			}
-			// A transactional wake-up hint; the tables above are the recovery record.
+
+			// Notify listeners of the change. Emit just enough information for them to uniquely identify the change;
+			// if they need to e.g. compute information about it they can read the change tables modified above.
 			await connection.query(`SELECT pg_notify('hunt_changed', $1)`, [
 				JSON.stringify({
 					huntId: scope.huntId,
