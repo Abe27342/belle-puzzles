@@ -1,11 +1,11 @@
 import { spawn } from 'node:child_process';
 import { mkdtemp, open, readFile, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 import type { TestProject } from 'vitest/node';
+import { availablePort } from './utils';
 
 declare module 'vitest' {
 	export interface ProvidedContext {
@@ -22,30 +22,18 @@ export default async function setup(project: TestProject) {
 
 	const require = createRequire(import.meta.url);
 	const executable = require.resolve('@fluidframework/azure-local-service');
-	const reservation = createServer();
-	await new Promise<void>((resolve, reject) => {
-		reservation.once('error', reject);
-		reservation.listen(0, '127.0.0.1', resolve);
-	});
-	const address = reservation.address();
-	await new Promise<void>((resolve, reject) =>
-		reservation.close((error) => (error ? reject(error) : resolve()))
-	);
-	if (!address || typeof address === 'string') {
-		throw new Error(
-			'Could not allocate a local ordering-service test port.'
-		);
-	}
+
+	const port = await availablePort('Tinylicious');
 
 	const directory = await mkdtemp(join(tmpdir(), 'belle-puzzles-fluid-'));
 	const logPath = join(directory, 'service.log');
 	const log = await open(logPath, 'w');
-	const endpoint = `http://127.0.0.1:${address.port}`;
+	const endpoint = `http://127.0.0.1:${port}`;
 	const service = spawn(
 		process.execPath,
 		[executable, '--storage', join(directory, 'storage')],
 		{
-			env: { ...process.env, PORT: String(address.port) },
+			env: { ...process.env, PORT: String(port) },
 			stdio: ['ignore', log.fd, log.fd],
 		}
 	);

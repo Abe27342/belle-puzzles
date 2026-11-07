@@ -1,35 +1,19 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import EmbeddedPostgres from 'embedded-postgres';
 import { Pool } from 'pg';
 import { PostgresPuzzlehuntStore } from '../../postgres/store.js';
 import type { HuntScope } from '../../document.js';
-
-async function availablePort(): Promise<number> {
-	const server = createServer();
-	await new Promise<void>((resolve, reject) => {
-		server.once('error', reject);
-		server.listen(0, '127.0.0.1', resolve);
-	});
-	const address = server.address();
-	if (!address || typeof address === 'string') {
-		throw new Error('Local PostgreSQL test port could not be allocated.');
-	}
-	await new Promise<void>((resolve, reject) =>
-		server.close((error) => (error ? reject(error) : resolve()))
-	);
-	return address.port;
-}
+import { availablePort } from './utils.js';
 
 /** Own a real loopback PostgreSQL service; never connect to or reset a user database. */
 export async function startLocalPostgres() {
 	const databaseDir = await mkdtemp(
 		join(tmpdir(), 'belle-puzzles-postgres-')
 	);
-	const port = await availablePort();
+	const port = await availablePort('Postgres');
 	const password = crypto.randomUUID();
 	const cluster = new EmbeddedPostgres({
 		databaseDir,
