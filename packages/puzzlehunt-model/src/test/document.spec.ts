@@ -6,7 +6,12 @@ import {
 	projectHuntDocument,
 	snowflake,
 } from '../document.js';
-import type { HuntCommand, HuntDocument, HuntSnapshot } from '../document.js';
+import type {
+	DocumentNode,
+	HuntCommand,
+	HuntDocument,
+	HuntSnapshot,
+} from '../document.js';
 import { projectPuzzlehuntView } from '../model/types.js';
 
 const id = (n: number) =>
@@ -19,7 +24,7 @@ const apply = (document: HuntDocument, command: HuntCommand) =>
 
 function seed(): HuntDocument {
 	return apply(
-		{ nodes: {} },
+		{ name: 'Hunt', configuration: {}, nodes: {} },
 		{
 			type: 'add',
 			nodes: [
@@ -50,6 +55,105 @@ function seed(): HuntDocument {
 }
 
 describe('database document commands', () => {
+	it.each(['puzzle', 'round'] as const)(
+		'leaves a %s in place when moved to its current parent',
+		(type) => {
+			const document = seed();
+			const nodeId = type === 'puzzle' ? puzzleId : nestedId;
+			const result = apply(document, {
+				type: 'move',
+				nodeId,
+				parentId: rootId,
+			});
+			expect(result.document).toEqual(document);
+			expect(result.events).toEqual([]);
+		}
+	);
+
+	it('preserves document metadata when applying node commands', () => {
+		const document = {
+			...seed(),
+			name: 'Named hunt',
+			configuration: { googleFolderId: 'folder' },
+		};
+		const result = apply(document, { type: 'delete', nodeId: puzzleId });
+		expect(result.document.name).toBe(document.name);
+		expect(result.document.configuration).toEqual(document.configuration);
+	});
+
+	it.each([
+		['answer', 'ANSWER'],
+		['status', 'Working'],
+		['lastStatusUpdate', 1234],
+		['sheetId', 'sheet'],
+		[
+			'discord',
+			{ channelId: snowflake('channel'), roleId: snowflake('role') },
+		],
+		['position', 0],
+		['sheetId', undefined],
+	] as const)('rejects %s supplied during creation %#', (property, value) => {
+		const document = seed();
+		expect(() =>
+			apply(document, {
+				type: 'add',
+				nodes: [
+					{
+						id: id(4),
+						type: 'puzzle',
+						parentId: rootId,
+						name: 'New',
+						url: '',
+						[property]: value,
+					},
+				],
+			})
+		).toThrow(/Create nodes before assigning/);
+		expect(Object.keys(document.nodes)).toHaveLength(3);
+	});
+
+	it('allows a parent declared later in the same creation batch', () => {
+		const document = apply(seed(), {
+			type: 'add',
+			nodes: [
+				{
+					id: id(4),
+					type: 'puzzle',
+					parentId: id(5),
+					name: 'Child',
+					url: '',
+				},
+				{
+					id: id(5),
+					type: 'round',
+					parentId: null,
+					name: 'Parent',
+					url: '',
+				},
+			],
+		}).document;
+		expect(
+			documentChildren(document, id(5)).map((node) => node.id)
+		).toEqual([id(4)]);
+	});
+
+	it('rejects puzzle creation without a parent round', () => {
+		expect(() =>
+			apply(seed(), {
+				type: 'add',
+				nodes: [
+					{
+						id: id(4),
+						type: 'puzzle',
+						parentId: null,
+						name: 'Root puzzle',
+						url: '',
+					},
+				],
+			})
+		).toThrow(/Puzzles must have a parent round/);
+	});
+
 	it('preserves independent adds and field assignments applied to fresh state', () => {
 		const original = seed();
 		const first = apply(original, {
@@ -94,6 +198,155 @@ describe('database document commands', () => {
 		expect(linked.nodes[puzzleId].url).toBe('https://example.com');
 		expect(original.nodes[puzzleId].name).toBe('Puzzle');
 		expect(Object.keys(original.nodes)).toHaveLength(3);
+	});
+
+	describe('document graph validation', () => {
+		it.each(['round', 'puzzle'] as const)(
+			'rejects dangling %s parents',
+			(type) => {
+				const document = seed();
+				const nodeId = type === 'round' ? nestedId : puzzleId;
+				expect(() =>
+					validateHuntDocument({
+						...document,
+						nodes: {
+							...document.nodes,
+							[nodeId]: {
+								...document.nodes[nodeId],
+								parentId: id(99),
+							},
+						},
+					})
+				).toThrow(/does not exist/);
+			}
+		);
+
+		it('rejects a round whose parent is a puzzle', () => {
+			const document = seed();
+			expect(() =>
+				validateHuntDocument({
+					...document,
+					nodes: {
+						...document.nodes,
+						[nestedId]: {
+							...document.nodes[nestedId],
+							parentId: puzzleId,
+						},
+					},
+				})
+			).toThrow(/parent must be a round/);
+		});
+
+		it('rejects a cycle in an assembled document', () => {
+			const document = seed();
+			expect(() =>
+				validateHuntDocument({
+					...document,
+					nodes: {
+						...document.nodes,
+						[rootId]: {
+							...document.nodes[rootId],
+							parentId: nestedId,
+						},
+					},
+				})
+			).toThrow(/cycles/);
+		});
+
+		it('rejects duplicate sibling positions', () => {
+			const document = seed();
+			expect(() =>
+				validateHuntDocument({
+					...document,
+					nodes: {
+						...document.nodes,
+						[nestedId]: {
+							...document.nodes[nestedId],
+							position: document.nodes[puzzleId].position,
+						},
+					},
+				})
+			).toThrow(/positions must be unique/);
+		});
+	});
+
+	function measuredDocument(nodes: Record<string, DocumentNode>) {
+		let parentReads = 0;
+		const measured: Record<string, DocumentNode> = {};
+		for (const [id, node] of Object.entries(nodes)) {
+			measured[id] = new Proxy(node, {
+				get(target, property, receiver) {
+					if (property === 'parentId') parentReads++;
+					return Reflect.get(target, property, receiver);
+				},
+			});
+		}
+		return {
+			document: { name: 'Hunt', configuration: {}, nodes: measured },
+			parentReads: () => parentReads,
+		};
+	}
+
+	function roundChain(count: number): Record<string, DocumentNode> {
+		const nodes: Record<string, DocumentNode> = {};
+		for (let index = 1; index <= count; index++) {
+			nodes[id(index)] = {
+				id: id(index),
+				type: 'round',
+				name: 'Round',
+				url: '',
+				parentId: index === 1 ? null : id(index - 1),
+				position: 0,
+			};
+		}
+		return nodes;
+	}
+
+	describe('indexed document operations', () => {
+		it('validates a deep ancestry chain with linear parent lookups and no recursion', () => {
+			const count = 12000;
+			const measured = measuredDocument(roundChain(count));
+			validateHuntDocument(measured.document);
+			expect(measured.parentReads()).toBeLessThanOrEqual(4 * count);
+		});
+
+		it('deletes a deep subtree with linear parent lookups and no recursion', () => {
+			const count = 12000;
+			const measured = measuredDocument(roundChain(count));
+			const result = apply(measured.document, {
+				type: 'delete',
+				nodeId: id(1),
+			});
+			expect(Object.keys(result.document.nodes)).toHaveLength(0);
+			expect(result.events).toHaveLength(count);
+			expect(measured.parentReads()).toBeLessThanOrEqual(4 * count);
+		});
+
+		it('allocates bulk sibling positions without rescanning existing nodes per addition', () => {
+			const count = 1000;
+			const measured = measuredDocument(roundChain(count));
+			const result = apply(measured.document, {
+				type: 'add',
+				nodes: Array.from({ length: count }, (_, index) => ({
+					id: id(count + index + 1),
+					type: 'puzzle',
+					parentId: id(1),
+					name: 'Added',
+					url: '',
+				})),
+			});
+			expect(Object.keys(result.document.nodes)).toHaveLength(2 * count);
+			expect(result.document.nodes[id(2 * count)].position).toBe(count);
+			expect(measured.parentReads()).toBeLessThanOrEqual(10 * count);
+		});
+
+		it('preserves last-sibling-first subtree deletion event order', () => {
+			expect(
+				apply(seed(), { type: 'delete', nodeId: rootId }).events.map(
+					({ node }) => node.id
+				)
+			).toEqual([rootId, nestedId, puzzleId]);
+		});
 	});
 
 	it('uses application order for solves, clears status atomically, and preserves unrelated fields', () => {
@@ -330,6 +583,7 @@ describe('database document commands', () => {
 		const puzzle = document.nodes[puzzleId];
 		expect(() =>
 			validateHuntDocument({
+				...document,
 				nodes: {
 					...document.nodes,
 					[puzzleId]: {
@@ -415,9 +669,11 @@ describe('database document view', () => {
 				guildId: snowflake('guild'),
 				schemaVersion: 1,
 				revision: 1,
-				name: 'Hunt',
-				configuration: {},
-				document: { nodes: indexedNodes },
+				document: {
+					name: 'Hunt',
+					configuration: {},
+					nodes: indexedNodes,
+				},
 			});
 			expect(view.rounds).toHaveLength(100);
 			expect(view.puzzles).toHaveLength(100);
@@ -431,8 +687,6 @@ describe('database document view', () => {
 			guildId: snowflake('guild'),
 			schemaVersion: 1,
 			revision: 3,
-			name: 'Hunt',
-			configuration: {},
 			document: seed(),
 		};
 		const view = projectHuntDocument(JSON.parse(JSON.stringify(snapshot)));
