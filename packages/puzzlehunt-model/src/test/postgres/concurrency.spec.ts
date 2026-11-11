@@ -283,13 +283,13 @@ describe('Authoritative commands on multiple PostgreSQL connections', () => {
 			);
 			const before = await database.store.read(scope);
 			expect(before.revision).toBe(1);
-			expect(before.name).toBe('Contract test hunt');
+			expect(before.document.name).toBe('Contract test hunt');
 			expect(before.document.nodes[puzzleId].name).toBe('Puzzle');
 			await writer.query('COMMIT');
 			transactionOpen = false;
 			const after = await database.store.read(scope);
 			expect(after.revision).toBe(2);
-			expect(after.name).toBe('New hunt name');
+			expect(after.document.name).toBe('New hunt name');
 			expect(after.document.nodes[puzzleId].name).toBe('New puzzle name');
 		} finally {
 			if (transactionOpen) {

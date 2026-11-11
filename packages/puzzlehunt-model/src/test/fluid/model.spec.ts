@@ -34,6 +34,7 @@ puzzlehuntModelContract(
 		);
 		const sessions = [initial];
 		const models = [model];
+		const independentModels: FluidPuzzlehuntModel[] = [];
 		return {
 			model,
 			async connect() {
@@ -49,8 +50,25 @@ puzzlehuntModelContract(
 				models.push(connected);
 				return connected;
 			},
+			async createHunt() {
+				const session = await createNewPuzzlehunt(
+					client(),
+					'contract-guild'
+				);
+				sessions.push(session);
+				const independent = new FluidPuzzlehuntModel(
+					session.puzzlehunt,
+					session.container
+				);
+				independentModels.push(independent);
+				return independent;
+			},
 			async synchronize() {
-				await Promise.all(models.map((model) => model.flush()));
+				await Promise.all(
+					[...models, ...independentModels].map((model) =>
+						model.flush()
+					)
+				);
 				await vi.waitFor(
 					() => {
 						for (const other of models) {

@@ -19,9 +19,10 @@ Implemented:
   Fluid implementation with stable string IDs and storage-neutral notifications.
 - `PostgresPuzzlehuntStore` in the model package's server-only `postgres` entry
   point: scoped reads and serialized transactional
-  commands, retry receipts, durable integration intent, and conditional
-  reconciliation acknowledgement. Its injected pool is a structural subset of
-  `pg.Pool`.
+  commands, retry receipts, and durable integration intent.
+  `PostgresHuntIntegrationStore` separately owns worker association writes and
+  conditional reconciliation acknowledgement. Both accept a structural subset of
+  `pg.Pool` and can use independent instances/pools.
 - A browser-safe `http` adapter for that same `HuntDocumentClient` interface,
   plus the independent `packages/puzzlehunt-service` Express executable with
   a PostgreSQL pool, scoped routes, JSON validation, Discord authorization,
@@ -35,7 +36,7 @@ Implemented:
   ordering service and a disposable, multi-connection PostgreSQL service, plus
   focused optimistic-client and authoritative concurrency tests.
 
-Not implemented: React bindings, SSE delivery/reconnection, external integration
+Not implemented: React bindings, external integration
 workers, hunt provisioning/import, database migration tooling, and deployment.
 Local HTTP-plus-database application tests are intentionally deferred; the app
 factory preserves injectable database and authorization boundaries for them.
@@ -105,9 +106,11 @@ omit absent properties, and commands use explicit `null`, never JSON-ambiguous
 association additionally requires an index channel. Google sheets are retained
 when a node is deleted, matching existing behavior.
 
-The public `HuntSnapshot.document.nodes` map is assembled from these rows; it is
-not a JSONB storage column. A snapshot read uses one SQL statement so metadata,
-revision, and nodes share the same MVCC snapshot, even during concurrent writes.
+The public `HuntSnapshot` contains ownership, schema version, revision, and a
+`document` with `name`, `configuration`, and the `nodes` map assembled from these
+rows. The document is not a JSONB storage column. A snapshot read uses one SQL
+statement so metadata, revision, and nodes share the same MVCC snapshot, even
+during concurrent writes.
 SQL JSON aggregation and batch JSON parameters are query/transport encoding only.
 JSONB remains for configuration, provenance, command receipts, and event payloads.
 
@@ -118,9 +121,22 @@ Property names are the typed union `name`, `url`, `answer`, `status`, and `sheet
 with their corresponding value types. Nullable properties use `null` to clear;
 setting/clearing `answer` expresses solve/unsolve. A separate worker-only
 `set-property` command attaches/clears `discord` resources. Both existing bulk
-creation methods map to one `add` command; parents must precede their children
-within a batch. All callers send IDs and intent, never a replacement snapshot or
-a client-computed tree diff.
+creation methods map to one `add` command; parents must exist in the final graph,
+but may appear later in the same batch. Creation accepts structural fields only;
+answer/status, sheet, and Discord associations must be
+assigned afterward. The reducer explicitly rejects these fields (and a supplied
+position) on creation rather than silently discarding them.
+All callers send IDs and intent, never a replacement snapshot or a
+client-computed tree diff.
+
+Each command builds an internal forest with an ID map, parent/child pointers,
+and per-parent append positions. Graph validation memoizes completed ancestry
+paths; deletion traverses only the indexed subtree. Bulk additions allocate
+positions without rescanning existing siblings. These operations are linear in
+document/batch size apart from sorting siblings for deletion event order, and
+deep graph validation/deletion use iterative traversal. The index is temporary,
+not another persisted source of truth. Final-state validation still checks the
+complete resulting graph before any write.
 
 The store performs the following on a single leased connection at PostgreSQL's
 default READ COMMITTED isolation:
@@ -220,6 +236,8 @@ responses, and authentication failures to 401/403. Propagate other errors explic
 and do not report success until the transaction commits. The client treats
 network failures, invalid responses, and 5xx results as uncertain, keeping the
 original command ID. Only matching explicit API rejection envelopes allow rollback.
+The application service, not a store convenience method, explicitly submits the
+command and then reads an incremental synchronization response when requested.
 
 All responses use `Cache-Control: no-store`; there is no ETag/cache protocol yet.
 Authorized SSE notifications at `/guilds/:guildId/hunts/:huntId/changes` and
@@ -337,6 +355,13 @@ obtain final after-images and deletions, instead of storing another JSON documen
 Do not repurpose the integration outbox: it has different contents and retention
 semantics. If the retained tracking cannot cover the entire requested interval,
 return an explicit full-snapshot fallback, never a partial delta.
+
+The indexed deletion keeps a revision-count bound without a scheduled cleanup
+process. PostgreSQL has no built-in policy for retaining the newest N rows per
+hunt; soft deletion would still need cleanup and would unnecessarily change
+authoritative node storage. Time-based partitioning or scheduled retention can
+be revisited if usage warrants it. This tracking is independent of durable
+integration deletion events and command receipts.
 
 Use the same full-or-incremental response mechanism for command acknowledgements,
 so editing clients also avoid repeated full transfers. The synchronization
@@ -498,8 +523,12 @@ no notification arrives. Run external calls outside hunt transactions and apply
 bounded retries/backoff, persisted attempt/error details, and operator-visible
 failures. A worker records the requested generation it read. On completion,
 `acknowledgeReconciliation(scope, target, requestedRevision)` deletes only that
-generation. A newer mutation leaves its pending job intact. An intervening
-association write also advances the revision and schedules another pass; only
+generation. This method belongs to `PostgresHuntIntegrationStore`, not the
+user-facing `PostgresPuzzlehuntStore`. Its worker-only `submitIntegration` shares
+the same transactional command implementation, preserving locking, receipts,
+notifications, and durable integration work even when workers use a separate
+store instance or process. A newer mutation leaves its pending job intact.
+An intervening association write also advances the revision and schedules another pass; only
 write associations when the desired value actually changes, allowing convergence.
 Retain an existing job's backoff on a new change rather than retrying a broken
 integration on every edit.

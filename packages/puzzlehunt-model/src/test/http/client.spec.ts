@@ -20,9 +20,7 @@ const snapshot: HuntSnapshot = {
 	...scope,
 	schemaVersion: 1,
 	revision: 0,
-	name: 'Hunt',
-	configuration: {},
-	document: { nodes: {} },
+	document: { name: 'Hunt', configuration: {}, nodes: {} },
 };
 const json = (value: unknown, status = 200) =>
 	new Response(JSON.stringify(value), {

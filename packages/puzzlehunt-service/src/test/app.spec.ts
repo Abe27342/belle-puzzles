@@ -1,7 +1,10 @@
 import { createServer } from 'node:http';
 import type { Server } from 'node:http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { HuntCommandError } from '@belle-puzzles/puzzlehunt-model/document';
+import {
+	HuntCommandError,
+	snowflake,
+} from '@belle-puzzles/puzzlehunt-model/document';
 import type { HuntSnapshot } from '@belle-puzzles/puzzlehunt-model/document';
 import { createPuzzlehuntApp } from '../app.js';
 import { HuntChangesUnavailableError } from '../changes.js';
@@ -10,12 +13,10 @@ import type { HuntChangeFeed } from '../changes.js';
 const huntId = '00000000-0000-4000-8000-000000000001';
 const snapshot: HuntSnapshot = {
 	huntId,
-	guildId: 'guild',
+	guildId: snowflake('guild'),
 	schemaVersion: 1,
 	revision: 1,
-	name: 'Hunt',
-	configuration: {},
-	document: { nodes: {} },
+	document: { name: 'Hunt', configuration: {}, nodes: {} },
 };
 const servers: Server[] = [];
 const controllers: AbortController[] = [];
@@ -66,11 +67,6 @@ async function fixture() {
 			receipt: { commandId: request.commandId, committedRevision: 1 },
 			replayed: false,
 		})),
-		submitUpdates: vi.fn(async (_scope, request, _since) => ({
-			update: { type: 'snapshot' as const, snapshot },
-			receipt: { commandId: request.commandId, committedRevision: 1 },
-			replayed: false,
-		})),
 	};
 	const authorize = vi.fn(
 		async (_authorization: string | undefined, _guild: string) => {}
@@ -108,6 +104,29 @@ async function fixture() {
 }
 
 describe('Scoped SSE and synchronization routes (injected store)', () => {
+	it('never reports a post-commit state read failure as a definitive command rejection', async () => {
+		const f = await fixture();
+		f.store.readUpdates.mockRejectedValueOnce(
+			new HuntCommandError('not-found', 'Read failed after commit.')
+		);
+		const response = await fetch(`${f.url}/commands?since=0`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				commandId: '00000000-0000-4000-8000-000000000002',
+				command: { type: 'add', nodes: [] },
+			}),
+		});
+		expect(f.store.submit).toHaveBeenCalledOnce();
+		expect(response.status).toBe(500);
+		expect(await response.json()).toMatchObject({
+			error: { code: 'internal-error' },
+		});
+		expect(f.onError).toHaveBeenCalledWith(
+			expect.objectContaining({ cause: expect.any(HuntCommandError) })
+		);
+	});
+
 	it('closes a backed-up transport instead of retaining an unbounded hint queue', async () => {
 		const f = await fixture();
 		const response = await fetch(`${f.url}/changes`, {
@@ -229,10 +248,9 @@ describe('Scoped SSE and synchronization routes (injected store)', () => {
 				})
 			).status
 		).toBe(200);
-		expect(f.store.submitUpdates).toHaveBeenCalledWith(
+		expect(f.store.submit).toHaveBeenCalledWith(
 			{ huntId, guildId: 'guild' },
-			request,
-			0
+			request
 		);
 		expect(
 			(
@@ -243,6 +261,6 @@ describe('Scoped SSE and synchronization routes (injected store)', () => {
 				})
 			).status
 		).toBe(400);
-		expect(f.store.submitUpdates).toHaveBeenCalledOnce();
+		expect(f.store.submit).toHaveBeenCalledOnce();
 	});
 });

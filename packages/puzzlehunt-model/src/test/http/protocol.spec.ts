@@ -17,9 +17,7 @@ const snapshot: HuntSnapshot = {
 	...scope,
 	schemaVersion: 1,
 	revision: 1,
-	name: 'Hunt',
-	configuration: {},
-	document: { nodes: {} },
+	document: { name: 'Hunt', configuration: {}, nodes: {} },
 };
 
 describe('Hunt HTTP protocol', () => {
@@ -173,17 +171,18 @@ describe('Hunt HTTP protocol', () => {
 		const puzzleId = commandId;
 		const full: HuntSnapshot = {
 			...snapshot,
-			configuration: {
-				googleFolderId: 'folder',
-				indexId: snowflake('index'),
-				allPuzzlesRoleId: snowflake('all'),
-				loggingChannelIds: {
-					puzzleAdd: snowflake('add'),
-					puzzleSolve: snowflake('solve'),
-					puzzleStatusUpdate: snowflake('status'),
-				},
-			},
 			document: {
+				...snapshot.document,
+				configuration: {
+					googleFolderId: 'folder',
+					indexId: snowflake('index'),
+					allPuzzlesRoleId: snowflake('all'),
+					loggingChannelIds: {
+						puzzleAdd: snowflake('add'),
+						puzzleSolve: snowflake('solve'),
+						puzzleStatusUpdate: snowflake('status'),
+					},
+				},
 				nodes: {
 					[nodeId]: {
 						id: nodeId,
@@ -225,11 +224,15 @@ describe('Hunt HTTP protocol', () => {
 		{ ...snapshot, revision: Number.MAX_SAFE_INTEGER + 1 },
 		{ ...snapshot, schemaVersion: 2 },
 		{ ...snapshot, guildId: 'other' },
-		{ ...snapshot, configuration: null },
+		{
+			...snapshot,
+			document: { ...snapshot.document, configuration: null },
+		},
 		{ ...snapshot, document: { nodes: [] } },
 		{
 			...snapshot,
 			document: {
+				...snapshot.document,
 				nodes: {
 					[nodeId]: {
 						id: nodeId,
@@ -245,6 +248,7 @@ describe('Hunt HTTP protocol', () => {
 		{
 			...snapshot,
 			document: {
+				...snapshot.document,
 				nodes: {
 					[nodeId]: {
 						id: nodeId,
@@ -261,6 +265,7 @@ describe('Hunt HTTP protocol', () => {
 		{
 			...snapshot,
 			document: {
+				...snapshot.document,
 				nodes: {
 					[nodeId]: {
 						id: nodeId,

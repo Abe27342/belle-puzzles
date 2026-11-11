@@ -79,6 +79,13 @@ unknown properties and integration-only commands. No ownership, configuration,
 active-hunt, or replacement-document writes are exposed. Responses are uncached.
 The existing bot's `/guilds/:guildId/puzzlehunt` Fluid-context endpoint is unchanged.
 
+Full snapshots keep `huntId`, `guildId`, `schemaVersion`, and `revision` outside
+`document`; `document` contains `name`, `configuration`, and `nodes`. Incremental
+updates retain flat `name`/`configuration` fields and assemble that same document
+shape. For incremental command acknowledgements the route explicitly submits
+once, then reads current state; a failed post-commit read is uncertainty, not a
+rejected mutation.
+
 Failures use `{ "error": { "code": "...", "message": "..." } }`.
 Explicit 400/404/409 domain rejections and 401/403 authorization failures mean
 the request did not commit. Wrong methods (405), oversized bodies (413), and
@@ -118,6 +125,8 @@ credential. Bot clients set `authScheme: 'Service'`; the default is `Bearer`.
 Keeping these schemes distinct prevents invalid service keys from being forwarded
 to Discord as OAuth tokens. Requests time out after 30 seconds by default (`timeoutMs` overrides
 this), omit cookies, do not follow redirects, and do not retry automatically.
+`credentials: 'omit'` excludes ambient browser credentials, not the explicitly
+supplied Authorization header.
 
 The adapter validates snapshots and receipts before accepting them. Only a
 recognized rejection envelope with a matching HTTP status becomes

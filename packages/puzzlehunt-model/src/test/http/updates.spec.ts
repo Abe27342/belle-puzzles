@@ -28,9 +28,7 @@ const base: HuntSnapshot = {
 	...scope,
 	schemaVersion: 1,
 	revision: 1,
-	name: 'Hunt',
-	configuration: {},
-	document: { nodes: { [root.id]: root } },
+	document: { name: 'Hunt', configuration: {}, nodes: { [root.id]: root } },
 };
 const delta: HuntDelta = {
 	...scope,
@@ -88,8 +86,8 @@ describe('Incremental HTTP state', () => {
 	it('assembles after-images without mutating committed base state', () => {
 		const current = applyHuntStateUpdate(base, { type: 'delta', delta });
 		expect(current.document.nodes[root.id].name).toBe('Renamed root');
-		expect(current.name).toBe('Renamed hunt');
-		expect(current.configuration.indexId).toBe('index');
+		expect(current.document.name).toBe('Renamed hunt');
+		expect(current.document.configuration.indexId).toBe('index');
 		expect(base.document.nodes[root.id].name).toBe('Root');
 	});
 

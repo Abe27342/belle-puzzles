@@ -19,9 +19,7 @@ const base: HuntSnapshot = {
 	...scope,
 	schemaVersion: 1,
 	revision: 0,
-	name: 'Hunt',
-	configuration: {},
-	document: { nodes: {} },
+	document: { name: 'Hunt', configuration: {}, nodes: {} },
 };
 const encoder = new TextEncoder();
 const event = (revision: number) =>

@@ -14,4 +14,6 @@ See [this Github issue](https://github.com/Abe27342/belle-puzzles/issues/44) for
 ## Testing
 
 Models are tested using contract-based tests running against local databases/services.
-This means using azure-local-server for the Fluid backed implementation, and a local database backed by \@electric-sql/pglite for the postgres model implementation.
+This means using azure-local-server for the Fluid backed implementation, and a disposable native PostgreSQL service for the postgres model implementation.
+The shared suite groups tests by model method and covers isolation between hunts in the same guild.
+PGlite separately exercises store behavior and SQL constraints.

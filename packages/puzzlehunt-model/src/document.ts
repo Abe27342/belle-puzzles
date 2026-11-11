@@ -165,6 +165,8 @@ export interface DocumentPuzzle extends DocumentNodeBase {
 export type DocumentNode = DocumentRound | DocumentPuzzle;
 
 export interface HuntDocument {
+	readonly name: string;
+	readonly configuration: HuntConfiguration;
 	/**
 	 * Document nodes contained in this hunt document, keyed by their unique IDs.
 	 */
@@ -174,8 +176,6 @@ export interface HuntDocument {
 export interface HuntSnapshot extends HuntScope {
 	readonly schemaVersion: 1;
 	readonly revision: number;
-	readonly name: string;
-	readonly configuration: HuntConfiguration;
 	readonly document: HuntDocument;
 }
 
@@ -186,7 +186,9 @@ export interface HuntSnapshot extends HuntScope {
  *
  * This interface is used for SSE (Server-Sent Events) to communicate incremental updates to connected clients.
  */
-export interface HuntDelta extends Omit<HuntSnapshot, 'document'> {
+export interface HuntDelta
+	extends Omit<HuntSnapshot, 'document'>,
+		Pick<HuntDocument, 'name' | 'configuration'> {
 	/**
 	 * Revision of the base snapshot that this delta is applied to.
 	 */
@@ -266,9 +268,11 @@ export function applyHuntStateUpdate(
 		guildId: delta.guildId,
 		schemaVersion: delta.schemaVersion,
 		revision: delta.revision,
-		name: delta.name,
-		configuration: delta.configuration,
-		document: { nodes },
+		document: {
+			name: delta.name,
+			configuration: delta.configuration,
+			nodes,
+		},
 	};
 	validateHuntDocument(snapshot.document);
 	return snapshot;
@@ -411,17 +415,100 @@ export function isSafeIndex(value: unknown): value is number {
 	);
 }
 
-function getNode(document: HuntDocument, id: string): DocumentNode {
-	requireCommand(isUuid(id), 'Node IDs must be lowercase UUIDs.');
-	const node = document.nodes[id];
-	if (node === undefined) {
-		throw new HuntCommandError('not-found', `Node ${id} does not exist.`);
-	}
-	return node;
+interface ForestNode {
+	readonly node: DocumentNode;
+	parent?: ForestNode;
+	readonly children: ForestNode[];
 }
 
-function getPuzzle(document: HuntDocument, id: string): DocumentPuzzle {
-	const node = getNode(document, id);
+/** Per-operation index; pointers never become a second persisted document authority. */
+class DocumentForest {
+	readonly nodes = new Map<string, ForestNode>();
+	private readonly nextPositions = new Map<string | null, number>();
+
+	constructor(document: HuntDocument) {
+		for (const [id, node] of Object.entries(document.nodes)) {
+			requireCommand(
+				isUuid(id) && id === node.id,
+				'Invalid node identity.'
+			);
+			this.nodes.set(id, { node, children: [] });
+		}
+		for (const entry of this.nodes.values()) {
+			const { parentId, position } = entry.node;
+			requireCommand(isSafeIndex(position), 'Invalid sibling position.');
+			if (parentId === null) {
+				requireCommand(
+					entry.node.type === 'round',
+					'Puzzles must have a parent round.'
+				);
+			} else {
+				const parent = this.get(parentId);
+				requireCommand(
+					parent.node.type === 'round',
+					'The parent must be a round.'
+				);
+				entry.parent = parent;
+				parent.children.push(entry);
+			}
+			this.nextPositions.set(
+				parentId,
+				Math.max(this.nextPositions.get(parentId) ?? 0, position + 1)
+			);
+		}
+	}
+
+	get(id: string): ForestNode {
+		requireCommand(isUuid(id), 'Node IDs must be lowercase UUIDs.');
+		const entry = this.nodes.get(id);
+		if (!entry) {
+			throw new HuntCommandError(
+				'not-found',
+				`Node ${id} does not exist.`
+			);
+		}
+		return entry;
+	}
+
+	appendPosition(parentId: string | null): number {
+		const position = this.nextPositions.get(parentId) ?? 0;
+		this.nextPositions.set(parentId, position + 1);
+		return position;
+	}
+
+	validateAncestry(): void {
+		const complete = new Set<ForestNode>();
+		for (const entry of this.nodes.values()) {
+			const path = new Set<ForestNode>();
+			let ancestor: ForestNode | undefined = entry;
+			while (ancestor && !complete.has(ancestor)) {
+				requireCommand(
+					!path.has(ancestor),
+					'The tree cannot contain cycles.'
+				);
+				path.add(ancestor);
+				ancestor = ancestor.parent;
+			}
+			for (const visited of path) complete.add(visited);
+		}
+	}
+
+	subtree(id: string): DocumentNode[] {
+		const result: DocumentNode[] = [];
+		const pending = [this.get(id)];
+		while (pending.length > 0) {
+			const entry = pending.pop()!;
+			result.push(entry.node);
+			// Match the existing last-sibling-first deletion event order.
+			entry.children.sort((a, b) => compareDocumentNodes(a.node, b.node));
+			for (const child of entry.children) pending.push(child);
+		}
+		return result;
+	}
+}
+
+function getPuzzle(forest: DocumentForest, id: string): DocumentPuzzle {
+	const { node } = forest.get(id);
 	requireCommand(node.type === 'puzzle', 'This command requires a puzzle.');
 	return node;
 }
@@ -429,9 +516,9 @@ function getPuzzle(document: HuntDocument, id: string): DocumentPuzzle {
 /**
  * Validates that the given parent ID corresponds to a round node that exists in the document.
  */
-function requireParent(document: HuntDocument, parentId: string): void {
+function requireParent(forest: DocumentForest, parentId: string): void {
 	requireCommand(
-		getNode(document, parentId).type === 'round',
+		forest.get(parentId).node.type === 'round',
 		'The parent must be a round.'
 	);
 }
@@ -456,7 +543,7 @@ function compareDocumentNodes(a: DocumentNode, b: DocumentNode): number {
 
 /** Build once per projection rather than scanning the document for each round. */
 export function indexDocumentChildren(
-	document: HuntDocument
+	document: Pick<HuntDocument, 'nodes'>
 ): ReadonlyMap<string | null, readonly DocumentNode[]> {
 	const children = new Map<string | null, DocumentNode[]>();
 	for (const node of Object.values(document.nodes)) {
@@ -528,12 +615,14 @@ function getOrCreate<K, V>(map: Map<K, V>, key: K, create: () => V): V {
  * @param document The document to validate
  */
 export function validateHuntDocument(document: HuntDocument): void {
+	validateDocumentForest(new DocumentForest(document));
+}
+
+function validateDocumentForest(forest: DocumentForest): void {
 	const siblingPositions = new Map<string | null, Set<number>>();
-	for (const [id, node] of Object.entries(document.nodes)) {
-		requireCommand(isUuid(id) && id === node.id, 'Invalid node identity.');
+	for (const { node } of forest.nodes.values()) {
 		if (node.type === 'puzzle') {
 			const { answer, sheetId, status, lastStatusUpdate } = node;
-			requireParent(document, node.parentId);
 			requireCommand(
 				(answer === undefined || typeof answer === 'string') &&
 					(sheetId === undefined || typeof sheetId === 'string'),
@@ -568,17 +657,6 @@ export function validateHuntDocument(document: HuntDocument): void {
 		);
 		positions.add(node.position);
 
-		const ancestors = new Set([id]);
-		let parentId = node.parentId;
-		while (parentId !== null) {
-			requireCommand(
-				!ancestors.has(parentId),
-				'The tree cannot contain cycles.'
-			);
-			ancestors.add(parentId);
-			parentId = getNode(document, parentId).parentId;
-		}
-
 		if (node.discord !== undefined) {
 			const { channelId, roleId, indexChannelId } = node.discord;
 			requireCommand(
@@ -591,6 +669,7 @@ export function validateHuntDocument(document: HuntDocument): void {
 			);
 		}
 	}
+	forest.validateAncestry();
 }
 
 /**
@@ -609,15 +688,11 @@ export function applyHuntCommand(
 		Number.isSafeInteger(serverTime) && serverTime >= 0,
 		'Invalid server timestamp.'
 	);
-	validateHuntDocument(document);
+	const forest = new DocumentForest(document);
+	validateDocumentForest(forest);
 	const nodes: Record<string, DocumentNode> = { ...document.nodes };
-	const next = { nodes };
+	const next = { ...document, nodes };
 	const events: HuntDocumentEvent[] = [];
-	const appendPosition = (parentId: string | null): number =>
-		Math.max(
-			-1,
-			...documentChildren(next, parentId).map((node) => node.position)
-		) + 1;
 
 	switch (command.type) {
 		case 'add': {
@@ -626,6 +701,17 @@ export function applyHuntCommand(
 				'Add requires at least one node.'
 			);
 			for (const input of command.nodes) {
+				requireCommand(
+					![
+						'answer',
+						'status',
+						'lastStatusUpdate',
+						'sheetId',
+						'discord',
+						'position',
+					].some((key) => Object.hasOwnProperty.call(input, key)),
+					'Create nodes before assigning puzzle or integration properties.'
+				);
 				requireCommand(
 					isUuid(input.id),
 					'Node identity should be a UUID.'
@@ -641,38 +727,45 @@ export function applyHuntCommand(
 					id: input.id,
 					name: input.name,
 					url: input.url,
-					position: appendPosition(input.parentId),
+					position: forest.appendPosition(input.parentId),
 				};
-				const node: DocumentNode =
-					input.type === 'round'
-						? { ...common, type: 'round', parentId: input.parentId }
-						: {
-								...common,
-								type: 'puzzle',
-								parentId: input.parentId,
-						  };
+				let node: DocumentNode;
+				if (input.type === 'round') {
+					node = {
+						...common,
+						type: 'round',
+						parentId: input.parentId,
+					};
+				} else {
+					requireCommand(
+						input.parentId !== null,
+						'Puzzles must have a parent round.'
+					);
+					node = {
+						...common,
+						type: 'puzzle',
+						parentId: input.parentId,
+					};
+				}
 				nodes[node.id] = node;
 				events.push({ type: 'node-added', node });
 			}
 			break;
 		}
 		case 'delete': {
-			const pending = [getNode(next, command.nodeId)];
-			while (pending.length > 0) {
-				const node = pending.pop()!;
-				pending.push(...documentChildren(next, node.id));
+			for (const node of forest.subtree(command.nodeId)) {
 				events.push({ type: 'node-deleted', node });
 				delete nodes[node.id];
 			}
 			break;
 		}
 		case 'move': {
-			const node = getNode(next, command.nodeId);
+			const { node } = forest.get(command.nodeId);
 			if (command.parentId !== null) {
-				requireParent(next, command.parentId);
+				requireParent(forest, command.parentId);
 			}
 			if (node.parentId !== command.parentId) {
-				const position = appendPosition(command.parentId);
+				const position = forest.appendPosition(command.parentId);
 				if (node.type === 'puzzle') {
 					requireCommand(
 						command.parentId !== null,
@@ -697,7 +790,7 @@ export function applyHuntCommand(
 			switch (command.property) {
 				case 'name':
 				case 'url': {
-					const node = getNode(next, command.nodeId);
+					const { node } = forest.get(command.nodeId);
 					nodes[node.id] = {
 						...node,
 						[command.property]: command.value,
@@ -705,7 +798,7 @@ export function applyHuntCommand(
 					break;
 				}
 				case 'answer': {
-					const node = getPuzzle(next, command.nodeId);
+					const node = getPuzzle(forest, command.nodeId);
 					if (command.value === null) {
 						const { answer, ...rest } = node;
 						nodes[node.id] = rest;
@@ -723,7 +816,7 @@ export function applyHuntCommand(
 					break;
 				}
 				case 'status': {
-					const node = getPuzzle(next, command.nodeId);
+					const node = getPuzzle(forest, command.nodeId);
 					const { status, lastStatusUpdate, ...rest } = node;
 					requireCommand(
 						command.value === null ||
@@ -746,7 +839,7 @@ export function applyHuntCommand(
 					break;
 				}
 				case 'sheetId': {
-					const node = getPuzzle(next, command.nodeId);
+					const node = getPuzzle(forest, command.nodeId);
 					requireCommand(
 						command.value === null ||
 							typeof command.value === 'string',
@@ -760,7 +853,7 @@ export function applyHuntCommand(
 					break;
 				}
 				case 'discord': {
-					const node = getNode(next, command.nodeId);
+					const { node } = forest.get(command.nodeId);
 					const { discord, ...rest } = node;
 					nodes[node.id] =
 						command.value === null

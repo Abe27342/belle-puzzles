@@ -135,7 +135,7 @@ const node = z.discriminatedUnion('type', [
 	}),
 ]);
 const document: z.ZodType<HuntDocument> = z
-	.object({ nodes: z.record(id, node) })
+	.object({ name: z.string(), configuration, nodes: z.record(id, node) })
 	.superRefine((value, context) => {
 		try {
 			validateHuntDocument(value);
@@ -152,8 +152,6 @@ export const huntSnapshotSchema: z.ZodType<HuntSnapshot> = z.object({
 	guildId: snowflake,
 	schemaVersion: z.literal(1),
 	revision: integer,
-	name: z.string(),
-	configuration,
 	document,
 });
 

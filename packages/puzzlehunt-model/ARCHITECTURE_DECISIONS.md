@@ -435,3 +435,56 @@ References: [node-postgres queries](https://node-postgres.com/features/queries);
 [PgTyped](https://pgtyped.dev/docs/);
 [Kysely type generation](https://kysely.dev/docs/generating-types);
 [Drizzle schema declarations](https://orm.drizzle.team/docs/sql-schema-declaration).
+
+## 14. Document and store review checkpoint
+
+**Status:** Implemented from user review after rebasing the unmerged HTTP/SSE
+work onto the reviewed model on main. Fluid adapter/event redesign remains
+explicitly deferred.
+
+Put `name` and `configuration` on `HuntDocument`, alongside `nodes`.
+`HuntSnapshot` adds only scope, schema version, and committed revision. SQL
+columns remain unchanged; full responses, Zod schemas, incremental assembly,
+and optimistic mutations preserve the new document shape. Delta metadata stays
+flat and derives its types from `HuntDocument`.
+
+Build a temporary indexed forest per domain operation, with ID lookup,
+parent/child pointers, and next append positions. Memoize validated ancestry
+paths and traverse deletions iteratively instead of repeatedly scanning the
+node map or walking every ancestor chain. Keep final graph validation, including
+round-only parents, existing references, unique sibling positions, and cycle
+rejection. Deterministic parent-access bounds and deep-chain tests exercise the
+complexity requirement without timing thresholds.
+
+Keep the reviewed creation types, as requested. The domain boundary explicitly
+rejects optional puzzle/integration properties and supplied positions on `add`;
+create nodes first, then associate resources or assign puzzle state. Parents may
+be declared later in an atomic batch. Retain the small discriminant branches in
+node construction/moves: the current `Omit` creation shape loses parent/type
+correlation, and a new cast/helper abstraction would obscure rather than simplify
+these few assignments.
+
+Separate `PostgresPuzzlehuntStore` (reads and user commands) from
+`PostgresHuntIntegrationStore` (worker association writes and conditional
+reconciliation acknowledgements). They share connection helpers and one internal
+transactional command path, not a required store instance or process. User
+commands still atomically record integration intent. Remove `submitUpdates`;
+the HTTP route explicitly submits and reads the requested synchronization state.
+Post-commit read failures must remain uncertain even if the read throws a domain
+error.
+
+Retain indexed transactional pruning of the newest 1000 change revisions.
+PostgreSQL has no native per-hunt N-row retention policy; soft-deleted nodes
+would still need cleanup and would conflate synchronization history with
+authoritative state. No scheduler, permanent deleted-ID ledger, or receipt
+expiration is added.
+
+Organize the shared local-service suite by each primary `IPuzzlehunt` method,
+with focused tests and shared fixture/seed/reload helpers. Fixtures can create
+another hunt in the same guild without clearing the first; additions, property
+assignments, and deletion must stay isolated. Keep implementation-specific
+semantics out of these shared assertions. In particular, legacy SharedTree
+same-parent moves append; PostgreSQL same-parent moves preserve position.
+The user considers either ordering acceptable, so preserve existing behavior
+rather than changing Fluid. PostgreSQL-specific tests verify empty deltas
+advance revisions without changing sibling order for both puzzles and rounds.

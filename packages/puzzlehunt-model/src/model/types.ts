@@ -54,7 +54,9 @@ export interface IPuzzlehuntModel
 }
 
 /** Reuse parent-pointer ordering; child lists are read-only view values. */
-export function projectPuzzlehuntView(document: HuntDocument): PuzzlehuntView {
+export function projectPuzzlehuntView(
+	document: Pick<HuntDocument, 'nodes'>
+): PuzzlehuntView {
 	const children = indexDocumentChildren(document);
 	function roundView(round: DocumentRound): PuzzlehuntRound {
 		return {

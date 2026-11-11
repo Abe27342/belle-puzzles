@@ -29,12 +29,7 @@ export type HuntAuthorizer = (
 export interface PuzzlehuntAppOptions {
 	readonly store: Pick<
 		PostgresPuzzlehuntStore,
-		| 'read'
-		| 'readActive'
-		| 'submit'
-		| 'readUpdates'
-		| 'submitUpdates'
-		| 'readRevision'
+		'read' | 'readActive' | 'submit' | 'readUpdates' | 'readRevision'
 	>;
 	readonly changes: HuntChangeFeed;
 	readonly authorize: HuntAuthorizer;
@@ -270,15 +265,29 @@ export function createPuzzlehuntApp(
 					guildId: snowflake(req.params.guildId),
 					huntId: req.params.huntId,
 				};
-				res.json(
-					since === undefined
-						? await options.store.submit(scope, request)
-						: await options.store.submitUpdates(
-								scope,
-								request,
-								since
-						  )
-				);
+				const result = await options.store.submit(scope, request);
+				if (since === undefined) {
+					res.json(result);
+					return;
+				}
+				try {
+					// A later consistent read may include newer writes; the original receipt stays intact.
+					const update = await options.store.readUpdates(
+						scope,
+						since
+					);
+					res.json({
+						receipt: result.receipt,
+						replayed: result.replayed,
+						update,
+					});
+				} catch (error) {
+					// Even a not-found read is not a rejection of the already committed command.
+					throw new Error(
+						'Hunt command committed but its synchronization response failed.',
+						{ cause: error }
+					);
+				}
 			})
 		)
 		.all((_req, res) => {
