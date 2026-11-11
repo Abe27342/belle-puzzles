@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PostgresPuzzlehuntStore } from '../../postgres/store.js';
+import { PostgresHuntIntegrationStore } from '../../postgres/integrations.js';
 import type { HuntDatabasePool } from '../../postgres/store.js';
 import type { HuntCommand, HuntScope, Snowflake } from '../../document.js';
 import {
@@ -19,6 +20,7 @@ const rootId = id(10);
 const puzzleId = id(11);
 let database: PGlite;
 let store: PostgresPuzzlehuntStore;
+let integrations: PostgresHuntIntegrationStore;
 let failEventInsert = false;
 
 // PGlite has one connection. Queue leases just as a size-one pg Pool would;
@@ -93,7 +95,9 @@ beforeEach(async () => {
 		[scope.huntId, scope.guildId]
 	);
 	failEventInsert = false;
-	store = new PostgresPuzzlehuntStore(singleConnectionPool());
+	const pool = singleConnectionPool();
+	store = new PostgresPuzzlehuntStore(pool);
+	integrations = new PostgresHuntIntegrationStore(pool);
 });
 
 afterAll(async () => {
@@ -156,6 +160,50 @@ describe('PostgreSQL hunt store', () => {
 		});
 	});
 
+	it.each(['round', 'puzzle'] as const)(
+		'covers a same-parent %s move with an empty delta that preserves sibling order',
+		async (type) => {
+			await seed();
+			await submit(101, {
+				type: 'add',
+				nodes: [
+					{
+						id: id(12),
+						type: 'round',
+						name: 'Nested',
+						url: '',
+						parentId: rootId,
+					},
+					{
+						id: id(13),
+						type: 'puzzle',
+						name: 'Sibling',
+						url: '',
+						parentId: rootId,
+					},
+				],
+			});
+			const base = await store.read(scope);
+			await submit(102, {
+				type: 'move',
+				nodeId: type === 'round' ? id(12) : puzzleId,
+				parentId: rootId,
+			});
+			const update = await store.readUpdates(scope, base.revision);
+			expect(update).toMatchObject({
+				type: 'delta',
+				delta: {
+					baseRevision: base.revision,
+					revision: base.revision + 1,
+					upsertNodes: [],
+					deletedNodeIds: [],
+				},
+			});
+			const current = applyHuntStateUpdate(base, update);
+			expect(current.document).toEqual(base.document);
+			expect(current).toEqual(await store.read(scope));
+		}
+	);
 	it('retains 1000 revisions without expiring receipts or integration events, with explicit fallback for gaps', async () => {
 		await seed();
 		await database.query(
@@ -215,55 +263,24 @@ describe('PostgreSQL hunt store', () => {
 				value: 'FIRST',
 			},
 		};
-		await store.submitUpdates(scope, request, 1);
+		await store.submit(scope, request);
 		await submit(102, {
 			type: 'set-property',
 			property: 'answer',
 			nodeId: puzzleId,
 			value: 'LATER',
 		});
-		const result = await store.submitUpdates(scope, request, 2);
+		const result = await store.submit(scope, request);
 		expect(result).toMatchObject({
 			replayed: true,
 			receipt: { committedRevision: 2 },
 		});
-		if (result.update.type !== 'delta') throw new Error('Expected delta.');
-		expect(result.update.delta.upsertNodes[0]).toMatchObject({
+		const update = await store.readUpdates(scope, 2);
+		if (update.type !== 'delta') throw new Error('Expected delta.');
+		expect(update.delta.upsertNodes[0]).toMatchObject({
 			answer: 'LATER',
 		});
 		expect(await store.readRevision(scope)).toBe(3);
-	});
-
-	it('never reports a post-commit state read failure as a definitive command rejection', async () => {
-		await seed();
-		const readUpdates = store.readUpdates;
-		store.readUpdates = async () => {
-			throw new HuntCommandError(
-				'not-found',
-				'Read failed after commit.'
-			);
-		};
-		try {
-			const result = store.submitUpdates(
-				scope,
-				{
-					commandId: id(101),
-					command: {
-						type: 'set-property',
-						property: 'name',
-						nodeId: puzzleId,
-						value: 'Committed',
-					},
-				},
-				1
-			);
-			await expect(result).rejects.not.toBeInstanceOf(HuntCommandError);
-			expect(
-				(await store.read(scope)).document.nodes[puzzleId].name
-			).toBe('Committed');
-		} finally {
-			store.readUpdates = readUpdates;
-		}
 	});
 
 	it('rolls synchronization tracking back with failed integration intent', async () => {
@@ -276,13 +293,9 @@ describe('PostgreSQL hunt store', () => {
 		await expect(
 			store.readUpdates({ ...scope, guildId: snowflake('other') }, 0)
 		).rejects.toMatchObject({ code: 'not-found' });
-		await expect(
-			store.submitUpdates(
-				scope,
-				{ commandId: id(101), command: { type: 'add', nodes: [] } },
-				-1
-			)
-		).rejects.toMatchObject({ code: 'invalid-command' });
+		await expect(store.readUpdates(scope, -1)).rejects.toMatchObject({
+			code: 'invalid-command',
+		});
 	});
 
 	it('resolves an active hunt and its document within the requested guild', async () => {
@@ -461,12 +474,12 @@ describe('PostgreSQL hunt store', () => {
 			nodeId: puzzleId,
 			value: 'Newer',
 		});
-		expect(await store.acknowledgeReconciliation(scope, 'discord', 1)).toBe(
-			false
-		);
-		expect(await store.acknowledgeReconciliation(scope, 'discord', 2)).toBe(
-			true
-		);
+		expect(
+			await integrations.acknowledgeReconciliation(scope, 'discord', 1)
+		).toBe(false);
+		expect(
+			await integrations.acknowledgeReconciliation(scope, 'discord', 2)
+		).toBe(true);
 		const { rows } = await database.query(
 			'SELECT target, requested_revision FROM integration_jobs'
 		);
@@ -477,12 +490,12 @@ describe('PostgreSQL hunt store', () => {
 			nodeId: puzzleId,
 			value: 'new-url',
 		});
-		expect(await store.acknowledgeReconciliation(scope, 'google', 2)).toBe(
-			false
-		);
-		expect(await store.acknowledgeReconciliation(scope, 'google', 3)).toBe(
-			true
-		);
+		expect(
+			await integrations.acknowledgeReconciliation(scope, 'google', 2)
+		).toBe(false);
+		expect(
+			await integrations.acknowledgeReconciliation(scope, 'google', 3)
+		).toBe(true);
 	});
 
 	it('enforces hunt/guild ownership and preserves durable deletion snapshots', async () => {
@@ -499,7 +512,11 @@ describe('PostgreSQL hunt store', () => {
 			})
 		).rejects.toMatchObject({ code: 'not-found' });
 		expect(
-			await store.acknowledgeReconciliation(wrongScope, 'discord', 1)
+			await integrations.acknowledgeReconciliation(
+				wrongScope,
+				'discord',
+				1
+			)
 		).toBe(false);
 		await expect(
 			database.query(
@@ -507,7 +524,7 @@ describe('PostgreSQL hunt store', () => {
 				[otherGuildId, scope.huntId]
 			)
 		).rejects.toThrow();
-		await store.submitIntegration(scope, id(102), {
+		await integrations.submitIntegration(scope, id(102), {
 			type: 'set-property',
 			property: 'discord',
 			nodeId: puzzleId,
@@ -607,7 +624,7 @@ describe('PostgreSQL hunt store', () => {
 			nodeId: puzzleId,
 			value: 'Rechecking',
 		});
-		await store.submitIntegration(scope, id(105), {
+		await integrations.submitIntegration(scope, id(105), {
 			type: 'set-property',
 			property: 'discord',
 			nodeId: puzzleId,
@@ -616,7 +633,7 @@ describe('PostgreSQL hunt store', () => {
 				roleId: snowflake('puzzle-role'),
 			},
 		});
-		const committed = await store.submitIntegration(scope, id(106), {
+		const committed = await integrations.submitIntegration(scope, id(106), {
 			type: 'set-property',
 			property: 'discord',
 			nodeId: rootId,
@@ -678,7 +695,7 @@ describe('PostgreSQL hunt store', () => {
 			value: null,
 			nodeId: puzzleId,
 		});
-		const cleared = await store.submitIntegration(scope, id(110), {
+		const cleared = await integrations.submitIntegration(scope, id(110), {
 			type: 'set-property',
 			property: 'discord',
 			nodeId: puzzleId,

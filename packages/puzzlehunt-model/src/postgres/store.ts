@@ -11,7 +11,6 @@ import type {
 	HuntCommand,
 	HuntCommandRequest,
 	HuntCommandResult,
-	HuntCommandUpdateResult,
 	HuntConfiguration,
 	HuntDocument,
 	HuntDocumentClient,
@@ -20,23 +19,11 @@ import type {
 	HuntSnapshot,
 	HuntStateUpdate,
 } from '../document.js';
+import { validateScope, withConnection } from './database.js';
+import type { HuntDatabaseConnection, HuntDatabasePool } from './database.js';
+export type { HuntDatabaseConnection, HuntDatabasePool } from './database.js';
 
 const retainedChangeRevisions = 1000;
-
-/** Structural subset of a pg Pool/PoolClient; constructing a store opens no connection. */
-export interface HuntDatabaseConnection {
-	query<Row extends Record<string, unknown>>(
-		text: string,
-		values?: unknown[]
-	): Promise<{ rows: Row[] }>;
-	release(error?: Error): void;
-}
-
-export interface HuntDatabasePool {
-	connect(): Promise<HuntDatabaseConnection>;
-}
-
-export type HuntIntegrationTarget = 'discord' | 'google';
 
 interface HuntRow extends Record<string, unknown> {
 	id: string;
@@ -243,12 +230,6 @@ function validateRevision(revision: number): void {
 	}
 }
 
-function validateScope(scope: HuntScope): void {
-	if (!isUuid(scope.huntId) || !scope.guildId) {
-		throw new HuntCommandError('invalid-command', 'Invalid hunt scope.');
-	}
-}
-
 export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 	constructor(private readonly pool: HuntDatabasePool) {}
 
@@ -258,7 +239,7 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 			throw new HuntCommandError('invalid-command', 'Invalid guild ID.');
 		}
 
-		return await this.#withConnection(async (connection) => {
+		return await withConnection(this.pool, async (connection) => {
 			const { rows } = await connection.query<HuntRow>(
 				queries.read.activeSnapshotByGuildId,
 				[guildId]
@@ -276,25 +257,15 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 	/** The caller must authorize the guild/hunt scope before invoking the store. */
 	public async read(scope: HuntScope): Promise<HuntSnapshot> {
 		validateScope(scope);
-		return await this.#withConnection(
+		return await withConnection(
+			this.pool,
 			async (connection) => await readSnapshot(connection, scope)
 		);
 	}
 
-	async #withConnection<TReturn>(
-		cb: (connection: HuntDatabaseConnection) => Promise<TReturn>
-	): Promise<TReturn> {
-		const connection = await this.pool.connect();
-		try {
-			return await cb(connection);
-		} finally {
-			connection.release();
-		}
-	}
-
 	public async readRevision(scope: HuntScope): Promise<number> {
 		validateScope(scope);
-		return await this.#withConnection(async (connection) => {
+		return await withConnection(this.pool, async (connection) => {
 			const { rows } = await connection.query<{ revision: string }>(
 				queries.read.latestRevisionByScope,
 				[scope.huntId, scope.guildId]
@@ -317,7 +288,7 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 	): Promise<HuntStateUpdate> {
 		validateScope(scope);
 		validateRevision(baseRevision);
-		return await this.#withConnection(async (connection) => {
+		return await withConnection(this.pool, async (connection) => {
 			// Coverage, metadata, after-images and deletions share one MVCC snapshot.
 			const { rows } = await connection.query<
 				HuntRow & {
@@ -385,233 +356,188 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 		scope: HuntScope,
 		request: HuntCommandRequest
 	): Promise<HuntCommandResult> {
-		return this.commit(scope, request.commandId, request.command);
-	}
-
-	public async submitUpdates(
-		scope: HuntScope,
-		request: HuntCommandRequest,
-		baseRevision: number
-	): Promise<HuntCommandUpdateResult> {
-		validateRevision(baseRevision);
-		const result = await this.submit(scope, request);
-		// A later consistent read may include newer writes; the original receipt stays intact.
-		try {
-			const update = await this.readUpdates(scope, baseRevision);
-			return {
-				receipt: result.receipt,
-				replayed: result.replayed,
-				update,
-			};
-		} catch (error) {
-			// Even a not-found read is not a rejection of the already committed command.
-			throw new Error(
-				'Hunt command committed but its synchronization response failed.',
-				{ cause: error }
-			);
-		}
-	}
-
-	/** Keep this method behind a worker-only service boundary. */
-	public submitIntegration(
-		scope: HuntScope,
-		commandId: string,
-		command: HuntIntegrationCommand
-	): Promise<HuntCommandResult> {
-		return this.commit(scope, commandId, command);
-	}
-
-	/** A worker may only clear the exact generation it reconciled. */
-	public async acknowledgeReconciliation(
-		scope: HuntScope,
-		target: HuntIntegrationTarget,
-		requestedRevision: number
-	): Promise<boolean> {
-		validateScope(scope);
-		return await this.#withConnection(async (connection) => {
-			const { rows } = await connection.query<{ hunt_id: string }>(
-				`DELETE FROM integration_jobs j USING hunts h
-				 WHERE j.hunt_id = h.id AND h.id = $1 AND h.guild_id = $2
-				 AND j.target = $3 AND j.requested_revision = $4
-				 RETURNING j.hunt_id`,
-				[scope.huntId, scope.guildId, target, requestedRevision]
-			);
-			return rows.length > 0;
-		});
-	}
-
-	async #tryGetExistingReceipt(
-		scope: HuntScope,
-		commandId: string,
-		// json stringified HuntIntegrationCommand or HuntCommand
-		encodedCommand: string,
-		connection: HuntDatabaseConnection
-	): Promise<HuntCommandResult['receipt'] | undefined> {
-		const { rows: receipts } = await connection.query<{
-			committed_revision: string;
-			matches: boolean;
-		}>(
-			`SELECT committed_revision::text, command = $3::jsonb AS matches
-				 FROM command_receipts WHERE hunt_id = $1 AND command_id = $2`,
-			[scope.huntId, commandId, encodedCommand]
+		return commitHuntCommand(
+			this.pool,
+			scope,
+			request.commandId,
+			request.command
 		);
-		if (receipts.length > 0) {
-			const receipt = receipts[0];
-			if (!receipt.matches) {
-				throw new HuntCommandError(
-					'conflict',
-					'Command ID was already used for a different command.'
-				);
-			}
-
-			return {
-				commandId,
-				committedRevision: Number(receipt.committed_revision),
-			};
-		}
-		return undefined;
 	}
+}
 
-	private async commit(
-		scope: HuntScope,
-		commandId: string,
-		command: HuntCommand | HuntIntegrationCommand
-	): Promise<HuntCommandResult> {
-		validateScope(scope);
-		if (!isUuid(commandId)) {
+async function tryGetExistingReceipt(
+	scope: HuntScope,
+	commandId: string,
+	// json stringified HuntIntegrationCommand or HuntCommand
+	encodedCommand: string,
+	connection: HuntDatabaseConnection
+): Promise<HuntCommandResult['receipt'] | undefined> {
+	const { rows: receipts } = await connection.query<{
+		committed_revision: string;
+		matches: boolean;
+	}>(
+		`SELECT committed_revision::text, command = $3::jsonb AS matches
+				 FROM command_receipts WHERE hunt_id = $1 AND command_id = $2`,
+		[scope.huntId, commandId, encodedCommand]
+	);
+	if (receipts.length > 0) {
+		const receipt = receipts[0];
+		if (!receipt.matches) {
 			throw new HuntCommandError(
-				'invalid-command',
-				'Command IDs must be lowercase UUIDs.'
+				'conflict',
+				'Command ID was already used for a different command.'
 			);
 		}
-		const connection = await this.pool.connect();
-		let transactionOpen = false;
-		let releaseError: Error | undefined;
-		try {
-			await connection.query('BEGIN');
-			transactionOpen = true;
-			const { rows } = await connection.query<{ id: string }>(
-				`SELECT id FROM hunts
+
+		return {
+			commandId,
+			committedRevision: Number(receipt.committed_revision),
+		};
+	}
+	return undefined;
+}
+
+/** Internal transactional command path shared by user and worker stores. */
+export async function commitHuntCommand(
+	pool: HuntDatabasePool,
+	scope: HuntScope,
+	commandId: string,
+	command: HuntCommand | HuntIntegrationCommand
+): Promise<HuntCommandResult> {
+	validateScope(scope);
+	if (!isUuid(commandId)) {
+		throw new HuntCommandError(
+			'invalid-command',
+			'Command IDs must be lowercase UUIDs.'
+		);
+	}
+	const connection = await pool.connect();
+	let transactionOpen = false;
+	let releaseError: Error | undefined;
+	try {
+		await connection.query('BEGIN');
+		transactionOpen = true;
+		const { rows } = await connection.query<{ id: string }>(
+			`SELECT id FROM hunts
 				 WHERE id = $1 AND guild_id = $2 FOR UPDATE`,
-				[scope.huntId, scope.guildId]
+			[scope.huntId, scope.guildId]
+		);
+		if (rows.length === 0) {
+			throw new HuntCommandError(
+				'not-found',
+				'Hunt not found in this guild.'
 			);
-			if (rows.length === 0) {
-				throw new HuntCommandError(
-					'not-found',
-					'Hunt not found in this guild.'
-				);
-			}
-			// A new statement after the lock wait reads the winner's committed node changes.
-			const snapshot = await readSnapshot(connection, scope);
+		}
+		// A new statement after the lock wait reads the winner's committed node changes.
+		const snapshot = await readSnapshot(connection, scope);
 
-			const encodedCommand = JSON.stringify(command);
-			let receipt = await this.#tryGetExistingReceipt(
-				scope,
-				commandId,
-				encodedCommand,
-				connection
-			);
-			if (receipt !== undefined) {
-				await connection.query('COMMIT');
-				transactionOpen = false;
-				return {
-					receipt,
-					snapshot,
-					replayed: true,
-				};
-			}
-
-			const { rows: clock } = await connection.query<{ now_ms: string }>(
-				`SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint::text AS now_ms`
-			);
-			const applied = applyHuntCommand(
-				snapshot.document,
-				command,
-				Number(clock[0].now_ms)
-			);
-			const committed: HuntSnapshot = {
-				...snapshot,
-				revision: snapshot.revision + 1,
-				document: applied.document,
-			};
-			const changedIds = await writeDocumentChanges(
-				connection,
-				scope.huntId,
-				snapshot.document,
-				committed.document
-			);
-			await connection.query(
-				'INSERT INTO hunt_changes (hunt_id, revision, node_ids) VALUES ($1, $2, $3::uuid[])',
-				[scope.huntId, committed.revision, changedIds]
-			);
-			await connection.query(
-				'DELETE FROM hunt_changes WHERE hunt_id = $1 AND revision <= $2',
-				[scope.huntId, committed.revision - retainedChangeRevisions]
-			);
-			await connection.query(
-				`UPDATE hunts SET revision = $3, updated_at = clock_timestamp()
-				 WHERE id = $1 AND guild_id = $2`,
-				[scope.huntId, scope.guildId, committed.revision]
-			);
-			await connection.query(
-				`INSERT INTO command_receipts (hunt_id, command_id, command, committed_revision)
-				 VALUES ($1, $2, $3::jsonb, $4)`,
-				[scope.huntId, commandId, encodedCommand, committed.revision]
-			);
-			await connection.query(
-				`INSERT INTO integration_jobs (hunt_id, target, requested_revision)
-				 VALUES ($1, 'discord', $2), ($1, 'google', $2)
-				 ON CONFLICT (hunt_id, target) DO UPDATE
-				 SET requested_revision = EXCLUDED.requested_revision`,
-				[scope.huntId, committed.revision]
-			);
-			for (const [ordinal, event] of applied.events.entries()) {
-				await connection.query(
-					`INSERT INTO integration_events (hunt_id, command_id, ordinal, revision, payload)
-					 VALUES ($1, $2, $3, $4, $5::jsonb)`,
-					[
-						scope.huntId,
-						commandId,
-						ordinal,
-						committed.revision,
-						JSON.stringify({
-							event,
-							configuration: committed.document.configuration,
-						}),
-					]
-				);
-			}
-
-			// Notify listeners of the change. Emit just enough information for them to uniquely identify the change;
-			// if they need to e.g. compute information about it they can read the change tables modified above.
-			await connection.query(`SELECT pg_notify('hunt_changed', $1)`, [
-				JSON.stringify({
-					huntId: scope.huntId,
-					revision: committed.revision,
-				}),
-			]);
+		const encodedCommand = JSON.stringify(command);
+		const receipt = await tryGetExistingReceipt(
+			scope,
+			commandId,
+			encodedCommand,
+			connection
+		);
+		if (receipt !== undefined) {
 			await connection.query('COMMIT');
 			transactionOpen = false;
 			return {
-				receipt: { commandId, committedRevision: committed.revision },
-				snapshot: committed,
-				replayed: false,
+				receipt,
+				snapshot,
+				replayed: true,
 			};
-		} catch (error) {
-			if (transactionOpen) {
-				try {
-					await connection.query('ROLLBACK');
-				} catch (rollbackError) {
-					releaseError = new AggregateError(
-						[error, rollbackError],
-						'Hunt command failed and its transaction could not be rolled back.'
-					);
-					throw releaseError;
-				}
-			}
-			throw error;
-		} finally {
-			connection.release(releaseError);
 		}
+
+		const { rows: clock } = await connection.query<{ now_ms: string }>(
+			`SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint::text AS now_ms`
+		);
+		const applied = applyHuntCommand(
+			snapshot.document,
+			command,
+			Number(clock[0].now_ms)
+		);
+		const committed: HuntSnapshot = {
+			...snapshot,
+			revision: snapshot.revision + 1,
+			document: applied.document,
+		};
+		const changedIds = await writeDocumentChanges(
+			connection,
+			scope.huntId,
+			snapshot.document,
+			committed.document
+		);
+		await connection.query(
+			'INSERT INTO hunt_changes (hunt_id, revision, node_ids) VALUES ($1, $2, $3::uuid[])',
+			[scope.huntId, committed.revision, changedIds]
+		);
+		await connection.query(
+			'DELETE FROM hunt_changes WHERE hunt_id = $1 AND revision <= $2',
+			[scope.huntId, committed.revision - retainedChangeRevisions]
+		);
+		await connection.query(
+			`UPDATE hunts SET revision = $3, updated_at = clock_timestamp()
+				 WHERE id = $1 AND guild_id = $2`,
+			[scope.huntId, scope.guildId, committed.revision]
+		);
+		await connection.query(
+			`INSERT INTO command_receipts (hunt_id, command_id, command, committed_revision)
+				 VALUES ($1, $2, $3::jsonb, $4)`,
+			[scope.huntId, commandId, encodedCommand, committed.revision]
+		);
+		await connection.query(
+			`INSERT INTO integration_jobs (hunt_id, target, requested_revision)
+				 VALUES ($1, 'discord', $2), ($1, 'google', $2)
+				 ON CONFLICT (hunt_id, target) DO UPDATE
+				 SET requested_revision = EXCLUDED.requested_revision`,
+			[scope.huntId, committed.revision]
+		);
+		for (const [ordinal, event] of applied.events.entries()) {
+			await connection.query(
+				`INSERT INTO integration_events (hunt_id, command_id, ordinal, revision, payload)
+					 VALUES ($1, $2, $3, $4, $5::jsonb)`,
+				[
+					scope.huntId,
+					commandId,
+					ordinal,
+					committed.revision,
+					JSON.stringify({
+						event,
+						configuration: committed.document.configuration,
+					}),
+				]
+			);
+		}
+
+		// Notify listeners of the change. Emit just enough information for them to uniquely identify the change;
+		// if they need to e.g. compute information about it they can read the change tables modified above.
+		await connection.query(`SELECT pg_notify('hunt_changed', $1)`, [
+			JSON.stringify({
+				huntId: scope.huntId,
+				revision: committed.revision,
+			}),
+		]);
+		await connection.query('COMMIT');
+		transactionOpen = false;
+		return {
+			receipt: { commandId, committedRevision: committed.revision },
+			snapshot: committed,
+			replayed: false,
+		};
+	} catch (error) {
+		if (transactionOpen) {
+			try {
+				await connection.query('ROLLBACK');
+			} catch (rollbackError) {
+				releaseError = new AggregateError(
+					[error, rollbackError],
+					'Hunt command failed and its transaction could not be rolled back.'
+				);
+				throw releaseError;
+			}
+		}
+		throw error;
+	} finally {
+		connection.release(releaseError);
 	}
 }
