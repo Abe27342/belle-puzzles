@@ -56,7 +56,8 @@
 			],
 			"program": "${workspaceRoot}/packages/puzzlehunt-model/node_modules/vitest/vitest.mjs",
 			"cwd": "${workspaceRoot}/packages/puzzlehunt-model",
-			"args": ["run", "${relativeFile}"],
+			// The relative file path is adjusted to account for the cwd; there may be a cleaner way to specify this.
+			"args": ["run", "../../${relativeFile}"],
 			"smartStep": true,
 			"console": "integratedTerminal",
 			"presentation": {

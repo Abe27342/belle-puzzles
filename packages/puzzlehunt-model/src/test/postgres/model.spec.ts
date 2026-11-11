@@ -22,6 +22,7 @@ puzzlehuntModelContract(
 		await database.reset(scope);
 		const model = await PuzzlehuntModel.load(database.store, scope);
 		const models = [model];
+		const independentModels: PuzzlehuntModel[] = [];
 		return {
 			model,
 			async connect() {
@@ -32,9 +33,27 @@ puzzlehuntModelContract(
 				models.push(connected);
 				return connected;
 			},
+			async createHunt() {
+				const independentScope = {
+					...scope,
+					huntId: crypto.randomUUID(),
+				};
+				await database.pool.query(
+					`INSERT INTO hunts (id, guild_id, name, schema_version)
+					 VALUES ($1, $2, 'Independent hunt', 1)`,
+					[independentScope.huntId, independentScope.guildId]
+				);
+				const independent = await PuzzlehuntModel.load(
+					database.store,
+					independentScope
+				);
+				independentModels.push(independent);
+				return independent;
+			},
 			async synchronize() {
-				await Promise.all(models.map((model) => model.flush()));
-				await Promise.all(models.map((model) => model.refresh()));
+				const allModels = [...models, ...independentModels];
+				await Promise.all(allModels.map((model) => model.flush()));
+				await Promise.all(allModels.map((model) => model.refresh()));
 				for (const other of models) {
 					expect(comparableView(other.view)).toEqual(
 						comparableView(model.view)
@@ -42,7 +61,11 @@ puzzlehuntModelContract(
 				}
 			},
 			async close() {
-				await Promise.all(models.map((model) => model.flush()));
+				await Promise.all(
+					[...models, ...independentModels].map((model) =>
+						model.flush()
+					)
+				);
 			},
 		};
 	}
