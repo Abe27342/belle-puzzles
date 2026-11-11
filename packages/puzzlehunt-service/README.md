@@ -96,10 +96,6 @@ their original command ID, never a new one.
 
 ## HTTP-backed model
 
-**Companion-layer note:** The `watch`/`watchModel` observation helpers and client
-subscription behavior described below arrive in the next draft (layer 6).
-This draft includes the service-side SSE endpoint, not those client helpers.
-
 The browser-safe HTTP adapter supplies the existing optimistic model's transport:
 
 ```ts
