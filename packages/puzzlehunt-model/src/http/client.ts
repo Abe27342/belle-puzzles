@@ -21,6 +21,17 @@ import {
 	HuntHttpError,
 	HuntProtocolError,
 } from './protocol.js';
+import {
+	HuntWatchCredentialError,
+	watchHuntChanges,
+	watchPuzzlehuntModel,
+} from './changes.js';
+import type {
+	HuntChangeSubscription,
+	HuntChangeWatchOptions,
+	HuntModelWatchOptions,
+} from './changes.js';
+import type { PuzzlehuntModel } from '../model/puzzlehunt.js';
 export { HuntHttpError } from './protocol.js';
 
 export interface HttpHuntDocumentClientOptions {
@@ -163,6 +174,44 @@ export class HttpHuntDocumentClient
 		);
 		this.cache(result.snapshot);
 		return result;
+	}
+
+	watch(
+		scope: HuntScope,
+		options: HuntChangeWatchOptions
+	): HuntChangeSubscription {
+		const path = `${this.huntPath(scope)}/changes`;
+		return watchHuntChanges(
+			scope,
+			async (signal) => {
+				let authorization: string;
+				try {
+					authorization = await this.authorization();
+				} catch (error) {
+					throw new HuntWatchCredentialError(error);
+				}
+				signal.throwIfAborted();
+				return this.fetch(`${this.baseUrl}${path}`, {
+					method: 'GET',
+					headers: {
+						Accept: 'text/event-stream',
+						Authorization: authorization,
+					},
+					cache: 'no-store',
+					credentials: 'omit',
+					redirect: 'error',
+					signal,
+				});
+			},
+			options
+		);
+	}
+
+	watchModel(
+		model: PuzzlehuntModel,
+		options: HuntModelWatchOptions
+	): HuntChangeSubscription {
+		return watchPuzzlehuntModel(this, model, options);
 	}
 
 	private cache(snapshot: HuntSnapshot): HuntSnapshot {
