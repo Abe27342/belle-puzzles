@@ -23,9 +23,9 @@ function initialSnapshot(): HuntSnapshot {
 		guildId: snowflake('guild'),
 		schemaVersion: 1,
 		revision: 0,
-		name: 'Hunt',
-		configuration: {},
 		document: {
+			name: 'Hunt',
+			configuration: {},
 			nodes: {
 				[rootId]: {
 					id: rootId,

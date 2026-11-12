@@ -165,6 +165,8 @@ export interface DocumentPuzzle extends DocumentNodeBase {
 export type DocumentNode = DocumentRound | DocumentPuzzle;
 
 export interface HuntDocument {
+	readonly name: string;
+	readonly configuration: HuntConfiguration;
 	/**
 	 * Document nodes contained in this hunt document, keyed by their unique IDs.
 	 */
@@ -174,8 +176,6 @@ export interface HuntDocument {
 export interface HuntSnapshot extends HuntScope {
 	readonly schemaVersion: 1;
 	readonly revision: number;
-	readonly name: string;
-	readonly configuration: HuntConfiguration;
 	readonly document: HuntDocument;
 }
 
@@ -186,7 +186,9 @@ export interface HuntSnapshot extends HuntScope {
  *
  * This interface is used for SSE (Server-Sent Events) to communicate incremental updates to connected clients.
  */
-export interface HuntDelta extends Omit<HuntSnapshot, 'document'> {
+export interface HuntDelta
+	extends Omit<HuntSnapshot, 'document'>,
+		Pick<HuntDocument, 'name' | 'configuration'> {
 	/**
 	 * Revision of the base snapshot that this delta is applied to.
 	 */
@@ -266,9 +268,11 @@ export function applyHuntStateUpdate(
 		guildId: delta.guildId,
 		schemaVersion: delta.schemaVersion,
 		revision: delta.revision,
-		name: delta.name,
-		configuration: delta.configuration,
-		document: { nodes },
+		document: {
+			name: delta.name,
+			configuration: delta.configuration,
+			nodes,
+		},
 	};
 	validateHuntDocument(snapshot.document);
 	return snapshot;
@@ -411,17 +415,97 @@ export function isSafeIndex(value: unknown): value is number {
 	);
 }
 
-function getNode(document: HuntDocument, id: string): DocumentNode {
-	requireCommand(isUuid(id), 'Node IDs must be lowercase UUIDs.');
-	const node = document.nodes[id];
-	if (node === undefined) {
-		throw new HuntCommandError('not-found', `Node ${id} does not exist.`);
+/**
+ * {@link DocumentHunt} wrapper providing efficient children enumeration and ancestry validation.
+ */
+class ChildrenIndex {
+	readonly #document: HuntDocument;
+	readonly #children: Map<
+		/* id, null for root rounds */ string | null,
+		DocumentNode[]
+	>;
+
+	readonly #nextPositions = new Map<string | null, number>();
+
+	constructor(document: HuntDocument) {
+		this.#document = document;
+		this.#children = indexDocumentChildren(document);
+
+		for (const [parentId, children] of this.#children) {
+			const lastPosition = children.at(-1)?.position ?? 0;
+			this.#nextPositions.set(parentId, lastPosition + 1);
+
+			validateUniqueValues(
+				children.map((child) => child.position),
+				'Sibling positions must be unique.'
+			);
+		}
 	}
-	return node;
+
+	get(id: string): DocumentNode {
+		requireCommand(isUuid(id), 'Node IDs must be lowercase UUIDs.');
+		const entry = this.#document.nodes[id];
+		if (!entry) {
+			throw new HuntCommandError(
+				'not-found',
+				`Node ${id} does not exist.`
+			);
+		}
+		return entry;
+	}
+
+	// TODO: The mutation here is not well-aligned with how the rest of this class functions. Seems like an easy trap.
+	appendPosition(parentId: string | null): number {
+		const position = this.#nextPositions.get(parentId) ?? 0;
+		this.#nextPositions.set(parentId, position + 1);
+		return position;
+	}
+
+	public childrenOf(parentId: string | null): DocumentNode[] {
+		const idKey = parentId !== null ? parentId : 'root';
+		return this.#children.get(idKey) ?? [];
+	}
+
+	public parentOf(id: string): DocumentNode | undefined {
+		const node = this.get(id);
+		const { parentId } = node;
+		return parentId === null ? undefined : this.get(parentId);
+	}
+
+	public get nodes(): Iterable<DocumentNode> {
+		return Object.values(this.#document.nodes);
+	}
+
+	validateAncestry(): void {
+		const complete = new Set<string>();
+		for (const node of this.nodes) {
+			const path = new Set<DocumentNode>();
+			// Iterate ancestors
+			let current: DocumentNode | undefined = node;
+			while (current && !complete.has(current.id)) {
+				requireCommand(
+					!path.has(current),
+					'The tree cannot contain cycles.'
+				);
+				path.add(current);
+				current = this.parentOf(current.id);
+			}
+			for (const visited of path) complete.add(visited.id);
+		}
+	}
+
+	public *subtree(id: string): Iterable<DocumentNode> {
+		const pending = [this.get(id)];
+		while (pending.length > 0) {
+			const node = pending.pop()!;
+			yield node;
+			for (const child of this.childrenOf(node.id)) pending.push(child);
+		}
+	}
 }
 
-function getPuzzle(document: HuntDocument, id: string): DocumentPuzzle {
-	const node = getNode(document, id);
+function getPuzzle(index: ChildrenIndex, id: string): DocumentPuzzle {
+	const node = index.get(id);
 	requireCommand(node.type === 'puzzle', 'This command requires a puzzle.');
 	return node;
 }
@@ -429,10 +513,10 @@ function getPuzzle(document: HuntDocument, id: string): DocumentPuzzle {
 /**
  * Validates that the given parent ID corresponds to a round node that exists in the document.
  */
-function requireParent(document: HuntDocument, parentId: string): void {
+function requireParent(index: ChildrenIndex, parentId: string): void {
 	requireCommand(
-		getNode(document, parentId).type === 'round',
-		'The parent must be a round.'
+		index.get(parentId).type === 'round',
+		'Parent must be a round.'
 	);
 }
 
@@ -456,15 +540,27 @@ function compareDocumentNodes(a: DocumentNode, b: DocumentNode): number {
 
 /** Build once per projection rather than scanning the document for each round. */
 export function indexDocumentChildren(
-	document: HuntDocument
-): ReadonlyMap<string | null, readonly DocumentNode[]> {
+	document: Pick<HuntDocument, 'nodes'>
+): Map<string | null, DocumentNode[]> {
 	const children = new Map<string | null, DocumentNode[]>();
 	for (const node of Object.values(document.nodes)) {
-		const siblings = children.get(node.parentId);
-		if (siblings) {
-			siblings.push(node);
-		} else {
-			children.set(node.parentId, [node]);
+		const siblings = getOrCreate(
+			children,
+			node.parentId,
+			(): DocumentNode[] => []
+		);
+		siblings.push(node);
+
+		if (node.parentId !== null) {
+			const parentNode = document.nodes[node.parentId ?? ''];
+			requireCommand(
+				parentNode !== undefined,
+				'Parent node does not exist.'
+			);
+			requireCommand(
+				parentNode.type === 'round',
+				'Parent must be a round.'
+			);
 		}
 	}
 	for (const siblings of children.values()) {
@@ -478,30 +574,28 @@ export interface HuntDocumentView {
 	readonly rootRounds: readonly DocumentRound[];
 	readonly rounds: readonly DocumentRound[];
 	readonly puzzles: readonly DocumentPuzzle[];
-	readonly childrenByRound: Readonly<Record<string, readonly DocumentNode[]>>;
+	readonly childrenIndex: ChildrenIndex;
+}
+
+export function isPuzzle(node: DocumentNode): node is DocumentPuzzle {
+	return node.type === 'puzzle';
+}
+
+export function isRound(node: DocumentNode): node is DocumentRound {
+	return node.type === 'round';
 }
 
 /** A synchronous projection of one committed snapshot, suitable for React/Discord views. */
 export function projectHuntDocument(snapshot: HuntSnapshot): HuntDocumentView {
 	const nodes = Object.values(snapshot.document.nodes);
-	const children = indexDocumentChildren(snapshot.document);
-	const rounds = nodes.filter(
-		(node): node is DocumentRound => node.type === 'round'
-	);
-	const childrenByRound: Record<string, readonly DocumentNode[]> = {};
-	for (const round of rounds) {
-		childrenByRound[round.id] = children.get(round.id) ?? [];
-	}
+	const rounds = nodes.filter(isRound);
+	const childrenIndex = new ChildrenIndex(snapshot.document);
 	return {
 		snapshot,
-		rootRounds: rounds
-			.filter((round) => round.parentId === null)
-			.sort((a, b) => a.position - b.position),
+		rootRounds: rounds.filter((node) => node.parentId === null),
 		rounds,
-		puzzles: nodes.filter(
-			(node): node is DocumentPuzzle => node.type === 'puzzle'
-		),
-		childrenByRound,
+		puzzles: nodes.filter(isPuzzle),
+		childrenIndex,
 	};
 }
 
@@ -528,12 +622,21 @@ function getOrCreate<K, V>(map: Map<K, V>, key: K, create: () => V): V {
  * @param document The document to validate
  */
 export function validateHuntDocument(document: HuntDocument): void {
-	const siblingPositions = new Map<string | null, Set<number>>();
-	for (const [id, node] of Object.entries(document.nodes)) {
-		requireCommand(isUuid(id) && id === node.id, 'Invalid node identity.');
-		if (node.type === 'puzzle') {
+	validateDocumentForest(new ChildrenIndex(document));
+}
+
+function validateUniqueValues<T>(values: T[], message: string): void {
+	const seen = new Set<T>();
+	for (const value of values) {
+		requireCommand(!seen.has(value), message);
+		seen.add(value);
+	}
+}
+
+function validateDocumentForest(childrenIndex: ChildrenIndex): void {
+	for (const node of childrenIndex.nodes) {
+		if (isPuzzle(node)) {
 			const { answer, sheetId, status, lastStatusUpdate } = node;
-			requireParent(document, node.parentId);
 			requireCommand(
 				(answer === undefined || typeof answer === 'string') &&
 					(sheetId === undefined || typeof sheetId === 'string'),
@@ -549,7 +652,7 @@ export function validateHuntDocument(document: HuntDocument): void {
 				'Status and its server timestamp must be present together.'
 			);
 		} else {
-			requireCommand(node.type === 'round', 'Invalid node type.');
+			requireCommand(isRound(node), 'Invalid node type.');
 		}
 
 		requireCommand(
@@ -557,27 +660,6 @@ export function validateHuntDocument(document: HuntDocument): void {
 			'Node name and URL must be strings.'
 		);
 		requireCommand(isSafeIndex(node.position), 'Invalid sibling position.');
-		const positions = getOrCreate(
-			siblingPositions,
-			node.parentId,
-			() => new Set<number>()
-		);
-		requireCommand(
-			!positions.has(node.position),
-			'Sibling positions must be unique.'
-		);
-		positions.add(node.position);
-
-		const ancestors = new Set([id]);
-		let parentId = node.parentId;
-		while (parentId !== null) {
-			requireCommand(
-				!ancestors.has(parentId),
-				'The tree cannot contain cycles.'
-			);
-			ancestors.add(parentId);
-			parentId = getNode(document, parentId).parentId;
-		}
 
 		if (node.discord !== undefined) {
 			const { channelId, roleId, indexChannelId } = node.discord;
@@ -591,6 +673,7 @@ export function validateHuntDocument(document: HuntDocument): void {
 			);
 		}
 	}
+	childrenIndex.validateAncestry();
 }
 
 /**
@@ -609,15 +692,11 @@ export function applyHuntCommand(
 		Number.isSafeInteger(serverTime) && serverTime >= 0,
 		'Invalid server timestamp.'
 	);
-	validateHuntDocument(document);
+	const childrenIndex = new ChildrenIndex(document);
+	validateDocumentForest(childrenIndex);
 	const nodes: Record<string, DocumentNode> = { ...document.nodes };
-	const next = { nodes };
+	const next = { ...document, nodes };
 	const events: HuntDocumentEvent[] = [];
-	const appendPosition = (parentId: string | null): number =>
-		Math.max(
-			-1,
-			...documentChildren(next, parentId).map((node) => node.position)
-		) + 1;
 
 	switch (command.type) {
 		case 'add': {
@@ -626,6 +705,17 @@ export function applyHuntCommand(
 				'Add requires at least one node.'
 			);
 			for (const input of command.nodes) {
+				requireCommand(
+					![
+						'answer',
+						'status',
+						'lastStatusUpdate',
+						'sheetId',
+						'discord',
+						'position',
+					].some((key) => Object.hasOwnProperty.call(input, key)),
+					'Create nodes before assigning puzzle or integration properties.'
+				);
 				requireCommand(
 					isUuid(input.id),
 					'Node identity should be a UUID.'
@@ -641,38 +731,45 @@ export function applyHuntCommand(
 					id: input.id,
 					name: input.name,
 					url: input.url,
-					position: appendPosition(input.parentId),
+					position: childrenIndex.appendPosition(input.parentId),
 				};
-				const node: DocumentNode =
-					input.type === 'round'
-						? { ...common, type: 'round', parentId: input.parentId }
-						: {
-								...common,
-								type: 'puzzle',
-								parentId: input.parentId,
-						  };
+				let node: DocumentNode;
+				if (input.type === 'round') {
+					node = {
+						...common,
+						type: 'round',
+						parentId: input.parentId,
+					};
+				} else {
+					requireCommand(
+						input.parentId !== null,
+						'Puzzles must have a parent round.'
+					);
+					node = {
+						...common,
+						type: 'puzzle',
+						parentId: input.parentId,
+					};
+				}
 				nodes[node.id] = node;
 				events.push({ type: 'node-added', node });
 			}
 			break;
 		}
 		case 'delete': {
-			const pending = [getNode(next, command.nodeId)];
-			while (pending.length > 0) {
-				const node = pending.pop()!;
-				pending.push(...documentChildren(next, node.id));
+			for (const node of childrenIndex.subtree(command.nodeId)) {
 				events.push({ type: 'node-deleted', node });
 				delete nodes[node.id];
 			}
 			break;
 		}
 		case 'move': {
-			const node = getNode(next, command.nodeId);
+			const node = childrenIndex.get(command.nodeId);
 			if (command.parentId !== null) {
-				requireParent(next, command.parentId);
+				requireParent(childrenIndex, command.parentId);
 			}
 			if (node.parentId !== command.parentId) {
-				const position = appendPosition(command.parentId);
+				const position = childrenIndex.appendPosition(command.parentId);
 				if (node.type === 'puzzle') {
 					requireCommand(
 						command.parentId !== null,
@@ -697,7 +794,7 @@ export function applyHuntCommand(
 			switch (command.property) {
 				case 'name':
 				case 'url': {
-					const node = getNode(next, command.nodeId);
+					const node = childrenIndex.get(command.nodeId);
 					nodes[node.id] = {
 						...node,
 						[command.property]: command.value,
@@ -705,7 +802,7 @@ export function applyHuntCommand(
 					break;
 				}
 				case 'answer': {
-					const node = getPuzzle(next, command.nodeId);
+					const node = getPuzzle(childrenIndex, command.nodeId);
 					if (command.value === null) {
 						const { answer, ...rest } = node;
 						nodes[node.id] = rest;
@@ -723,7 +820,7 @@ export function applyHuntCommand(
 					break;
 				}
 				case 'status': {
-					const node = getPuzzle(next, command.nodeId);
+					const node = getPuzzle(childrenIndex, command.nodeId);
 					const { status, lastStatusUpdate, ...rest } = node;
 					requireCommand(
 						command.value === null ||
@@ -746,7 +843,7 @@ export function applyHuntCommand(
 					break;
 				}
 				case 'sheetId': {
-					const node = getPuzzle(next, command.nodeId);
+					const node = getPuzzle(childrenIndex, command.nodeId);
 					requireCommand(
 						command.value === null ||
 							typeof command.value === 'string',
@@ -760,7 +857,7 @@ export function applyHuntCommand(
 					break;
 				}
 				case 'discord': {
-					const node = getNode(next, command.nodeId);
+					const node = childrenIndex.get(command.nodeId);
 					const { discord, ...rest } = node;
 					nodes[node.id] =
 						command.value === null

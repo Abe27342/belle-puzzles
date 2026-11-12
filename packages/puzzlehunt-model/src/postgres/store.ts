@@ -115,11 +115,16 @@ function snapshotFromRow(row: HuntRow): HuntSnapshot {
 		throw new Error(`Invalid hunt revision: ${row.revision}`);
 	}
 	const nodes: Record<string, DocumentNode> = {};
+	const document: HuntDocument = {
+		name: row.name,
+		configuration: row.configuration,
+		nodes,
+	};
 	try {
 		for (const node of row.nodes) {
 			nodes[node.id] = nodeFromRow(node);
 		}
-		validateHuntDocument({ nodes });
+		validateHuntDocument(document);
 	} catch (error) {
 		throw new Error('Stored hunt document failed validation.', {
 			cause: error,
@@ -128,11 +133,9 @@ function snapshotFromRow(row: HuntRow): HuntSnapshot {
 	return {
 		huntId: row.id,
 		guildId: snowflake(row.guild_id),
-		name: row.name,
 		schemaVersion: row.schema_version,
 		revision,
-		configuration: row.configuration,
-		document: { nodes },
+		document,
 	};
 }
 
@@ -573,7 +576,7 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 						committed.revision,
 						JSON.stringify({
 							event,
-							configuration: committed.configuration,
+							configuration: committed.document.configuration,
 						}),
 					]
 				);

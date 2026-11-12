@@ -639,13 +639,12 @@ describe('PostgreSQL hunt store', () => {
 		});
 		const view = projectHuntDocument(snapshot);
 		expect(view.rootRounds.map((node) => node.id)).toEqual([rootId]);
-		expect(view.childrenByRound[rootId].map((node) => node.id)).toEqual([
-			puzzleId,
-			id(12),
-		]);
-		expect(view.childrenByRound[id(12)].map((node) => node.id)).toEqual([
-			id(13),
-		]);
+		expect(
+			view.childrenIndex.childrenOf(rootId).map((node) => node.id)
+		).toEqual([puzzleId, id(12)]);
+		expect(
+			view.childrenIndex.childrenOf(id(12)).map((node) => node.id)
+		).toEqual([id(13)]);
 		const { rows } = await database.query(
 			`SELECT type, parent_id, answer, status, sheet_id, discord_channel_id
 			 FROM hunt_nodes WHERE hunt_id = $1 AND id = $2`,
