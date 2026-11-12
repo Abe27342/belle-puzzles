@@ -415,7 +415,6 @@ export function isSafeIndex(value: unknown): value is number {
 	);
 }
 
-/** Per-operation index; pointers never become a second persisted document authority. */
 /**
  * {@link DocumentHunt} wrapper providing efficient children enumeration and ancestry validation.
  */
@@ -455,6 +454,7 @@ class ChildrenIndex {
 		return entry;
 	}
 
+	// TODO: The mutation here is not well-aligned with how the rest of this class functions. Seems like an easy trap.
 	appendPosition(parentId: string | null): number {
 		const position = this.#nextPositions.get(parentId) ?? 0;
 		this.#nextPositions.set(parentId, position + 1);
