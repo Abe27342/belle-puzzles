@@ -234,7 +234,7 @@ describe('database document commands', () => {
 						},
 					},
 				})
-			).toThrow(/parent must be a round/);
+			).toThrow(/Parent must be a round/);
 		});
 
 		it('rejects a cycle in an assembled document', () => {
@@ -515,7 +515,7 @@ describe('database document commands', () => {
 				nodeId: nestedId,
 				parentId: puzzleId,
 			})
-		).toThrow(/parent must be a round/);
+		).toThrow(/Parent must be a round/);
 		expect(() =>
 			apply(document, { type: 'move', nodeId: puzzleId, parentId: id(9) })
 		).toThrow(/does not exist/);
@@ -696,11 +696,10 @@ describe('database document view', () => {
 			nestedId,
 		]);
 		expect(view.puzzles.map((puzzle) => puzzle.id)).toEqual([puzzleId]);
-		expect(view.childrenByRound[rootId].map((node) => node.id)).toEqual([
-			puzzleId,
-			nestedId,
-		]);
-		expect(view.childrenByRound[nestedId]).toEqual([]);
+		expect(
+			view.childrenIndex.childrenOf(rootId).map((node) => node.id)
+		).toEqual([puzzleId, nestedId]);
+		expect(view.childrenIndex.childrenOf(nestedId)).toEqual([]);
 		expect(view.snapshot.revision).toBe(3);
 	});
 });
