@@ -2,9 +2,15 @@ import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PostgresPuzzlehuntStore } from '../../postgres/store.js';
-import { PostgresHuntIntegrationStore } from '../../postgres/integrations.js';
+import { PostgresHuntIntegrationStore } from '../../postgres/integration-store.js';
 import type { HuntDatabasePool } from '../../postgres/store.js';
-import type { HuntCommand, HuntScope, Snowflake } from '../../document.js';
+import type {
+	HuntCommand,
+	HuntIntegrationCommand,
+	HuntScope,
+	Snowflake,
+} from '../../document.js';
+import type { HuntIntegrationTarget } from '../../postgres/integrations.js';
 import {
 	applyHuntStateUpdate,
 	HuntCommandError,
@@ -22,10 +28,13 @@ let database: PGlite;
 let store: PostgresPuzzlehuntStore;
 let integrations: PostgresHuntIntegrationStore;
 let failEventInsert = false;
+let failWorkCompletion = false;
 
 // PGlite has one connection. Queue leases just as a size-one pg Pool would;
 // real multi-connection row-lock contention still needs a PostgreSQL service test.
-function singleConnectionPool(): HuntDatabasePool {
+function singleConnectionPool(
+	onQuery?: (text: string) => void
+): HuntDatabasePool {
 	let tail = Promise.resolve();
 	return {
 		async connect() {
@@ -40,9 +49,14 @@ function singleConnectionPool(): HuntDatabasePool {
 					text: string,
 					values?: unknown[]
 				) {
+					onQuery?.(text);
 					if (
-						failEventInsert &&
-						text.includes('INSERT INTO integration_events')
+						(failEventInsert &&
+							text.includes('INSERT INTO integration_events')) ||
+						(failWorkCompletion &&
+							text.includes(
+								'UPDATE integration_jobs SET completed_at'
+							))
 					) {
 						return database.query<Row>('SELECT 1 / 0');
 					}
@@ -56,6 +70,35 @@ function singleConnectionPool(): HuntDatabasePool {
 
 const submit = (commandId: number, command: HuntCommand) =>
 	store.submit(scope, { commandId: id(commandId), command });
+
+async function workId(
+	nodeId: string,
+	target: HuntIntegrationTarget,
+	sourceCommandId = 100
+): Promise<string> {
+	const { rows } = await database.query<{ id: string }>(
+		`SELECT id FROM integration_jobs
+		 WHERE hunt_id = $1 AND command_id = $2 AND node_id = $3 AND target = $4`,
+		[scope.huntId, id(sourceCommandId), nodeId, target]
+	);
+	expect(rows).toHaveLength(1);
+	return rows[0].id;
+}
+
+async function complete(
+	result: HuntIntegrationCommand,
+	sourceCommandId = 100
+) {
+	return integrations.completeWork(
+		scope,
+		await workId(
+			result.nodeId,
+			result.property === 'discord' ? 'discord' : 'google',
+			sourceCommandId
+		),
+		result
+	);
+}
 
 async function seed() {
 	await submit(100, {
@@ -95,6 +138,7 @@ beforeEach(async () => {
 		[scope.huntId, scope.guildId]
 	);
 	failEventInsert = false;
+	failWorkCompletion = false;
 	const pool = singleConnectionPool();
 	store = new PostgresPuzzlehuntStore(pool);
 	integrations = new PostgresHuntIntegrationStore(pool);
@@ -367,11 +411,17 @@ describe('PostgreSQL hunt store', () => {
 			name: 'Renamed',
 			url: 'https://example.com',
 		});
-		const { rows } = await database.query<{ requested_revision: number }>(
-			'SELECT * FROM integration_jobs ORDER BY target'
+		const { rows } = await database.query<{
+			node_id: string;
+			source_revision: number;
+		}>(
+			'SELECT * FROM integration_jobs ORDER BY source_revision'
 		);
-		expect(rows).toHaveLength(2);
-		expect(rows.every((row) => row.requested_revision === 5)).toBe(true);
+		expect(rows).toHaveLength(11);
+		expect(rows.map((row) => row.source_revision)).toEqual([
+			1, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5,
+		]);
+		expect(rows.filter((row) => row.node_id === rootId)).toHaveLength(1);
 	});
 
 	it('does not reapply a retry after a newer solve, including after reconstructing the store', async () => {
@@ -455,6 +505,7 @@ describe('PostgreSQL hunt store', () => {
 		expect((await store.read(scope)).document.nodes).toEqual({});
 		for (const table of [
 			'hunt_nodes',
+			'hunt_changes',
 			'command_receipts',
 			'integration_jobs',
 			'integration_events',
@@ -466,36 +517,327 @@ describe('PostgreSQL hunt store', () => {
 		expect((await store.read(scope)).revision).toBe(1);
 	});
 
-	it('conditionally acknowledges only the exact pending generation and integration', async () => {
+	it('bulk inserts independent work and ordered events without duplicating retries', async () => {
+		const queries: string[] = [];
+		store = new PostgresPuzzlehuntStore(
+			singleConnectionPool((text) => queries.push(text))
+		);
+		const configuration = { googleFolderId: 'folder' };
+		await database.query(
+			'UPDATE hunts SET configuration = $2::jsonb WHERE id = $1',
+			[scope.huntId, JSON.stringify(configuration)]
+		);
+		await seed();
+		expect(
+			queries.filter((text) =>
+				text.includes('INSERT INTO integration_jobs')
+			)
+		).toHaveLength(1);
+		expect(
+			queries.filter((text) =>
+				text.includes('INSERT INTO integration_events')
+			)
+		).toHaveLength(1);
+		const before = await database.query<{
+			id: string;
+			node_id: string;
+			target: string;
+			kind: string;
+			payload: {
+				node: { id: string };
+				configuration: { googleFolderId: string };
+			};
+		}>('SELECT * FROM integration_jobs ORDER BY node_id, target');
+		expect(before.rows).toMatchObject([
+			{
+				node_id: rootId,
+				target: 'discord',
+				kind: 'ensure-discord-association',
+				payload: { node: { id: rootId } },
+			},
+			{
+				node_id: puzzleId,
+				target: 'discord',
+				kind: 'ensure-discord-association',
+			},
+			{
+				node_id: puzzleId,
+				target: 'google',
+				kind: 'ensure-google-sheet',
+			},
+		]);
+		expect(
+			before.rows.every(
+				(row) =>
+					row.payload.configuration.googleFolderId ===
+					configuration.googleFolderId
+			)
+		).toBe(true);
+		expect(
+			(
+				await database.query(
+					'SELECT ordinal, payload FROM integration_events ORDER BY ordinal'
+				)
+			).rows
+		).toMatchObject([
+			{
+				ordinal: 0,
+				payload: {
+					event: { type: 'node-added', node: { id: rootId } },
+					configuration,
+				},
+			},
+			{
+				ordinal: 1,
+				payload: {
+					event: { type: 'node-added', node: { id: puzzleId } },
+					configuration,
+				},
+			},
+		]);
+		await seed();
+		expect(
+			(
+				await database.query(
+					'SELECT * FROM integration_jobs ORDER BY node_id, target'
+				)
+			).rows
+		).toEqual(before.rows);
+		await submit(101, { type: 'move', nodeId: rootId, parentId: null });
+		expect(
+			queries.filter((text) =>
+				text.includes('INSERT INTO integration_jobs')
+			)
+		).toHaveLength(1);
+		expect(
+			queries.filter((text) =>
+				text.includes('INSERT INTO integration_events')
+			)
+		).toHaveLength(1);
+	});
+
+	it('commits partial success without completing other nodes, services, or later work', async () => {
 		await seed();
 		await submit(101, {
+			type: 'add',
+			nodes: [
+				{
+					id: id(12),
+					type: 'puzzle',
+					name: 'Other puzzle',
+					url: '',
+					parentId: rootId,
+				},
+			],
+		});
+		const finishedId = await workId(puzzleId, 'discord');
+		await submit(102, {
 			type: 'set-property',
 			property: 'name',
 			nodeId: puzzleId,
 			value: 'Newer',
 		});
-		expect(
-			await integrations.acknowledgeReconciliation(scope, 'discord', 1)
-		).toBe(false);
-		expect(
-			await integrations.acknowledgeReconciliation(scope, 'discord', 2)
-		).toBe(true);
-		const { rows } = await database.query(
-			'SELECT target, requested_revision FROM integration_jobs'
-		);
-		expect(rows).toEqual([{ target: 'google', requested_revision: 2 }]);
-		await submit(102, {
+		const result = await complete({
 			type: 'set-property',
-			property: 'url',
+			property: 'discord',
 			nodeId: puzzleId,
-			value: 'new-url',
+			value: {
+				channelId: snowflake('channel'),
+				roleId: snowflake('role'),
+			},
+		});
+		expect(result.snapshot.document.nodes[puzzleId]).toMatchObject({
+			name: 'Newer',
+			discord: { channelId: 'channel', roleId: 'role' },
+		});
+		const { rows } = await database.query<{
+			id: string;
+			completed_at: unknown;
+		}>('SELECT * FROM integration_jobs');
+		expect(rows).toHaveLength(7);
+		expect(
+			rows.filter((row) => row.completed_at !== null).map((row) => row.id)
+		).toEqual([finishedId]);
+		expect(rows.filter((row) => row.completed_at === null)).toHaveLength(6);
+	});
+
+	it('records and clears a Google sheet association through the worker store', async () => {
+		await seed();
+		const result = await complete({
+			type: 'set-property',
+			property: 'sheetId',
+			nodeId: puzzleId,
+			value: 'sheet',
+		});
+		expect(result.snapshot.document.nodes[puzzleId]).toMatchObject({
+			sheetId: 'sheet',
 		});
 		expect(
-			await integrations.acknowledgeReconciliation(scope, 'google', 2)
-		).toBe(false);
+			(
+				await database.query(
+					'SELECT sheet_id FROM hunt_nodes WHERE id = $1',
+					[puzzleId]
+				)
+			).rows
+		).toEqual([{ sheet_id: 'sheet' }]);
+		await submit(102, {
+			type: 'set-property',
+			property: 'name',
+			nodeId: puzzleId,
+			value: 'Renamed',
+		});
+		const cleared = await complete(
+			{
+				type: 'set-property',
+				property: 'sheetId',
+				nodeId: puzzleId,
+				value: null,
+			},
+			102
+		);
+		expect(cleared.snapshot.document.nodes[puzzleId]).not.toHaveProperty(
+			'sheetId'
+		);
+		expect(await store.read(scope)).toEqual(cleared.snapshot);
 		expect(
-			await integrations.acknowledgeReconciliation(scope, 'google', 3)
-		).toBe(true);
+			(
+				await database.query(
+					'SELECT sheet_id FROM hunt_nodes WHERE id = $1',
+					[puzzleId]
+				)
+			).rows
+		).toEqual([{ sheet_id: null }]);
+		expect(
+			(
+				await database.query(
+					'SELECT target FROM integration_jobs WHERE completed_at IS NOT NULL ORDER BY target'
+				)
+			).rows
+		).toEqual([{ target: 'google' }, { target: 'google' }]);
+	});
+
+	it('does not replay a Google result or reschedule completed work after a later result', async () => {
+		await seed();
+		const command = {
+			type: 'set-property',
+			property: 'sheetId',
+			nodeId: puzzleId,
+			value: 'first-sheet',
+		} as const;
+		const originalWorkId = await workId(puzzleId, 'google');
+		const first = await complete(command);
+		await submit(102, {
+			...command,
+			value: 'later-sheet',
+		});
+		const laterWorkId = await workId(puzzleId, 'google', 102);
+		const noChange = await integrations.completeWork(scope, laterWorkId);
+		expect(noChange.snapshot.revision).toBe(3);
+		const retried = await integrations.completeWork(
+			scope,
+			originalWorkId,
+			command
+		);
+		expect(retried.replayed).toBe(true);
+		expect(retried.receipt).toEqual(first.receipt);
+		expect(retried.snapshot.revision).toBe(3);
+		expect(retried.snapshot.document.nodes[puzzleId]).toMatchObject({
+			sheetId: 'later-sheet',
+		});
+		expect(
+			(
+				await database.query(
+					'SELECT id FROM integration_jobs WHERE completed_at IS NOT NULL ORDER BY source_revision'
+				)
+			).rows
+		).toEqual([{ id: originalWorkId }, { id: laterWorkId }]);
+		expect(
+			(await database.query('SELECT * FROM command_receipts')).rows
+		).toHaveLength(4);
+		expect(
+			(await database.query('SELECT * FROM integration_events')).rows
+		).toHaveLength(2);
+	});
+
+	it('rolls association, revision, receipt, and change tracking back if work completion fails', async () => {
+		await seed();
+		const pendingId = await workId(puzzleId, 'google');
+		failWorkCompletion = true;
+		await expect(
+			complete({
+				type: 'set-property',
+				property: 'sheetId',
+				nodeId: puzzleId,
+				value: 'sheet',
+			})
+		).rejects.toThrow('division by zero');
+		failWorkCompletion = false;
+		expect((await store.read(scope)).revision).toBe(1);
+		expect(
+			(await store.read(scope)).document.nodes[puzzleId]
+		).not.toHaveProperty('sheetId');
+		expect(
+			(await database.query('SELECT * FROM command_receipts')).rows
+		).toHaveLength(1);
+		expect(
+			(await database.query('SELECT * FROM hunt_changes')).rows
+		).toHaveLength(1);
+		expect(
+			(
+				await database.query(
+					'SELECT completed_at FROM integration_jobs WHERE id = $1',
+					[pendingId]
+				)
+			).rows
+		).toEqual([{ completed_at: null }]);
+		await complete({
+			type: 'set-property',
+			property: 'sheetId',
+			nodeId: puzzleId,
+			value: 'sheet',
+		});
+		expect((await store.read(scope)).revision).toBe(2);
+	});
+
+	it('rejects mismatched results and retries with a different result', async () => {
+		await seed();
+		const pendingId = await workId(puzzleId, 'google');
+		await expect(
+			integrations.completeWork(scope, pendingId, {
+				type: 'set-property',
+				property: 'discord',
+				nodeId: puzzleId,
+				value: {
+					channelId: snowflake('channel'),
+					roleId: snowflake('role'),
+				},
+			})
+		).rejects.toMatchObject({ code: 'invalid-command' });
+		await expect(
+			integrations.completeWork(scope, pendingId, {
+				type: 'set-property',
+				property: 'sheetId',
+				nodeId: rootId,
+				value: 'sheet',
+			})
+		).rejects.toMatchObject({ code: 'invalid-command' });
+		await expect(
+			integrations.completeWork(scope, id(999))
+		).rejects.toMatchObject({ code: 'not-found' });
+		await complete({
+			type: 'set-property',
+			property: 'sheetId',
+			nodeId: puzzleId,
+			value: 'sheet',
+		});
+		await expect(
+			integrations.completeWork(scope, pendingId, {
+				type: 'set-property',
+				property: 'sheetId',
+				nodeId: puzzleId,
+				value: 'different-sheet',
+			})
+		).rejects.toMatchObject({ code: 'conflict' });
 	});
 
 	it('enforces hunt/guild ownership and preserves durable deletion snapshots', async () => {
@@ -511,20 +853,19 @@ describe('PostgreSQL hunt store', () => {
 				command: { type: 'delete', nodeId: rootId },
 			})
 		).rejects.toMatchObject({ code: 'not-found' });
-		expect(
-			await integrations.acknowledgeReconciliation(
+		await expect(
+			integrations.completeWork(
 				wrongScope,
-				'discord',
-				1
+				await workId(puzzleId, 'discord')
 			)
-		).toBe(false);
+		).rejects.toMatchObject({ code: 'not-found' });
 		await expect(
 			database.query(
 				'INSERT INTO active_hunts (guild_id, hunt_id) VALUES ($1, $2)',
 				[otherGuildId, scope.huntId]
 			)
 		).rejects.toThrow();
-		await integrations.submitIntegration(scope, id(102), {
+		await complete({
 			type: 'set-property',
 			property: 'discord',
 			nodeId: puzzleId,
@@ -550,6 +891,7 @@ describe('PostgreSQL hunt store', () => {
 
 	it('does not retain reservations for deleted node IDs', async () => {
 		await seed();
+		const staleWorkId = await workId(rootId, 'discord');
 		await submit(101, { type: 'delete', nodeId: rootId });
 		const result = await submit(102, {
 			type: 'add',
@@ -565,6 +907,29 @@ describe('PostgreSQL hunt store', () => {
 		});
 		expect(result.snapshot.document.nodes[rootId].name).toBe('New round');
 		expect(result.snapshot.revision).toBe(3);
+		await expect(
+			integrations.completeWork(scope, staleWorkId, {
+				type: 'set-property',
+				property: 'discord',
+				nodeId: rootId,
+				value: {
+					channelId: snowflake('stale-category'),
+					roleId: snowflake('role'),
+					indexChannelId: snowflake('index'),
+				},
+			})
+		).rejects.toMatchObject({ code: 'conflict' });
+		expect(
+			(await store.read(scope)).document.nodes[rootId]
+		).not.toHaveProperty('discord');
+		expect(
+			(
+				await database.query(
+					'SELECT count(*)::int AS count FROM integration_jobs WHERE cancelled_at IS NOT NULL'
+				)
+			).rows
+		).toEqual([{ count: 3 }]);
+		expect(await workId(rootId, 'discord', 102)).not.toBe(staleWorkId);
 	});
 
 	it('assigns a database status timestamp rather than accepting a client clock', async () => {
@@ -624,7 +989,7 @@ describe('PostgreSQL hunt store', () => {
 			nodeId: puzzleId,
 			value: 'Rechecking',
 		});
-		await integrations.submitIntegration(scope, id(105), {
+		await complete({
 			type: 'set-property',
 			property: 'discord',
 			nodeId: puzzleId,
@@ -633,7 +998,7 @@ describe('PostgreSQL hunt store', () => {
 				roleId: snowflake('puzzle-role'),
 			},
 		});
-		const committed = await integrations.submitIntegration(scope, id(106), {
+		const committed = await complete({
 			type: 'set-property',
 			property: 'discord',
 			nodeId: rootId,
@@ -695,12 +1060,15 @@ describe('PostgreSQL hunt store', () => {
 			value: null,
 			nodeId: puzzleId,
 		});
-		const cleared = await integrations.submitIntegration(scope, id(110), {
-			type: 'set-property',
-			property: 'discord',
-			nodeId: puzzleId,
-			value: null,
-		});
+		const cleared = await complete(
+			{
+				type: 'set-property',
+				property: 'discord',
+				nodeId: puzzleId,
+				value: null,
+			},
+			109
+		);
 		const reread = await store.read(scope);
 		expect(reread).toEqual(cleared.snapshot);
 		expect(reread.document.nodes[puzzleId]).toEqual({

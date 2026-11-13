@@ -330,6 +330,7 @@ type SetHuntProperty<Properties> = {
 /** Only integration workers may submit these; never expose as general user writes. */
 export type HuntIntegrationCommand = SetHuntProperty<{
 	readonly discord: DocumentDiscordAssociation | null;
+	readonly sheetId: string | null;
 }>;
 
 export interface HuntCommandRequest {

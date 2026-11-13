@@ -21,6 +21,11 @@ import type {
 } from '../document.js';
 import { validateScope, withConnection } from './database.js';
 import type { HuntDatabaseConnection, HuntDatabasePool } from './database.js';
+import {
+	completeIntegrationWork,
+	recordPendingIntegrationWork,
+	validateIntegrationWork,
+} from './integrations.js';
 export type { HuntDatabaseConnection, HuntDatabasePool } from './database.js';
 
 const retainedChangeRevisions = 1000;
@@ -368,7 +373,7 @@ export class PostgresPuzzlehuntStore implements HuntDocumentClient {
 async function tryGetExistingReceipt(
 	scope: HuntScope,
 	commandId: string,
-	// json stringified HuntIntegrationCommand or HuntCommand
+	// JSON stringified user command or integration work completion.
 	encodedCommand: string,
 	connection: HuntDatabaseConnection
 ): Promise<HuntCommandResult['receipt'] | undefined> {
@@ -402,13 +407,26 @@ export async function commitHuntCommand(
 	pool: HuntDatabasePool,
 	scope: HuntScope,
 	commandId: string,
-	command: HuntCommand | HuntIntegrationCommand
+	command: HuntCommand | HuntIntegrationCommand | undefined,
+	workId?: string
 ): Promise<HuntCommandResult> {
 	validateScope(scope);
 	if (!isUuid(commandId)) {
 		throw new HuntCommandError(
 			'invalid-command',
 			'Command IDs must be lowercase UUIDs.'
+		);
+	}
+	if (workId !== undefined && !isUuid(workId)) {
+		throw new HuntCommandError(
+			'invalid-command',
+			'Invalid integration work ID.'
+		);
+	}
+	if (workId === undefined && command === undefined) {
+		throw new HuntCommandError(
+			'invalid-command',
+			'A user command is required.'
 		);
 	}
 	const connection = await pool.connect();
@@ -431,7 +449,9 @@ export async function commitHuntCommand(
 		// A new statement after the lock wait reads the winner's committed node changes.
 		const snapshot = await readSnapshot(connection, scope);
 
-		const encodedCommand = JSON.stringify(command);
+		const encodedCommand = JSON.stringify(
+			workId === undefined ? command : { workId, result: command ?? null }
+		);
 		const receipt = await tryGetExistingReceipt(
 			scope,
 			commandId,
@@ -447,18 +467,24 @@ export async function commitHuntCommand(
 				replayed: true,
 			};
 		}
+		if (workId !== undefined) {
+			await validateIntegrationWork(connection, scope, workId, command);
+		}
 
 		const { rows: clock } = await connection.query<{ now_ms: string }>(
 			`SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint::text AS now_ms`
 		);
-		const applied = applyHuntCommand(
-			snapshot.document,
-			command,
-			Number(clock[0].now_ms)
-		);
+		const applied =
+			command === undefined
+				? { document: snapshot.document, events: [] }
+				: applyHuntCommand(
+						snapshot.document,
+						command,
+						Number(clock[0].now_ms)
+				  );
 		const committed: HuntSnapshot = {
 			...snapshot,
-			revision: snapshot.revision + 1,
+			revision: snapshot.revision + (command === undefined ? 0 : 1),
 			document: applied.document,
 		};
 		const changedIds = await writeDocumentChanges(
@@ -467,56 +493,48 @@ export async function commitHuntCommand(
 			snapshot.document,
 			committed.document
 		);
-		await connection.query(
-			'INSERT INTO hunt_changes (hunt_id, revision, node_ids) VALUES ($1, $2, $3::uuid[])',
-			[scope.huntId, committed.revision, changedIds]
-		);
-		await connection.query(
-			'DELETE FROM hunt_changes WHERE hunt_id = $1 AND revision <= $2',
-			[scope.huntId, committed.revision - retainedChangeRevisions]
-		);
-		await connection.query(
-			`UPDATE hunts SET revision = $3, updated_at = clock_timestamp()
+		if (command !== undefined) {
+			await connection.query(
+				'INSERT INTO hunt_changes (hunt_id, revision, node_ids) VALUES ($1, $2, $3::uuid[])',
+				[scope.huntId, committed.revision, changedIds]
+			);
+			await connection.query(
+				'DELETE FROM hunt_changes WHERE hunt_id = $1 AND revision <= $2',
+				[scope.huntId, committed.revision - retainedChangeRevisions]
+			);
+			await connection.query(
+				`UPDATE hunts SET revision = $3, updated_at = clock_timestamp()
 				 WHERE id = $1 AND guild_id = $2`,
-			[scope.huntId, scope.guildId, committed.revision]
-		);
+				[scope.huntId, scope.guildId, committed.revision]
+			);
+		}
 		await connection.query(
 			`INSERT INTO command_receipts (hunt_id, command_id, command, committed_revision)
 				 VALUES ($1, $2, $3::jsonb, $4)`,
 			[scope.huntId, commandId, encodedCommand, committed.revision]
 		);
-		await connection.query(
-			`INSERT INTO integration_jobs (hunt_id, target, requested_revision)
-				 VALUES ($1, 'discord', $2), ($1, 'google', $2)
-				 ON CONFLICT (hunt_id, target) DO UPDATE
-				 SET requested_revision = EXCLUDED.requested_revision`,
-			[scope.huntId, committed.revision]
-		);
-		for (const [ordinal, event] of applied.events.entries()) {
-			await connection.query(
-				`INSERT INTO integration_events (hunt_id, command_id, ordinal, revision, payload)
-					 VALUES ($1, $2, $3, $4, $5::jsonb)`,
-				[
-					scope.huntId,
-					commandId,
-					ordinal,
-					committed.revision,
-					JSON.stringify({
-						event,
-						configuration: committed.document.configuration,
-					}),
-				]
+		if (workId === undefined) {
+			await recordPendingIntegrationWork(
+				connection,
+				commandId,
+				committed,
+				applied.events,
+				changedIds
 			);
+		} else {
+			await completeIntegrationWork(connection, scope, workId);
 		}
 
 		// Notify listeners of the change. Emit just enough information for them to uniquely identify the change;
 		// if they need to e.g. compute information about it they can read the change tables modified above.
-		await connection.query(`SELECT pg_notify('hunt_changed', $1)`, [
-			JSON.stringify({
-				huntId: scope.huntId,
-				revision: committed.revision,
-			}),
-		]);
+		if (command !== undefined) {
+			await connection.query(`SELECT pg_notify('hunt_changed', $1)`, [
+				JSON.stringify({
+					huntId: scope.huntId,
+					revision: committed.revision,
+				}),
+			]);
+		}
 		await connection.query('COMMIT');
 		transactionOpen = false;
 		return {
