@@ -33,25 +33,23 @@ puzzlehuntModelContract(
 			initial.container
 		);
 		const sessions = [initial];
-		const models = [model];
-		const independentModels: FluidPuzzlehuntModel[] = [];
-		const hunts = new Map([['Contract test hunt', initial.id]]);
+		const hunts = new Map([
+			['Contract test hunt', { id: initial.id, models: [model] }],
+		]);
 		return {
 			model,
 			async createModel(huntName = 'Contract test hunt') {
-				const id = hunts.get(huntName);
-				if (id === undefined) {
+				const hunt = hunts.get(huntName);
+				if (hunt === undefined) {
 					throw new Error(`Unknown hunt: ${huntName}`);
 				}
-				const session = await loadExistingPuzzlehunt(client(), id);
+				const session = await loadExistingPuzzlehunt(client(), hunt.id);
 				sessions.push(session);
 				const connected = new FluidPuzzlehuntModel(
 					session.puzzlehunt,
 					session.container
 				);
-				(id === initial.id ? models : independentModels).push(
-					connected
-				);
+				hunt.models.push(connected);
 				return connected;
 			},
 			async createHunt(huntName) {
@@ -63,25 +61,27 @@ puzzlehuntModelContract(
 					'contract-guild'
 				);
 				sessions.push(session);
-				hunts.set(huntName, session.id);
 				const independent = new FluidPuzzlehuntModel(
 					session.puzzlehunt,
 					session.container
 				);
-				independentModels.push(independent);
+				hunts.set(huntName, {
+					id: session.id,
+					models: [independent],
+				});
 				return independent;
 			},
-			async synchronize() {
-				await Promise.all(
-					[...models, ...independentModels].map((model) =>
-						model.flush()
-					)
-				);
+			async synchronize(huntName = 'Contract test hunt') {
+				const hunt = hunts.get(huntName);
+				if (hunt === undefined) {
+					throw new Error(`Unknown hunt: ${huntName}`);
+				}
+				await Promise.all(hunt.models.map((model) => model.flush()));
 				await vi.waitFor(
 					() => {
-						for (const other of models) {
+						for (const other of hunt.models) {
 							expect(comparableView(other.view)).toEqual(
-								comparableView(model.view)
+								comparableView(hunt.models[0].view)
 							);
 						}
 					},

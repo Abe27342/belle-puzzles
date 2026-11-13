@@ -22,12 +22,13 @@ export interface ModelFixture {
 	/** Create another named hunt in the same service/guild without resetting existing hunts. */
 	createHunt(huntName: string): Promise<IPuzzlehuntModel>;
 	/**
-	 * Synchronize all clients, ensuring any pending edits are flushed.
+	 * Synchronize clients for the named hunt, or the initial hunt when omitted,
+	 * ensuring any pending edits are flushed.
 	 *
 	 * @remarks
 	 * Contract tests should avoid assuming edits remain pending until this method is called.
 	 */
-	synchronize(): Promise<void>;
+	synchronize(huntName?: string): Promise<void>;
 	/**
 	 * Close all puzzlehunt models and dispose any associated resources.
 	 */
@@ -434,6 +435,7 @@ export function puzzlehuntModelContract(
 				model.addRound('First hunt', '');
 				otherHunt.addRound('Second hunt', '');
 				await fixture.synchronize();
+				await fixture.synchronize('Other hunt');
 				expect(model.rounds.map((node) => node.name)).toEqual([
 					'First hunt',
 				]);
@@ -449,10 +451,14 @@ export function puzzlehuntModelContract(
 				const otherRound = otherHunt.addRound('Other round', '');
 				const thirdRound = thirdHunt.addRound('Third round', '');
 				await fixture.synchronize();
+				await fixture.synchronize('Other hunt');
+				await fixture.synchronize('Third hunt');
 				const other = await fixture.createModel('Other hunt');
 				const third = await fixture.createModel('Third hunt');
 				const initial = await fixture.createModel();
 				await fixture.synchronize();
+				await fixture.synchronize('Other hunt');
+				await fixture.synchronize('Third hunt');
 				expect(other.rounds.map((node) => node.id)).toEqual([
 					otherRound.id,
 				]);
@@ -464,9 +470,33 @@ export function puzzlehuntModelContract(
 				]);
 			});
 
+			it.each([undefined, 'Other hunt'])(
+				'synchronizes only the selected hunt (%s)',
+				async (huntName) => {
+					const otherHunt = await fixture.createHunt('Other hunt');
+					const selected = huntName === undefined ? model : otherHunt;
+					const unrelated =
+						huntName === undefined ? otherHunt : model;
+					const connected = await fixture.createModel(huntName);
+					const flush = vi.spyOn(unrelated, 'flush');
+					const refresh = vi.spyOn(unrelated, 'refresh');
+					selected.addRound('Selected', '');
+					unrelated.addRound('Unrelated', '');
+					await fixture.synchronize(huntName);
+					expect(connected.rounds.map((node) => node.name)).toEqual([
+						'Selected',
+					]);
+					expect(flush).not.toHaveBeenCalled();
+					expect(refresh).not.toHaveBeenCalled();
+				}
+			);
+
 			it('rejects unknown hunt names', async () => {
 				await expect(
 					fixture.createModel('Unknown hunt')
+				).rejects.toThrow('Unknown hunt');
+				await expect(
+					fixture.synchronize('Unknown hunt')
 				).rejects.toThrow('Unknown hunt');
 			});
 
@@ -487,8 +517,10 @@ export function puzzlehuntModelContract(
 					otherRound
 				);
 				await fixture.synchronize();
+				await fixture.synchronize('Other hunt');
 				model.changeName(puzzle, 'Changed');
 				await fixture.synchronize();
+				await fixture.synchronize('Other hunt');
 				expect(otherHunt.getPuzzle(otherPuzzle.id).name).toBe(
 					'Untouched'
 				);
@@ -500,8 +532,10 @@ export function puzzlehuntModelContract(
 				const otherHunt = await fixture.createHunt('Other hunt');
 				const kept = otherHunt.addRound('Kept', '');
 				await fixture.synchronize();
+				await fixture.synchronize('Other hunt');
 				model.delete(round);
 				await fixture.synchronize();
+				await fixture.synchronize('Other hunt');
 				expect(model.rounds).toEqual([]);
 				expect(otherHunt.getRound(kept.id).name).toBe('Kept');
 			});
