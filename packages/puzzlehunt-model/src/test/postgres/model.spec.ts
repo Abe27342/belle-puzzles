@@ -23,26 +23,41 @@ puzzlehuntModelContract(
 		const model = await PuzzlehuntModel.load(database.store, scope);
 		const models = [model];
 		const independentModels: PuzzlehuntModel[] = [];
+		const hunts = new Map([['Contract test hunt', scope]]);
 		return {
 			model,
-			async connect() {
+			async createModel(huntName = 'Contract test hunt') {
+				const huntScope = hunts.get(huntName);
+				if (huntScope === undefined) {
+					throw new Error(`Unknown hunt: ${huntName}`);
+				}
 				const connected = await PuzzlehuntModel.load(
 					database.store,
-					scope
+					huntScope
 				);
-				models.push(connected);
+				(huntScope === scope ? models : independentModels).push(
+					connected
+				);
 				return connected;
 			},
-			async createHunt() {
+			async createHunt(huntName) {
+				if (hunts.has(huntName)) {
+					throw new Error(`Hunt already exists: ${huntName}`);
+				}
 				const independentScope = {
 					...scope,
 					huntId: crypto.randomUUID(),
 				};
 				await database.pool.query(
 					`INSERT INTO hunts (id, guild_id, name, schema_version)
-					 VALUES ($1, $2, 'Independent hunt', 1)`,
-					[independentScope.huntId, independentScope.guildId]
+					 VALUES ($1, $2, $3, 1)`,
+					[
+						independentScope.huntId,
+						independentScope.guildId,
+						huntName,
+					]
 				);
+				hunts.set(huntName, independentScope);
 				const independent = await PuzzlehuntModel.load(
 					database.store,
 					independentScope

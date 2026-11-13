@@ -4,22 +4,23 @@ import type { IPuzzlehuntModel, PuzzlehuntView } from '../../model/types.js';
 /**
  * Minimal interface for testing an `IPuzzlehuntModel` implementation.
  *
- * Clients returned by connect share the initial document; createHunt creates an isolated document.
+ * Clients returned by createModel share the named hunt's document, defaulting to the initial hunt;
+ * createHunt creates an isolated document.
  */
 export interface ModelFixture {
 	/**
 	 * Initial model.
 	 *
 	 * @remarks
-	 * This exists for convenience, as without it callers could generally load their own with {@link connect}.
+	 * This exists for convenience, as without it callers could generally load their own with {@link createModel}.
 	 */
 	model: IPuzzlehuntModel;
 	/**
-	 * Connect a new client and return it.
+	 * Connect a new client to the named hunt, or the initial hunt when omitted, and return it.
 	 */
-	connect(): Promise<IPuzzlehuntModel>;
-	/** Create another hunt in the same service/guild without resetting existing hunts. */
-	createHunt(): Promise<IPuzzlehuntModel>;
+	createModel(huntName?: string): Promise<IPuzzlehuntModel>;
+	/** Create another named hunt in the same service/guild without resetting existing hunts. */
+	createHunt(huntName: string): Promise<IPuzzlehuntModel>;
 	/**
 	 * Synchronize all clients, ensuring any pending edits are flushed.
 	 *
@@ -72,7 +73,7 @@ export function puzzlehuntModelContract(
 
 		async function reload() {
 			await model.flush();
-			const other = await fixture.connect();
+			const other = await fixture.createModel();
 			await fixture.synchronize();
 			return other;
 		}
@@ -429,7 +430,7 @@ export function puzzlehuntModelContract(
 
 		describe('document isolation', () => {
 			it('does not expose additions from another hunt', async () => {
-				const otherHunt = await fixture.createHunt();
+				const otherHunt = await fixture.createHunt('Other hunt');
 				model.addRound('First hunt', '');
 				otherHunt.addRound('Second hunt', '');
 				await fixture.synchronize();
@@ -441,9 +442,44 @@ export function puzzlehuntModelContract(
 				]);
 			});
 
+			it('reopens named hunts while defaulting to the initial hunt', async () => {
+				const otherHunt = await fixture.createHunt('Other hunt');
+				const thirdHunt = await fixture.createHunt('Third hunt');
+				const initialRound = model.addRound('Initial round', '');
+				const otherRound = otherHunt.addRound('Other round', '');
+				const thirdRound = thirdHunt.addRound('Third round', '');
+				await fixture.synchronize();
+				const other = await fixture.createModel('Other hunt');
+				const third = await fixture.createModel('Third hunt');
+				const initial = await fixture.createModel();
+				await fixture.synchronize();
+				expect(other.rounds.map((node) => node.id)).toEqual([
+					otherRound.id,
+				]);
+				expect(third.rounds.map((node) => node.id)).toEqual([
+					thirdRound.id,
+				]);
+				expect(initial.rounds.map((node) => node.id)).toEqual([
+					initialRound.id,
+				]);
+			});
+
+			it('rejects unknown hunt names', async () => {
+				await expect(
+					fixture.createModel('Unknown hunt')
+				).rejects.toThrow('Unknown hunt');
+			});
+
+			it('rejects duplicate hunt names', async () => {
+				await fixture.createHunt('Other hunt');
+				await expect(fixture.createHunt('Other hunt')).rejects.toThrow(
+					'Hunt already exists'
+				);
+			});
+
 			it('does not change another hunt when assigning properties', async () => {
 				const { puzzle } = seed();
-				const otherHunt = await fixture.createHunt();
+				const otherHunt = await fixture.createHunt('Other hunt');
 				const otherRound = otherHunt.addRound('Other', '');
 				const otherPuzzle = otherHunt.addPuzzle(
 					'Untouched',
@@ -461,7 +497,7 @@ export function puzzlehuntModelContract(
 
 			it('does not delete another hunt when deleting a subtree', async () => {
 				const { round } = seed();
-				const otherHunt = await fixture.createHunt();
+				const otherHunt = await fixture.createHunt('Other hunt');
 				const kept = otherHunt.addRound('Kept', '');
 				await fixture.synchronize();
 				model.delete(round);
@@ -475,7 +511,7 @@ export function puzzlehuntModelContract(
 			it('preserves simultaneous independent additions from two connected models', async () => {
 				const root = model.addRound('Root', '');
 				await model.flush();
-				const other = await fixture.connect();
+				const other = await fixture.createModel();
 				model.addPuzzle('First', '', model.getRound(root.id));
 				other.addPuzzle('Second', '', other.getRound(root.id));
 				await fixture.synchronize();
@@ -492,7 +528,7 @@ export function puzzlehuntModelContract(
 				const root = model.addRound('Root', '');
 				const puzzle = model.addPuzzle('Puzzle', '', root);
 				await model.flush();
-				const other = await fixture.connect();
+				const other = await fixture.createModel();
 				model.changeName(model.getPuzzle(puzzle.id), 'Renamed');
 				other.changeUrl(other.getPuzzle(puzzle.id), 'new-url');
 				await fixture.synchronize();
@@ -509,7 +545,7 @@ export function puzzlehuntModelContract(
 				const root = model.addRound('Root', '');
 				const puzzle = model.addPuzzle('Puzzle', '', root);
 				await model.flush();
-				const other = await fixture.connect();
+				const other = await fixture.createModel();
 				model.solve(puzzle.id, 'FIRST');
 				await model.flush();
 				other.solve(puzzle.id, 'SECOND');
@@ -552,7 +588,7 @@ export function puzzlehuntModelContract(
 
 		describe('refresh', () => {
 			it('incorporates edits from another model', async () => {
-				const other = await fixture.connect();
+				const other = await fixture.createModel();
 				other.addRound('Remote', '');
 				await other.flush();
 				await model.refresh();

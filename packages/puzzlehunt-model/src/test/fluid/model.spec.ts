@@ -35,27 +35,35 @@ puzzlehuntModelContract(
 		const sessions = [initial];
 		const models = [model];
 		const independentModels: FluidPuzzlehuntModel[] = [];
+		const hunts = new Map([['Contract test hunt', initial.id]]);
 		return {
 			model,
-			async connect() {
-				const session = await loadExistingPuzzlehunt(
-					client(),
-					initial.id
-				);
+			async createModel(huntName = 'Contract test hunt') {
+				const id = hunts.get(huntName);
+				if (id === undefined) {
+					throw new Error(`Unknown hunt: ${huntName}`);
+				}
+				const session = await loadExistingPuzzlehunt(client(), id);
 				sessions.push(session);
 				const connected = new FluidPuzzlehuntModel(
 					session.puzzlehunt,
 					session.container
 				);
-				models.push(connected);
+				(id === initial.id ? models : independentModels).push(
+					connected
+				);
 				return connected;
 			},
-			async createHunt() {
+			async createHunt(huntName) {
+				if (hunts.has(huntName)) {
+					throw new Error(`Hunt already exists: ${huntName}`);
+				}
 				const session = await createNewPuzzlehunt(
 					client(),
 					'contract-guild'
 				);
 				sessions.push(session);
+				hunts.set(huntName, session.id);
 				const independent = new FluidPuzzlehuntModel(
 					session.puzzlehunt,
 					session.container
