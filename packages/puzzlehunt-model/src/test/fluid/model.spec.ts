@@ -33,29 +33,55 @@ puzzlehuntModelContract(
 			initial.container
 		);
 		const sessions = [initial];
-		const models = [model];
+		const hunts = new Map([
+			['Contract test hunt', { id: initial.id, models: [model] }],
+		]);
 		return {
 			model,
-			async connect() {
-				const session = await loadExistingPuzzlehunt(
-					client(),
-					initial.id
-				);
+			async createModel(huntName = 'Contract test hunt') {
+				const hunt = hunts.get(huntName);
+				if (hunt === undefined) {
+					throw new Error(`Unknown hunt: ${huntName}`);
+				}
+				const session = await loadExistingPuzzlehunt(client(), hunt.id);
 				sessions.push(session);
 				const connected = new FluidPuzzlehuntModel(
 					session.puzzlehunt,
 					session.container
 				);
-				models.push(connected);
+				hunt.models.push(connected);
 				return connected;
 			},
-			async synchronize() {
-				await Promise.all(models.map((model) => model.flush()));
+			async createHunt(huntName) {
+				if (hunts.has(huntName)) {
+					throw new Error(`Hunt already exists: ${huntName}`);
+				}
+				const session = await createNewPuzzlehunt(
+					client(),
+					'contract-guild'
+				);
+				sessions.push(session);
+				const independent = new FluidPuzzlehuntModel(
+					session.puzzlehunt,
+					session.container
+				);
+				hunts.set(huntName, {
+					id: session.id,
+					models: [independent],
+				});
+				return independent;
+			},
+			async synchronize(huntName = 'Contract test hunt') {
+				const hunt = hunts.get(huntName);
+				if (hunt === undefined) {
+					throw new Error(`Unknown hunt: ${huntName}`);
+				}
+				await Promise.all(hunt.models.map((model) => model.flush()));
 				await vi.waitFor(
 					() => {
-						for (const other of models) {
+						for (const other of hunt.models) {
 							expect(comparableView(other.view)).toEqual(
-								comparableView(model.view)
+								comparableView(hunt.models[0].view)
 							);
 						}
 					},
