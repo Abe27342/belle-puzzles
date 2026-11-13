@@ -15,6 +15,7 @@ import {
 } from '../../document.js';
 import type { HuntScope } from '../../document.js';
 import { PuzzlehuntModel } from '../../model/puzzlehunt.js';
+import { PostgresHuntIntegrationStore } from '../../postgres/integration-store.js';
 import { startLocalPostgres } from '../fixtures/postgres.js';
 
 let database: Awaited<ReturnType<typeof startLocalPostgres>>;
@@ -266,6 +267,82 @@ describe('Authoritative commands on multiple PostgreSQL connections', () => {
 			[scope.huntId]
 		);
 		expect(Number(logs.rows[0].count)).toBe(2);
+	});
+
+	it('atomically associates a resource and completes its item across concurrent worker retries', async () => {
+		const { rows: work } = await database.pool.query<{ id: string }>(
+			`SELECT id FROM integration_jobs
+			 WHERE hunt_id = $1 AND node_id = $2 AND target = 'google'`,
+			[scope.huntId, puzzleId]
+		);
+		const result = {
+			type: 'set-property',
+			property: 'sheetId',
+			nodeId: puzzleId,
+			value: 'sheet',
+		} as const;
+		const blocker = await database.pool.connect();
+		await blocker.query('BEGIN');
+		await blocker.query(
+			'SELECT id FROM integration_jobs WHERE id = $1 FOR UPDATE',
+			[work[0].id]
+		);
+		const completions = [0, 1].map(() =>
+			new PostgresHuntIntegrationStore(database.pool).completeWork(
+				scope,
+				work[0].id,
+				result
+			)
+		);
+		try {
+			await vi.waitFor(async () => {
+				const { rows } = await database.pool.query<{ count: string }>(
+					`SELECT count(*)::text FROM pg_stat_activity
+					 WHERE datname = current_database() AND wait_event_type = 'Lock'
+					 AND query LIKE '%UPDATE integration_jobs SET completed_at%'`
+				);
+				expect(Number(rows[0].count)).toBe(1);
+			});
+			const before = await database.pool.query(
+				`SELECT n.sheet_id, j.completed_at
+				 FROM hunt_nodes n JOIN integration_jobs j
+				 ON j.hunt_id = n.hunt_id AND j.node_id = n.id
+				 WHERE j.id = $1`,
+				[work[0].id]
+			);
+			expect(before.rows).toEqual([
+				{ sheet_id: null, completed_at: null },
+			]);
+			expect((await database.store.read(scope)).revision).toBe(1);
+		} finally {
+			await blocker.query('ROLLBACK');
+			blocker.release();
+			await Promise.allSettled(completions);
+		}
+		const results = await Promise.all(completions);
+		expect(results.map((entry) => entry.replayed).sort()).toEqual([
+			false,
+			true,
+		]);
+		expect(results[0].receipt).toEqual(results[1].receipt);
+		expect(results[0].snapshot.document.nodes[puzzleId]).toMatchObject({
+			sheetId: 'sheet',
+		});
+		expect((await database.store.read(scope)).revision).toBe(2);
+		const after = await database.pool.query(
+			`SELECT n.sheet_id, j.completed_at IS NOT NULL AS completed
+			 FROM hunt_nodes n JOIN integration_jobs j
+			 ON j.hunt_id = n.hunt_id AND j.node_id = n.id
+			 WHERE j.id = $1`,
+			[work[0].id]
+		);
+		expect(after.rows).toEqual([{ sheet_id: 'sheet', completed: true }]);
+		const pending = await database.pool.query<{ count: string }>(
+			`SELECT count(*)::text FROM integration_jobs
+			 WHERE hunt_id = $1 AND completed_at IS NULL AND cancelled_at IS NULL`,
+			[scope.huntId]
+		);
+		expect(Number(pending.rows[0].count)).toBe(2);
 	});
 
 	it('reads one committed metadata/node snapshot while another connection is writing', async () => {

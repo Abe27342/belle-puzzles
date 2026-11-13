@@ -92,18 +92,44 @@ CREATE TABLE command_receipts (
     PRIMARY KEY (hunt_id, command_id)
 );
 
--- One coalescing desired-state refresh per integration per hunt.
+-- Durable outbox for asynchronously creating or synchronizing a node's external
+-- resources: Discord associations for rounds/puzzles and Google Sheets for puzzles.
+-- 
+-- This store is appended to in the same transaction as document changes that create a puzzle.
+--
+-- Workers select due items (available_at <= now()) with neither completed_at nor
+-- cancelled_at set.
+--
+-- Deleting a node cancels its pending items in the document transaction. There is
+-- intentionally no node foreign key: retained items survive deletion without
+-- reserving the node ID, and cancelled items cannot attach results to a replacement
+-- node that reuses it.
 CREATE TABLE integration_jobs (
-    hunt_id uuid NOT NULL REFERENCES hunts(id),
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    hunt_id uuid NOT NULL,
+    command_id uuid NOT NULL,
+    node_id uuid NOT NULL,
     target text NOT NULL CHECK (target IN ('discord', 'google')),
-    requested_revision bigint NOT NULL CHECK (requested_revision > 0),
+    kind text NOT NULL CHECK (
+        (target = 'discord' AND kind = 'ensure-discord-association')
+        OR (target = 'google' AND kind = 'ensure-google-sheet')
+    ),
+    -- The revision of the document when this work item was enqueued.
+    source_revision bigint NOT NULL CHECK (source_revision > 0),
+    payload jsonb NOT NULL,
     available_at timestamptz NOT NULL DEFAULT now(),
     attempts integer NOT NULL DEFAULT 0,
     last_error text,
-    PRIMARY KEY (hunt_id, target)
+    completed_at timestamptz,
+    cancelled_at timestamptz,
+    CHECK (completed_at IS NULL OR cancelled_at IS NULL),
+    UNIQUE (hunt_id, command_id, node_id, target),
+    FOREIGN KEY (hunt_id, command_id)
+        REFERENCES command_receipts(hunt_id, command_id)
 );
 
-CREATE INDEX integration_jobs_ready ON integration_jobs (available_at);
+CREATE INDEX integration_jobs_ready ON integration_jobs (available_at)
+    WHERE completed_at IS NULL AND cancelled_at IS NULL;
 
 -- Lifecycle tombstones and distinct logs must not disappear behind a newer state.
 CREATE TABLE integration_events (
