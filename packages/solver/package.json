@@ -1,0 +1,36 @@
+{
+	"name": "@belle-puzzles/solver",
+	"version": "0.0.1",
+	"description": "Logic puzzle solving with Z3 for Belle Puzzles",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"type": "module",
+	"engines": {
+		"node": ">=20.15.0"
+	},
+	"sideEffects": [
+		"./dist/index.js"
+	],
+	"scripts": {
+		"build": "tsc",
+		"format": "prettier --write src",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"z3-solver": "^5.4.1"
+	},
+	"devDependencies": {
+		"@types/node": "^16.9.0",
+		"prettier": "^2.7.1",
+		"typescript": "^5.2.2",
+		"vitest": "^4.0.16"
+	},
+	"author": "Abram Sanderson",
+	"license": "MIT"
+}

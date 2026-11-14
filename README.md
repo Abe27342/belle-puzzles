@@ -4,6 +4,9 @@ This repository hosts packages for the [Belle Puzzles bot and website](https://a
 
 It uses [pnpm](https://pnpm.io/).
 
+The [solver package](packages/solver/README.md) provides the foundation for logic
+puzzle solving with Z3.
+
 ## Setup
 
 1. Install [node 20](https://nodejs.org/en/download/) or later. I recommend using [nvm](https://github.com/nvm-sh/nvm) ([windows link](https://github.com/coreybutler/nvm-windows)) to manage node versions.
