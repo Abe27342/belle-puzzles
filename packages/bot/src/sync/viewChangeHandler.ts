@@ -85,14 +85,12 @@ export function makeViewChangeHandler(
 		// Provision parents before their children, including whole added subtrees.
 		for (const node of after.rounds.filter((node) => added.has(node.id))) {
 			if (!node.discord) {
-				await createDiscordAssociation(context, guild, node, after);
+				await createDiscordAssociation(context, guild, node);
 			}
 		}
 		for (const node of after.puzzles.filter((node) => added.has(node.id))) {
 			if (!node.discord) {
-				tasks.push(
-					createDiscordAssociation(context, guild, node, after)
-				);
+				tasks.push(createDiscordAssociation(context, guild, node));
 			}
 			if (!node.sheetId) {
 				tasks.push(

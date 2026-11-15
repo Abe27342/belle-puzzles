@@ -26,6 +26,7 @@ import { makeFluidClient } from '../fluid/client';
 import { getHuntContext } from '../puzzlehunt-context';
 import { BELLE_USER_ID } from '../utils';
 import { makeViewChangeHandler } from '../sync/viewChangeHandler';
+import { createDiscordAssociation, resyncServerFull } from '../sync/sync.js';
 vi.mock('../integrations/google.js');
 
 // This file tests various aspects of the bot's synchronization of the discord server with the fluid file.
@@ -53,6 +54,122 @@ function useSimplePuzzlehuntProvider(): IPuzzlehuntProvider {
 		},
 	};
 }
+
+describe('Resource provisioning', () => {
+	const provider = useSimplePuzzlehuntProvider();
+
+	async function createContext() {
+		const discord = new MockDiscord();
+		const client = createClient({
+			token: 'mock-token',
+			puzzlehuntProvider: provider,
+			baseClient: discord.getClient(),
+		});
+		await runCommand(
+			'/create name: test-hunt folder_link: https://drive.google.com/drive/folders/mock-folder-id?usp=sharing',
+			client,
+			discord
+		);
+		const guild = discord.getGuild();
+		const context = await getHuntContext(client, guild);
+		return { context, guild, serverState: discord.serverState };
+	}
+
+	it.each(['change batch', 'full resync'] as const)(
+		'provisions parents before children during %s without modifying the captured view',
+		async (operation) => {
+			const { context, guild, serverState } = await createContext();
+			const { puzzlehunt } = context;
+			const before = puzzlehunt.view;
+			const root = puzzlehunt.addRound('Root', '');
+			const nested = puzzlehunt.addRound('Nested', '', root);
+			puzzlehunt.addPuzzle('Puzzle', '', nested);
+			const after = puzzlehunt.view;
+			const saved = JSON.stringify(after);
+
+			if (operation === 'change batch') {
+				await makeViewChangeHandler(
+					context,
+					() => guild
+				)({
+					before,
+					after,
+					changes: [...after.rounds, ...after.puzzles].map(
+						(node) => ({
+							type: 'node-added',
+							node,
+						})
+					),
+				});
+			} else {
+				await resyncServerFull(context, guild);
+			}
+
+			const current = puzzlehunt.view;
+			const rootAssociation = current.rounds[0].discord;
+			const parentAssociation = current.rounds[1].discord;
+			const puzzle = current.puzzles[0];
+			const puzzleChannel = serverState.findChannelBy(
+				'id',
+				puzzle.discord.channelId
+			);
+			expect(puzzleChannel.parent_id).toBe(parentAssociation.channelId);
+			expect(
+				puzzleChannel.permission_overwrites.map(
+					(overwrite) => overwrite.id
+				)
+			).toEqual(
+				expect.arrayContaining([
+					rootAssociation.roleId,
+					parentAssociation.roleId,
+				])
+			);
+			expect(puzzle.sheetId).toBe('mock-google-sheet-id');
+			expect(JSON.stringify(after)).toBe(saved);
+		}
+	);
+
+	it('uses current parent associations when an added-puzzle event contains older ones', async () => {
+		const { context, guild, serverState } = await createContext();
+		const { puzzlehunt } = context;
+		const root = puzzlehunt.addRound('Root', '');
+		await createDiscordAssociation(
+			context,
+			guild,
+			puzzlehunt.view.rounds[0]
+		);
+		const before = puzzlehunt.view;
+		puzzlehunt.addPuzzle('Puzzle', '', root);
+		const after = puzzlehunt.view;
+		const saved = JSON.stringify(after);
+		const oldAssociation = after.rounds[0].discord;
+		await createDiscordAssociation(context, guild, after.rounds[0]);
+		const currentAssociation = puzzlehunt.view.rounds[0].discord;
+		expect(currentAssociation.channelId).not.toBe(oldAssociation.channelId);
+
+		await makeViewChangeHandler(
+			context,
+			() => guild
+		)({
+			before,
+			after,
+			changes: [{ type: 'node-added', node: after.puzzles[0] }],
+		});
+
+		const puzzle = puzzlehunt.view.puzzles[0];
+		const channel = serverState.findChannelBy(
+			'id',
+			puzzle.discord.channelId
+		);
+		expect(channel.parent_id).toBe(currentAssociation.channelId);
+		const permissionRoles = channel.permission_overwrites.map(
+			(overwrite) => overwrite.id
+		);
+		expect(permissionRoles).toContain(currentAssociation.roleId);
+		expect(permissionRoles).not.toContain(oldAssociation.roleId);
+		expect(JSON.stringify(after)).toBe(saved);
+	});
+});
 
 function delay(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
