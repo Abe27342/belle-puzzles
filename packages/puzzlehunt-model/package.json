@@ -9,6 +9,8 @@
 		"./postgres": "./dist/postgres/index.js",
 		"./model": "./dist/model/index.js",
 		"./fluid": "./dist/fluid/index.js",
+		"./testing/fluid-service": "./src/test/fixtures/fluid-service.ts",
+		"./testing/fluid-endpoint": "./src/test/fixtures/fluid-endpoint.ts",
 		"./postgres/schema.sql": "./src/postgres/schema.sql"
 	},
 	"type": "module",

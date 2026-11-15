@@ -18,7 +18,7 @@ const user: IUser & AzureUser = {
 const localConnection: AzureLocalConnectionConfig = {
 	type: 'local',
 	tokenProvider: new InsecureTokenProvider('', user),
-	endpoint: 'http://localhost:7070',
+	endpoint: process.env.FLUID_ENDPOINT ?? 'http://localhost:7070',
 };
 
 const remoteConnection: AzureRemoteConnectionConfig = {
