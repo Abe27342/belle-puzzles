@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IPuzzlehuntModel, PuzzlehuntView } from '../../model/types.js';
+import { HuntCommandError } from '../../document.js';
 
 /**
  * Minimal interface for testing an `IPuzzlehuntModel` implementation.
@@ -107,6 +108,13 @@ export function puzzlehuntModelContract(
 				expect(model.puzzles).toEqual([]);
 			});
 
+			it('rejects attempts to add a puzzle to a non-existent round', () => {
+				const fakeRound = { id: crypto.randomUUID() } as any;
+				expect(() =>
+					model.addPuzzle('Puzzle', 'url', fakeRound)
+				).toThrow(HuntCommandError);
+			});
+
 			it('enumerates puzzles in depth-first sibling order', async () => {
 				const a = model.addRound('A', '');
 				const b = model.addRound('B', '');
@@ -114,9 +122,13 @@ export function puzzlehuntModelContract(
 				model.addPuzzle('Nested puzzle', '', nested);
 				model.addPuzzle('Direct puzzle', '', a);
 				model.addPuzzle('Other puzzle', '', b);
-				expect(
-					(await reload()).puzzles.map((node) => node.name)
-				).toEqual(['Nested puzzle', 'Direct puzzle', 'Other puzzle']);
+
+				const reloaded = await reload();
+				expect(reloaded.puzzles.map((node) => node.name)).toEqual([
+					'Nested puzzle',
+					'Direct puzzle',
+					'Other puzzle',
+				]);
 			});
 		});
 
@@ -449,6 +461,8 @@ export function puzzlehuntModelContract(
 				]);
 			});
 
+			// This (and some other tests in this describe block) are more targeted at validating the harness
+			// being used has the correct semantics with respect to multiple documents.
 			it('reopens named hunts while defaulting to the initial hunt', async () => {
 				const otherHunt = await fixture.createHunt('Other hunt');
 				const thirdHunt = await fixture.createHunt('Third hunt');
@@ -554,6 +568,7 @@ export function puzzlehuntModelContract(
 				model.addPuzzle('First', '', model.getRound(root.id));
 				other.addPuzzle('Second', '', other.getRound(root.id));
 				await fixture.synchronize();
+				// The sort() is necessary as append order is not guaranteed.
 				expect(model.puzzles.map((node) => node.name).sort()).toEqual([
 					'First',
 					'Second',
