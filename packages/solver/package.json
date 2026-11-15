@@ -20,7 +20,8 @@
 	"scripts": {
 		"build": "tsc",
 		"format": "prettier --write src",
-		"test": "vitest run"
+		"test": "vitest run",
+		"start": "node dist/masyu.js"
 	},
 	"dependencies": {
 		"z3-solver": "^5.4.1"
