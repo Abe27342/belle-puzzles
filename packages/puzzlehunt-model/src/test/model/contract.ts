@@ -19,7 +19,12 @@ export interface ModelFixture {
 	 * Connect a new client to the named hunt, or the initial hunt when omitted, and return it.
 	 */
 	createModel(huntName?: string): Promise<IPuzzlehuntModel>;
-	/** Create another named hunt in the same service/guild without resetting existing hunts. */
+	/**
+	 * Create another named hunt in the same service/guild.
+	 *
+	 * @remarks
+	 * This allows validating cross-hunt isolation at the model level (i.e. ensuring changes in one hunt do not affect another).
+	 */
 	createHunt(huntName: string): Promise<IPuzzlehuntModel>;
 	/**
 	 * Synchronize clients for the named hunt, or the initial hunt when omitted,
