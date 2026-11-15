@@ -108,6 +108,98 @@ class RectangularGrid<T> implements Grid<RectangularCoord, T> {
 	}
 }
 
+const compareCoords = (start: RectangularCoord, end: RectangularCoord) => {
+	if (start[0] < end[0]) return -1;
+	if (start[0] > end[0]) return 1;
+	if (start[1] < end[1]) return -1;
+	if (start[1] > end[1]) return 1;
+	return 0;
+};
+
+const equalCoord = (a: RectangularCoord, b: RectangularCoord) =>
+	a[0] === b[0] && a[1] === b[1];
+
+const move = (
+	coord: RectangularCoord,
+	direction: RectangularCoord
+): RectangularCoord => [coord[0] + direction[0], coord[1] + direction[1]];
+
+const down = (coord: RectangularCoord) => move(coord, [0, 1]);
+const up = (coord: RectangularCoord) => move(coord, [0, -1]);
+const left = (coord: RectangularCoord) => move(coord, [-1, 0]);
+const right = (coord: RectangularCoord) => move(coord, [1, 0]);
+
+class Edge {
+	#start: RectangularCoord;
+	#end: RectangularCoord;
+	#grid: RectangularGrid<unknown>;
+
+	constructor(
+		start: RectangularCoord,
+		end: RectangularCoord,
+		grid: RectangularGrid<unknown>
+	) {
+		if (compareCoords(start, end) < 0) {
+			this.#start = start;
+			this.#end = end;
+		} else {
+			this.#start = end;
+			this.#end = start;
+		}
+		const dx = Math.abs(this.#end[0] - this.#start[0]);
+		const dy = Math.abs(this.#end[1] - this.#start[1]);
+		if ((dx !== 0 && dy !== 0) || (dx !== 1 && dy !== 1)) {
+			throw new Error('Invalid edge');
+		}
+		this.#grid = grid;
+	}
+
+	public toString(): string {
+		return `(${JSON.stringify(this.#start)}, ${JSON.stringify(this.#end)})`;
+	}
+
+	public overlaps(other: Edge): boolean {
+		return (
+			equalCoord(this.#start, other.#start) ||
+			equalCoord(this.#start, other.#end) ||
+			equalCoord(this.#end, other.#start) ||
+			equalCoord(this.#end, other.#end)
+		);
+	}
+
+	public *neighbors(): Iterable<Edge> {
+		const { width, height } = this.#grid;
+		const yieldNeighbors = function* (
+			coord: RectangularCoord
+		): Iterable<RectangularCoord> {
+			for (const direction of [
+				[0, 1],
+				[0, -1],
+				[1, 0],
+				[-1, 0],
+			]) {
+				const [dx, dy] = direction;
+				const nx = coord[0] + dx;
+				const ny = coord[1] + dy;
+				if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+					yield [nx, ny];
+				}
+			}
+		};
+
+		for (const neighbor of yieldNeighbors(this.#start)) {
+			if (!equalCoord(neighbor, this.#end)) {
+				yield new Edge(neighbor, this.#start, this.#grid);
+			}
+		}
+		for (const neighbor of yieldNeighbors(this.#end)) {
+			if (!equalCoord(neighbor, this.#start)) {
+				yield new Edge(neighbor, this.#end, this.#grid);
+			}
+		}
+	}
+}
+
 interface Renderer<TCoord, T> {
 	render(grid: Grid<TCoord, T>): void;
 }
@@ -188,6 +280,15 @@ class MasyuPuzzle {
 	#pearls: Pearl[];
 
 	#grid: RectangularGrid<'black' | 'white' | 'empty'>;
+
+	public get width() {
+		return this.#width;
+	}
+
+	public get height() {
+		return this.#height;
+	}
+
 	constructor(props: MasyuPuzzleProps) {
 		this.#width = props.width;
 		this.#height = props.height;
@@ -206,95 +307,37 @@ class MasyuPuzzle {
 		}
 	}
 
-	public async solve(): Promise<any> {
-		const equalCoord = (a: RectangularCoord, b: RectangularCoord) =>
-			a[0] === b[0] && a[1] === b[1];
-		const width = this.#width;
-		const height = this.#height;
-		const compareCoords = (
-			start: RectangularCoord,
-			end: RectangularCoord
-		) => {
-			if (start[0] < end[0]) return -1;
-			if (start[0] > end[0]) return 1;
-			if (start[1] < end[1]) return -1;
-			if (start[1] > end[1]) return 1;
-			return 0;
-		};
-		class Edge {
-			#start: RectangularCoord;
-			#end: RectangularCoord;
-
-			constructor(start: RectangularCoord, end: RectangularCoord) {
-				if (compareCoords(start, end) < 0) {
-					this.#start = start;
-					this.#end = end;
-				} else {
-					this.#start = end;
-					this.#end = start;
-				}
-				const dx = Math.abs(this.#end[0] - this.#start[0]);
-				const dy = Math.abs(this.#end[1] - this.#start[1]);
-				if ((dx !== 0 && dy !== 0) || (dx !== 1 && dy !== 1)) {
-					throw new Error('Invalid edge');
-				}
-			}
-
-			public toString(): string {
-				return `(${JSON.stringify(this.#start)}, ${JSON.stringify(
-					this.#end
-				)})`;
-			}
-
-			public overlaps(other: Edge): boolean {
-				return (
-					equalCoord(this.#start, other.#start) ||
-					equalCoord(this.#start, other.#end) ||
-					equalCoord(this.#end, other.#start) ||
-					equalCoord(this.#end, other.#end)
-				);
-			}
-
-			public *neighbors(): Iterable<Edge> {
-				const yieldNeighbors = function* (
-					coord: RectangularCoord
-				): Iterable<RectangularCoord> {
-					for (const direction of [
-						[0, 1],
-						[0, -1],
-						[1, 0],
-						[-1, 0],
-					]) {
-						const [dx, dy] = direction;
-						const nx = coord[0] + dx;
-						const ny = coord[1] + dy;
-						if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-							yield [nx, ny];
-						}
-					}
-				};
-
-				for (const neighbor of yieldNeighbors(this.#start)) {
-					if (!equalCoord(neighbor, this.#end)) {
-						yield new Edge(neighbor, this.#start);
-					}
-				}
-				for (const neighbor of yieldNeighbors(this.#end)) {
-					if (!equalCoord(neighbor, this.#start)) {
-						yield new Edge(neighbor, this.#end);
-					}
+	public static fromTextGrid(text: string) {
+		const lines = text.trim().split('\n');
+		const height = lines.length;
+		const width = lines[0].length;
+		const pearls: Pearl[] = [];
+		for (let y = 0; y < height; y++) {
+			for (let x = 0; x < width; x++) {
+				const char = lines[y][x];
+				if (['B', 'b'].includes(char)) {
+					pearls.push({ coord: [x, y], color: 'black' });
+				} else if (['W', 'w'].includes(char)) {
+					pearls.push({ coord: [x, y], color: 'white' });
 				}
 			}
 		}
+		return new MasyuPuzzle({ width, height, pearls });
+	}
 
+	public getCell(coord: RectangularCoord): 'black' | 'white' | 'empty' {
+		return this.#grid.get(coord);
+	}
+
+	public async solve(): Promise<string | [Edge, string][]> {
 		const edges: Edge[] = [];
 		for (let x = 0; x < this.#width; x++) {
 			for (let y = 0; y < this.#height; y++) {
 				if (x < this.#width - 1) {
-					edges.push(new Edge([x, y], [x + 1, y]));
+					edges.push(new Edge([x, y], [x + 1, y], this.#grid));
 				}
 				if (y < this.#height - 1) {
-					edges.push(new Edge([x, y], [x, y + 1]));
+					edges.push(new Edge([x, y], [x, y + 1], this.#grid));
 				}
 			}
 		}
@@ -360,23 +403,10 @@ class MasyuPuzzle {
 			b: RectangularCoord,
 			defaultVar = neverVar
 		) =>
-			variables[new Edge(a, b).toString()] ??
-			variables[new Edge(b, a).toString()] ??
+			variables[new Edge(a, b, this.#grid).toString()] ??
+			variables[new Edge(b, a, this.#grid).toString()] ??
 			// Any constraint placed on an edge that does not exist will lead to a contradiction, so we use neverVar to represent such edges.
 			defaultVar;
-
-		const move = (
-			coord: RectangularCoord,
-			direction: RectangularCoord
-		): RectangularCoord => [
-			coord[0] + direction[0],
-			coord[1] + direction[1],
-		];
-
-		const down = (coord: RectangularCoord) => move(coord, [0, 1]);
-		const up = (coord: RectangularCoord) => move(coord, [0, -1]);
-		const left = (coord: RectangularCoord) => move(coord, [-1, 0]);
-		const right = (coord: RectangularCoord) => move(coord, [1, 0]);
 
 		for (const pearl of this.#pearls) {
 			const { coord, color } = pearl;
@@ -413,8 +443,8 @@ class MasyuPuzzle {
 				const rightDown = getEdgeVar(right(coord), down(right(coord)));
 
 				solver.add(
-					// Line goes through pearl vertically
 					Or(
+						// Line goes through pearl vertically
 						And(
 							down1.eq(1),
 							up1.eq(1),
@@ -424,10 +454,8 @@ class MasyuPuzzle {
 								upLeft.eq(1),
 								upRight.eq(1)
 							)
-						)
-					),
-					// Line goes through pearl horizontally
-					Or(
+						),
+						// Line goes through pearl horizontally
 						And(
 							left1.eq(1),
 							right1.eq(1),
@@ -488,9 +516,9 @@ class MasyuPuzzle {
 		const result = await solver.check();
 		if (result === 'sat') {
 			const model = solver.model();
-			const resolvedEdgeVars = Object.entries(variables).map(([k, v]) => [
-				k,
-				model.eval(v).toString(),
+			const resolvedEdgeVars = edges.map((edge): [Edge, string] => [
+				edge,
+				model.eval(variables[edge.toString()]).toString(),
 			]);
 
 			return resolvedEdgeVars;
@@ -500,7 +528,7 @@ class MasyuPuzzle {
 	}
 }
 
-const puzzle = new MasyuPuzzle({
+let puzzle = new MasyuPuzzle({
 	width: 3,
 	height: 3,
 	pearls: [
@@ -509,5 +537,67 @@ const puzzle = new MasyuPuzzle({
 	],
 });
 
+puzzle = MasyuPuzzle.fromTextGrid(`
+B.W...
+..W..W
+....B.
+.B....
+......
+....B.
+`);
+
 const result = await puzzle.solve();
 console.log(JSON.stringify(result));
+
+async function renderMasyuSolution(puzzle: MasyuPuzzle): Promise<string> {
+	const edgeAssignments = await puzzle.solve();
+	if (typeof edgeAssignments === 'string') {
+		return edgeAssignments;
+	}
+
+	const assignmentByEdge = Object.fromEntries(edgeAssignments);
+	const mockGrid = RectangularGrid.fromDimensions(
+		puzzle.width,
+		puzzle.height,
+		() => 0
+	);
+	let result = '';
+	for (let y = 0; y < puzzle.height; y++) {
+		let pearlLine = '';
+		let verticalEdgeLine = '';
+		for (let x = 0; x < puzzle.width; x++) {
+			const current: RectangularCoord = [x, y];
+			switch (puzzle.getCell(current)) {
+				case 'black':
+					pearlLine += '⬤';
+					break;
+				case 'white':
+					pearlLine += '◯';
+					break;
+				default:
+					pearlLine += '·';
+					break;
+			}
+
+			const rightEdge = new Edge(current, right(current), mockGrid);
+			const rightEdgeAssignment = assignmentByEdge[rightEdge.toString()];
+			if (rightEdgeAssignment !== undefined) {
+				pearlLine += rightEdgeAssignment === '1' ? '━' : ' ';
+			}
+
+			const downEdge = new Edge(current, down(current), mockGrid);
+			const downEdgeAssignment = assignmentByEdge[downEdge.toString()];
+			verticalEdgeLine += downEdgeAssignment === '1' ? '┃ ' : '  ';
+		}
+
+		result += pearlLine + '\n';
+
+		if (y < puzzle.height - 1) {
+			result += verticalEdgeLine + '\n';
+		}
+	}
+
+	return result;
+}
+
+console.log(await renderMasyuSolution(puzzle));
