@@ -14,10 +14,12 @@ import type {
 	HuntSnapshot,
 } from '../document.js';
 import { projectPuzzlehuntView } from './types.js';
+import { diffPuzzlehuntViews } from './changes.js';
 import type {
 	IPuzzlehuntModel,
 	PuzzlehuntRound,
 	PuzzlehuntView,
+	PuzzlehuntChangeEvent,
 } from './types.js';
 
 export interface PendingHuntChange {
@@ -56,6 +58,10 @@ export class PuzzlehuntModel implements IPuzzlehuntModel {
 	private projected: HuntDocument;
 	private readonly operations: Operation[] = [];
 	private readonly listeners = new Set<() => void>();
+	private readonly changeListeners = new Set<
+		(event: PuzzlehuntChangeEvent) => void
+	>();
+	private publishedView: PuzzlehuntView;
 	private readonly failed: HuntModelFailure[] = [];
 	private draining: Promise<void> | undefined;
 	private lastDrain: Promise<void> = Promise.resolve();
@@ -68,6 +74,7 @@ export class PuzzlehuntModel implements IPuzzlehuntModel {
 		this.scope = { huntId: snapshot.huntId, guildId: snapshot.guildId };
 		this.validateSnapshot(snapshot);
 		this.projected = snapshot.document;
+		this.publishedView = this.view;
 	}
 
 	static async load(
@@ -271,6 +278,13 @@ export class PuzzlehuntModel implements IPuzzlehuntModel {
 	subscribe(listener: () => void): () => void {
 		this.listeners.add(listener);
 		return () => this.listeners.delete(listener);
+	}
+
+	subscribeChanges(
+		listener: (event: PuzzlehuntChangeEvent) => void
+	): () => void {
+		this.changeListeners.add(listener);
+		return () => this.changeListeners.delete(listener);
 	}
 
 	/** Commands and snapshots supplied to this model must be treated as immutable. */
@@ -492,6 +506,13 @@ export class PuzzlehuntModel implements IPuzzlehuntModel {
 	}
 
 	private publish(): void {
+		const event = diffPuzzlehuntViews(this.publishedView, this.view);
+		this.publishedView = event.after;
+		if (event.changes.length > 0) {
+			for (const listener of this.changeListeners) {
+				listener(event);
+			}
+		}
 		for (const listener of this.listeners) {
 			listener();
 		}

@@ -19,10 +19,13 @@ import { loadPuzzlehunt, runCommand } from './testUtils';
 import {
 	IPuzzlehunt,
 	loadExistingPuzzlehunt,
+	type DocumentNode,
+	type PuzzlehuntView,
 } from '@belle-puzzles/puzzlehunt-model';
 import { makeFluidClient } from '../fluid/client';
 import { getHuntContext } from '../puzzlehunt-context';
 import { BELLE_USER_ID } from '../utils';
+import { makeViewChangeHandler } from '../sync/viewChangeHandler';
 vi.mock('../integrations/google.js');
 
 // This file tests various aspects of the bot's synchronization of the discord server with the fluid file.
@@ -479,6 +482,220 @@ describe('Sync', () => {
 					allowPermissionsForRole('All Puzzles'),
 				].sort(compareIds)
 			);
+		});
+	});
+
+	describe('historical change batches', () => {
+		function replacing(
+			view: PuzzlehuntView,
+			replacements: DocumentNode[]
+		): PuzzlehuntView {
+			const byId = new Map(replacements.map((node) => [node.id, node]));
+			const nodes = [...view.rounds, ...view.puzzles].map(
+				(node) => byId.get(node.id) ?? node
+			);
+			function roundView(id: string): PuzzlehuntView['rounds'][number] {
+				const round = nodes.find((node) => node.id === id);
+				if (round?.type !== 'round') {
+					throw new Error('Expected round in test snapshot.');
+				}
+				return {
+					...round,
+					children: nodes
+						.filter((node) => node.parentId === id)
+						.sort((a, b) => a.position - b.position)
+						.map((node) =>
+							node.type === 'round' ? roundView(node.id) : node
+						),
+				};
+			}
+			return {
+				rounds: view.rounds.map((round) => roundView(round.id)),
+				puzzles: nodes.filter(
+					(node): node is PuzzlehuntView['puzzles'][number] =>
+						node.type === 'puzzle'
+				),
+			};
+		}
+
+		it('updates both parent indexes and permissions for equal-count exchanges using the event view', async () => {
+			const guild = mockDiscord.getClient().guilds.cache.at(0);
+			const context = await getHuntContext(client, guild);
+			await client.ensurePendingWorkProcessed();
+			const before = context.puzzlehunt.view;
+			const first = before.puzzles.find(
+				(node) => node.name === 'puzzle 2'
+			);
+			const second = before.puzzles.find(
+				(node) => node.name === 'puzzle 1d1d1'
+			);
+			const firstAfter = {
+				...first,
+				parentId: second.parentId,
+				position: second.position,
+			};
+			const secondAfter = {
+				...second,
+				parentId: first.parentId,
+				position: first.position,
+			};
+			const after = replacing(before, [firstAfter, secondAfter]);
+			const handler = makeViewChangeHandler(context, () => guild);
+			const changes = [
+				{
+					type: 'node-changed' as const,
+					before: first,
+					after: firstAfter,
+				},
+				{
+					type: 'node-changed' as const,
+					before: second,
+					after: secondAfter,
+				},
+			];
+			const nested = before.rounds.find(
+				(round) => round.id === second.parentId
+			);
+			expect(
+				after.rounds.find((round) => round.id === nested.id).children
+			).toHaveLength(nested.children.length);
+			try {
+				await handler({ before, after, changes });
+				expect(
+					serverState
+						.findChannelBy('id', first.discord.channelId)
+						.permission_overwrites.map((overwrite) => overwrite.id)
+				).toContain(nested.discord.roleId);
+				expect(
+					serverState
+						.findChannelBy('id', second.discord.channelId)
+						.permission_overwrites.map((overwrite) => overwrite.id)
+				).not.toContain(nested.discord.roleId);
+				const parentIndex = serverState.messages.get(
+					nested.discord.indexChannelId
+				)[0];
+				expect(parentIndex.embeds[0].description).toContain(
+					'**puzzle 2**'
+				);
+				expect(parentIndex.embeds[0].description).not.toContain(
+					'**puzzle 1d1d1**'
+				);
+				const oldParent = before.rounds.find(
+					(round) => round.id === first.parentId
+				);
+				expect(
+					serverState.messages.get(
+						oldParent.discord.indexChannelId
+					)[0].embeds[0].description
+				).toContain('**puzzle 1d1d1**');
+			} finally {
+				await handler({
+					before: after,
+					after: before,
+					changes: changes.map((change) => ({
+						...change,
+						before: change.after,
+						after: change.before,
+					})),
+				});
+			}
+		});
+
+		it('updates moved rounds and all descendant permissions without consulting live ancestry', async () => {
+			const guild = mockDiscord.getClient().guilds.cache.at(0);
+			const context = await getHuntContext(client, guild);
+			const before = context.puzzlehunt.view;
+			const moved = before.rounds.find(
+				(round) => round.name === 'round 1d1'
+			);
+			const destination = before.rounds.find(
+				(round) => round.name === 'round 1d2'
+			);
+			const movedAfter = {
+				...moved,
+				parentId: destination.id,
+				position: 0,
+			};
+			const after = replacing(before, [movedAfter]);
+			const handler = makeViewChangeHandler(context, () => guild);
+			try {
+				await handler({
+					before,
+					after,
+					changes: [
+						{
+							type: 'node-changed',
+							before: moved,
+							after: movedAfter,
+						},
+					],
+				});
+				for (const node of [moved, ...moved.children]) {
+					expect(
+						serverState
+							.findChannelBy('id', node.discord.channelId)
+							.permission_overwrites.map(
+								(overwrite) => overwrite.id
+							)
+					).toContain(destination.discord.roleId);
+				}
+				expect(
+					serverState.messages.get(moved.discord.indexChannelId)[0]
+						.embeds[0].fields
+				).toContainEqual({
+					name: 'Parent Round',
+					value: channelRef(destination.discord.indexChannelId),
+				});
+			} finally {
+				await handler({
+					before: after,
+					after: before,
+					changes: [
+						{
+							type: 'node-changed',
+							before: movedAfter,
+							after: moved,
+						},
+					],
+				});
+			}
+		});
+
+		it('removes Discord resources for every node of a deleted subtree', async () => {
+			const context = await getHuntContext(
+				client,
+				mockDiscord.getClient().guilds.cache.at(0)
+			);
+			const round = Array.from(context.puzzlehunt.rounds).find(
+				(round) => round.name === 'round 1d1'
+			);
+			const associations = [round, ...round.children].map(
+				(node) => node.discordInfo
+			);
+			context.puzzlehunt.delete(round);
+			await vi.waitFor(async () => {
+				expect(asyncErrors).toEqual([]);
+				await client.ensurePendingWorkProcessed();
+				for (const association of associations) {
+					expect(
+						serverState.roles.some(
+							(role) => role.id === association.roleId
+						)
+					).toBe(false);
+					expect(
+						serverState.channels.some(
+							(channel) =>
+								channel.id === association.channelId ||
+								channel.id === association.indexChannelId
+						)
+					).toBe(false);
+				}
+			});
+			expect(
+				serverState.channels.some(
+					(channel) => channel.name === 'puzzle-2'
+				)
+			).toBe(true);
 		});
 	});
 });

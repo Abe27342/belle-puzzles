@@ -16,9 +16,14 @@ import {
 	TextBasedChannel,
 } from 'discord.js';
 import { IPuzzlehunt, Puzzle, Round } from '@belle-puzzles/puzzlehunt-model';
+import type {
+	DocumentNode,
+	DocumentPuzzle,
+	PuzzlehuntView,
+} from '@belle-puzzles/puzzlehunt-model';
 import '../register-env/index.js';
 
-export function generatePuzzleEmbed(puzzle: Puzzle): EmbedContent {
+export function generatePuzzleEmbed(puzzle: DocumentPuzzle): EmbedContent {
 	const embed = new EmbedBuilder().setTitle(puzzle.name).addFields({
 		name: 'Puzzle Page',
 		value: `[Link](${puzzle.url})`,
@@ -47,12 +52,11 @@ export interface EmbedContent {
 }
 
 export function generateRoundEmbed(
-	round: Round,
-	puzzlehunt: IPuzzlehunt
+	round: DocumentNode,
+	view: PuzzlehuntView
 ): EmbedContent {
-	const puzzles = Array.from(puzzlehunt.puzzles).filter(
-		(puzzle) =>
-			puzzle.roundId === round.id && puzzle.discordInfo !== undefined
+	const puzzles = view.puzzles.filter(
+		(puzzle) => puzzle.parentId === round.id && puzzle.discord !== undefined
 	);
 
 	const descriptionLines = [
@@ -65,7 +69,7 @@ export function generateRoundEmbed(
 					puzzle.sheetId
 						? `[Spreadsheet](https://docs.google.com/spreadsheets/d/${puzzle.sheetId})`
 						: 'No spreadsheet'
-				} | <#${puzzle.discordInfo.channelId}>${
+				} | <#${puzzle.discord.channelId}>${
 					puzzle.answer === undefined
 						? ''
 						: ` | SOLVED: ${puzzle.answer}`
@@ -89,11 +93,12 @@ export function generateRoundEmbed(
 	const embed = new EmbedBuilder()
 		.setTitle('List of Puzzles')
 		.setDescription(description);
-	if (round.roundId) {
+	if (round.parentId !== null) {
 		embed.addFields({
 			name: 'Parent Round',
 			value: `<#${
-				puzzlehunt.getRound(round.roundId).discordInfo.indexChannelId
+				view.rounds.find((parent) => parent.id === round.parentId)
+					.discord.indexChannelId
 			}>`,
 		});
 	}

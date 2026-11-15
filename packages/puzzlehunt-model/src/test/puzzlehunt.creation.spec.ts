@@ -79,7 +79,10 @@ describe('Puzzlehunts', () => {
 			await loadExistingPuzzlehunt(client, id);
 		disposers.push(disposer2);
 		const puzzlehunt2ChangedP = new Promise((resolve) => {
-			puzzlehunt2.once('viewChange', resolve);
+			const unsubscribe = puzzlehunt2.subscribeChanges((event) => {
+				unsubscribe();
+				resolve(event);
+			});
 		});
 		puzzlehunt.addRound('round 1', 'url 1');
 		await puzzlehunt2ChangedP;

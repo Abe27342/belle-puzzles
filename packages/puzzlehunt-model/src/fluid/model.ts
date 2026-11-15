@@ -1,17 +1,13 @@
 import { SharedTree } from '@fluid-experimental/tree';
 import type { IFluidContainer } from '@fluidframework/fluid-static';
 import { HuntCommandError } from '../document.js';
-import type {
-	DocumentDiscordAssociation,
-	DocumentNode,
-	DocumentPuzzle,
-} from '../document.js';
+import type { DocumentNode, DocumentPuzzle } from '../document.js';
 import type { IPuzzlehunt, Puzzle, Round } from '../puzzlehunt.js';
-import { projectPuzzlehuntView } from '../model/types.js';
 import type {
 	IPuzzlehuntModel,
 	PuzzlehuntRound,
 	PuzzlehuntView,
+	PuzzlehuntChangeEvent,
 } from '../model/types.js';
 
 /** Adapt the existing Fluid model; preserve its existing domain behavior. */
@@ -30,67 +26,7 @@ export class FluidPuzzlehuntModel implements IPuzzlehuntModel {
 	}
 
 	get view(): PuzzlehuntView {
-		const nodes: Record<string, DocumentNode> = {};
-		const visit = (
-			round: Round,
-			parentId: string | null,
-			position: number
-		) => {
-			const id = this.tree.convertToStableNodeId(round.id);
-			nodes[id] = {
-				id,
-				type: 'round',
-				name: round.name,
-				url: round.url,
-				parentId,
-				position,
-				...(round.discordInfo
-					? {
-							// TODO: Cast here is because discord association types are currently duplicated with only one copy being branded.
-							discord:
-								round.discordInfo as DocumentDiscordAssociation,
-					  }
-					: {}),
-			};
-			round.children.forEach((child, index) => {
-				if (child.type === 'round') {
-					visit(child, id, index);
-				} else {
-					const puzzleId = this.tree.convertToStableNodeId(child.id);
-					nodes[puzzleId] = {
-						id: puzzleId,
-						type: 'puzzle',
-						name: child.name,
-						url: child.url,
-						parentId: id,
-						position: index,
-						...(child.answer === undefined
-							? {}
-							: { answer: child.answer }),
-						...(child.status === undefined
-							? {}
-							: { status: child.status }),
-						...(child.lastStatusUpdate === undefined
-							? {}
-							: { lastStatusUpdate: child.lastStatusUpdate }),
-						...(child.sheetId === undefined
-							? {}
-							: { sheetId: child.sheetId }),
-						...(child.discordInfo
-							? {
-									// TODO: Cast here is because discord association types are currently duplicated with only one copy being branded.
-									discord:
-										child.discordInfo as DocumentDiscordAssociation,
-							  }
-							: {}),
-					};
-				}
-			});
-		};
-		Array.from(this.hunt.rounds)
-			.filter((round) => round.roundId === undefined)
-			.forEach((round, position) => visit(round, null, position));
-		return projectPuzzlehuntView({ nodes });
+		return this.hunt.view;
 	}
 
 	get rounds(): readonly PuzzlehuntRound[] {
@@ -201,14 +137,20 @@ export class FluidPuzzlehuntModel implements IPuzzlehuntModel {
 
 	subscribe(listener: () => void): () => void {
 		const notify = () => listener();
-		this.hunt.on('viewChange', notify);
+		const unsubscribe = this.hunt.subscribeChanges(notify);
 		this.container.on('dirty', notify);
 		this.container.on('saved', notify);
 		return () => {
-			this.hunt.off('viewChange', notify);
+			unsubscribe();
 			this.container.off('dirty', notify);
 			this.container.off('saved', notify);
 		};
+	}
+
+	subscribeChanges(
+		listener: (event: PuzzlehuntChangeEvent) => void
+	): () => void {
+		return this.hunt.subscribeChanges(listener);
 	}
 
 	flush(): Promise<void> {

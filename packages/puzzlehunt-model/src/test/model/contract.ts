@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { IPuzzlehuntModel, PuzzlehuntView } from '../../model/types.js';
+import type {
+	IPuzzlehuntModel,
+	PuzzlehuntView,
+	PuzzlehuntChangeEvent,
+} from '../../model/types.js';
 import { HuntCommandError } from '../../document.js';
 
 /**
@@ -606,6 +610,183 @@ export function puzzlehuntModelContract(
 				await fixture.synchronize();
 				expect(model.getPuzzle(puzzle.id).answer).toBe('SECOND');
 				expect(other.getPuzzle(puzzle.id).answer).toBe('SECOND');
+			});
+		});
+
+		describe('subscribeChanges', () => {
+			it.each(['addPuzzles', 'addRounds'] as const)(
+				'batches %s and does not repeat unchanged acknowledgements',
+				async (operation) => {
+					const root = model.addRound('Root', '');
+					await model.flush();
+					const events: PuzzlehuntChangeEvent[] = [];
+					model.subscribeChanges((event) => events.push(event));
+					model[operation](
+						[
+							{ name: 'A', url: 'a' },
+							{ name: 'B', url: 'b' },
+						],
+						root
+					);
+					expect(events).toHaveLength(1);
+					expect(events[0].before.rounds[0].children).toEqual([]);
+					expect(
+						events[0].changes.map((change) => change.type)
+					).toEqual(['node-added', 'node-added']);
+					expect(
+						events[0].after.rounds[0].children.map(
+							(node) => node.name
+						)
+					).toEqual(['A', 'B']);
+					expect(
+						events[0].changes.every(
+							(change) =>
+								change.type === 'node-added' &&
+								typeof change.node.id === 'string'
+						)
+					).toBe(true);
+					await model.flush();
+					expect(events).toHaveLength(1);
+				}
+			);
+
+			it('reports full values once for property, association and status edits', async () => {
+				const { puzzle } = seed();
+				await model.flush();
+				const events: PuzzlehuntChangeEvent[] = [];
+				model.subscribeChanges((event) => events.push(event));
+				model.changeName(puzzle, 'Renamed');
+				model.changeUrl(puzzle, 'updated-url');
+				model.augmentWithGoogleSheet(puzzle, 'sheet');
+				model.solve(puzzle.id, 'ANSWER');
+				model.updateStatus(puzzle, 'Working');
+				expect(events).toHaveLength(5);
+				for (const event of events) {
+					expect(event.changes).toHaveLength(1);
+					expect(event.changes[0]).toMatchObject({
+						type: 'node-changed',
+						before: {
+							id: puzzle.id,
+							type: 'puzzle',
+							parentId: puzzle.parentId,
+						},
+						after: {
+							id: puzzle.id,
+							type: 'puzzle',
+							parentId: puzzle.parentId,
+						},
+					});
+				}
+				expect(events[4].changes[0]).toMatchObject({
+					before: {
+						name: 'Renamed',
+						url: 'updated-url',
+						sheetId: 'sheet',
+						answer: 'ANSWER',
+					},
+					after: {
+						name: 'Renamed',
+						url: 'updated-url',
+						status: 'Working',
+						lastStatusUpdate: expect.any(Number),
+					},
+				});
+				await model.flush();
+			});
+
+			it('keeps removal subtrees and prior association values historical', async () => {
+				const { round, puzzle } = seed();
+				const child = model.addRound('Child', '', round);
+				const nested = model.addPuzzle('Nested', '', child);
+				model.augmentWithGoogleSheet(nested, 'retained-sheet');
+				await model.flush();
+				const events: PuzzlehuntChangeEvent[] = [];
+				const unsubscribe = model.subscribeChanges((event) =>
+					events.push(event)
+				);
+				model.delete(round);
+				expect(events).toHaveLength(1);
+				const saved = JSON.stringify(events[0]);
+				expect(events[0].after).toEqual({ rounds: [], puzzles: [] });
+				expect(events[0].changes.map((change) => change.type)).toEqual(
+					Array(4).fill('node-removed')
+				);
+				expect(
+					events[0].changes
+						.map(
+							(change) =>
+								change.type === 'node-removed' && change.node.id
+						)
+						.sort()
+				).toEqual([round.id, child.id, puzzle.id, nested.id].sort());
+				expect(
+					events[0].before.puzzles.find(
+						(node) => node.id === nested.id
+					)?.sheetId
+				).toBe('retained-sheet');
+				await model.flush();
+				unsubscribe();
+				model.addRound('Later', '');
+				await model.flush();
+				expect(events).toHaveLength(1);
+				expect(JSON.stringify(events[0])).toBe(saved);
+			});
+
+			it('reports moves with old and new parent views', async () => {
+				const { round, puzzle } = seed();
+				const sibling = model.addPuzzle('Sibling', '', round);
+				const destination = model.addRound('Destination', '');
+				await model.flush();
+				const events: PuzzlehuntChangeEvent[] = [];
+				model.subscribeChanges((event) => events.push(event));
+				model.move(puzzle, destination);
+				expect(events).toHaveLength(1);
+				expect(events[0].changes).toEqual(
+					expect.arrayContaining([
+						{
+							type: 'node-changed',
+							before: expect.objectContaining({
+								id: puzzle.id,
+								parentId: round.id,
+								position: 0,
+							}),
+							after: expect.objectContaining({
+								id: puzzle.id,
+								parentId: destination.id,
+								position: 0,
+							}),
+						},
+					])
+				);
+				expect(
+					events[0].before.rounds
+						.find((node) => node.id === round.id)
+						?.children.map((node) => node.id)
+				).toEqual([puzzle.id, sibling.id]);
+				expect(
+					events[0].after.rounds
+						.find((node) => node.id === destination.id)
+						?.children.map((node) => node.id)
+				).toEqual([puzzle.id]);
+				await model.flush();
+			});
+
+			it('normalizes remote edits and suppresses no-op assignments', async () => {
+				const { puzzle } = seed();
+				const other = await reload();
+				const events: PuzzlehuntChangeEvent[] = [];
+				model.subscribeChanges((event) => events.push(event));
+				model.changeName(puzzle, puzzle.name);
+				await model.flush();
+				expect(events).toEqual([]);
+				other.changeName(other.getPuzzle(puzzle.id), 'Remote');
+				await fixture.synchronize();
+				expect(events).toHaveLength(1);
+				expect(events[0].changes[0]).toMatchObject({
+					type: 'node-changed',
+					before: { id: puzzle.id, name: puzzle.name },
+					after: { id: puzzle.id, name: 'Remote' },
+				});
 			});
 		});
 
