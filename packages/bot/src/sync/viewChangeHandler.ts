@@ -3,6 +3,8 @@ import type { PuzzlehuntContext } from '../puzzlehunt-context.js';
 import type {
 	PuzzlehuntChangeEvent,
 	DocumentNode,
+	Round,
+	Puzzle,
 } from '@belle-puzzles/puzzlehunt-model';
 import {
 	createDiscordAssociation,
@@ -16,7 +18,7 @@ export function makeViewChangeHandler(
 	context: PuzzlehuntContext,
 	getGuild: () => Guild
 ): (event: PuzzlehuntChangeEvent) => Promise<void> {
-	const resolveNode = (node: DocumentNode) =>
+	const resolveNode = (node: DocumentNode): Puzzle | Round =>
 		node.type === 'puzzle'
 			? context.puzzlehunt.getPuzzle(node.id)
 			: context.puzzlehunt.getRound(node.id);
@@ -25,20 +27,19 @@ export function makeViewChangeHandler(
 		const nodes = new Map<string, DocumentNode>(
 			[...after.rounds, ...after.puzzles].map((node) => [node.id, node])
 		);
-		const channels = new Set<string>();
-		const roles = new Set<string>();
+		const channelsToSync = new Set<string>(/* document node id_s */);
+		const rolesToSync = new Set<string>(/* document node id_s */);
 		// TODO: Need a task queue to ensure concurrent tasks don't cause issues. If there is overlap between create/delete
 		// current code likely can into issues.
 		const tasks: Promise<void>[] = [];
-		// TODO: Handle channel drag n drop
 		const refreshParent = (node: DocumentNode) => {
 			if (node.parentId !== null) {
-				channels.add(node.parentId);
+				channelsToSync.add(node.parentId);
 			}
 		};
-		// Random musing, but a lot of this code might be cleaner by a proper dependency system.
+
 		const refreshRoles = (node: DocumentNode) => {
-			roles.add(node.id);
+			rolesToSync.add(node.id);
 			for (const child of after.rounds.find(
 				(round) => round.id === node.id
 			)?.children ?? []) {
@@ -53,10 +54,10 @@ export function makeViewChangeHandler(
 				tasks.push(removeDiscordAssociation(guild, change.node));
 				refreshParent(change.node);
 			} else if (change.type === 'node-added') {
-				channels.add(change.node.id);
+				channelsToSync.add(change.node.id);
 				refreshParent(change.node);
 			} else {
-				channels.add(change.after.id);
+				channelsToSync.add(change.after.id);
 				refreshParent(change.before);
 				refreshParent(change.after);
 				if (
@@ -70,10 +71,14 @@ export function makeViewChangeHandler(
 					change.before.discord?.indexChannelId !==
 					change.after.discord?.indexChannelId
 				) {
+					// Embeds have a reference to their parent round.
+					// This ensures that reference remains valid on index channel changes
+					// (though I don't think user interaction flows ever currently cause an index channel
+					// to be recreated)
 					for (const round of after.rounds.filter(
 						(round) => round.parentId === change.after.id
 					)) {
-						channels.add(round.id);
+						channelsToSync.add(round.id);
 					}
 				}
 			}
@@ -113,13 +118,13 @@ export function makeViewChangeHandler(
 
 		await Promise.all([
 			...tasks,
-			...Array.from(channels, (id) => {
+			...Array.from(channelsToSync, (id) => {
 				const node = nodes.get(id);
 				return node?.discord
 					? syncChannel(context, guild, resolveNode(node))
 					: undefined;
 			}),
-			...Array.from(roles, (id) => {
+			...Array.from(rolesToSync, (id) => {
 				const node = nodes.get(id);
 				return node?.discord
 					? syncRoles(context, guild, resolveNode(node))

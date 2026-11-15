@@ -624,7 +624,7 @@ class Puzzlehunt implements IPuzzlehunt {
 		return projectPuzzlehuntView({ nodes });
 	}
 
-	private nativeId(id: NodeId | string): NodeId {
+	#normalizeId(id: NodeId | string): NodeId {
 		// Accept existing numeric menu values as well as stable IDs from new embeds.
 		if (typeof id !== 'string') {
 			return id;
@@ -811,7 +811,7 @@ class Puzzlehunt implements IPuzzlehunt {
 		const { channel, role, indexChannel } = discordInfo as DiscordRoundInfo;
 		const channelId = typeof channel === 'string' ? channel : channel.id;
 		const roleId = typeof role === 'string' ? role : role.id;
-		const id = this.nativeId(obj.id);
+		const id = this.#normalizeId(obj.id);
 		this.checkout.openEdit();
 		this.checkout.applyChanges(
 			...replace(makeString(channelId), {
@@ -846,18 +846,24 @@ class Puzzlehunt implements IPuzzlehunt {
 	): void {
 		this.checkout.applyEdit(
 			...replace(makeString(sheetId), {
-				parent: this.nativeId(puzzle.id),
+				parent: this.#normalizeId(puzzle.id),
 				label: traitLabels.sheetId,
 			})
 		);
 	}
 
 	public getRound(id: NodeId | string): Round {
-		return new RoundHandle(this.checkout.currentView, this.nativeId(id));
+		return new RoundHandle(
+			this.checkout.currentView,
+			this.#normalizeId(id)
+		);
 	}
 
 	public getPuzzle(id: NodeId | string): Puzzle {
-		return new PuzzleHandle(this.checkout.currentView, this.nativeId(id));
+		return new PuzzleHandle(
+			this.checkout.currentView,
+			this.#normalizeId(id)
+		);
 	}
 
 	public get rounds(): Iterable<Round> {

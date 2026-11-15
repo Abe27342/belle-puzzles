@@ -145,7 +145,7 @@ const createRoundChannels = async (
 export async function syncRoles(
 	context: PuzzlehuntContext,
 	guild: Guild,
-	puzzleObj: Puzzle | Round
+	puzzleObj: Round | Puzzle
 ): Promise<void> {
 	const channel = guild.channels.cache.get(puzzleObj.discordInfo.channelId);
 	const permissionOverwrites = getViewPermissions(
@@ -392,6 +392,7 @@ export async function resyncServerFull(
 	const puzzles = Array.from(puzzlehunt.puzzles);
 	// First ensure all sheets and discord channels are created
 	// Provision rounds in parallel before creating puzzle resources.
+	// This ensures puzzle channels can be parented under their round's category.
 	await Promise.all(
 		Array.from(puzzlehunt.rounds)
 			.filter((round) => !round.discordInfo)
