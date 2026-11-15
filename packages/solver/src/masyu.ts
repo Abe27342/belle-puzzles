@@ -546,6 +546,22 @@ B.W...
 ....B.
 `);
 
+// this is actually a shingoki
+// https://puzzling.stackexchange.com/questions/104786/shingoki-an-exploration-of-unicode
+// puzzle = MasyuPuzzle.fromTextGrid(`
+// ..........B
+// ...WBW.....
+// B....B.BB..
+// ..W..B...W.
+// W..B......B
+// ..BB.B....B
+// .W..B..W...
+// ....BBB.W..
+// ....W......
+// ....B...BBW
+// B..........
+// `);
+
 const result = await puzzle.solve();
 console.log(JSON.stringify(result));
 
