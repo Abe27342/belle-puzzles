@@ -76,55 +76,82 @@ describe('Resource provisioning', () => {
 	}
 
 	it.each(['change batch', 'full resync'] as const)(
-		'provisions parents before children during %s without modifying the captured view',
+		'provisions rounds concurrently before puzzles during %s without modifying the captured view',
 		async (operation) => {
 			const { context, guild, serverState } = await createContext();
 			const { puzzlehunt } = context;
-			const before = puzzlehunt.view;
 			const root = puzzlehunt.addRound('Root', '');
-			const nested = puzzlehunt.addRound('Nested', '', root);
-			puzzlehunt.addPuzzle('Puzzle', '', nested);
+			await createDiscordAssociation(
+				context,
+				guild,
+				puzzlehunt.view.rounds[0]
+			);
+			const before = puzzlehunt.view;
+			const first = puzzlehunt.addRound('First', '', root);
+			const second = puzzlehunt.addRound('Second', '', root);
+			puzzlehunt.addPuzzle('First puzzle', '', first);
+			puzzlehunt.addPuzzle('Second puzzle', '', second);
 			const after = puzzlehunt.view;
 			const saved = JSON.stringify(after);
 
-			if (operation === 'change batch') {
-				await makeViewChangeHandler(
-					context,
-					() => guild
-				)({
-					before,
-					after,
-					changes: [...after.rounds, ...after.puzzles].map(
-						(node) => ({
+			const createRole = guild.roles.create.bind(guild.roles);
+			const createRoleSpy = vi.spyOn(guild.roles, 'create');
+			createRoleSpy.mockImplementationOnce(async (options) => {
+				await Promise.resolve();
+				expect(createRoleSpy).toHaveBeenNthCalledWith(
+					2,
+					expect.objectContaining({ name: 'Second' })
+				);
+				return createRole(options);
+			});
+			try {
+				if (operation === 'change batch') {
+					await makeViewChangeHandler(
+						context,
+						() => guild
+					)({
+						before,
+						after,
+						changes: [
+							...after.rounds.slice(1),
+							...after.puzzles,
+						].map((node) => ({
 							type: 'node-added',
 							node,
-						})
-					),
-				});
-			} else {
-				await resyncServerFull(context, guild);
+						})),
+					});
+				} else {
+					await resyncServerFull(context, guild);
+				}
+			} finally {
+				createRoleSpy.mockRestore();
 			}
 
 			const current = puzzlehunt.view;
 			const rootAssociation = current.rounds[0].discord;
-			const parentAssociation = current.rounds[1].discord;
-			const puzzle = current.puzzles[0];
-			const puzzleChannel = serverState.findChannelBy(
-				'id',
-				puzzle.discord.channelId
-			);
-			expect(puzzleChannel.parent_id).toBe(parentAssociation.channelId);
-			expect(
-				puzzleChannel.permission_overwrites.map(
-					(overwrite) => overwrite.id
-				)
-			).toEqual(
-				expect.arrayContaining([
-					rootAssociation.roleId,
-					parentAssociation.roleId,
-				])
-			);
-			expect(puzzle.sheetId).toBe('mock-google-sheet-id');
+			for (const puzzle of current.puzzles) {
+				const parentAssociation = current.rounds.find(
+					(round) => round.id === puzzle.parentId
+				).discord;
+				const puzzleChannel = serverState.findChannelBy(
+					'id',
+					puzzle.discord.channelId
+				);
+				expect(puzzleChannel.parent_id).toBe(
+					parentAssociation.channelId
+				);
+				expect(
+					puzzleChannel.permission_overwrites.map(
+						(overwrite) => overwrite.id
+					)
+				).toEqual(
+					expect.arrayContaining([
+						rootAssociation.roleId,
+						parentAssociation.roleId,
+					])
+				);
+				expect(puzzle.sheetId).toBe('mock-google-sheet-id');
+			}
 			expect(JSON.stringify(after)).toBe(saved);
 		}
 	);
@@ -167,6 +194,55 @@ describe('Resource provisioning', () => {
 		);
 		expect(permissionRoles).toContain(currentAssociation.roleId);
 		expect(permissionRoles).not.toContain(oldAssociation.roleId);
+		expect(JSON.stringify(after)).toBe(saved);
+	});
+
+	it('uses current ancestor roles when a queued change batch contains older associations', async () => {
+		const { context, guild, serverState } = await createContext();
+		const { puzzlehunt } = context;
+		const root = puzzlehunt.addRound('Root', '');
+		await createDiscordAssociation(
+			context,
+			guild,
+			puzzlehunt.view.rounds[0]
+		);
+		puzzlehunt.addPuzzle('Puzzle', '', root);
+		await createDiscordAssociation(
+			context,
+			guild,
+			puzzlehunt.view.puzzles[0]
+		);
+		const before = puzzlehunt.view;
+		await createDiscordAssociation(context, guild, before.rounds[0]);
+		const after = puzzlehunt.view;
+		const saved = JSON.stringify(after);
+		await createDiscordAssociation(context, guild, after.rounds[0]);
+		const currentAssociation = puzzlehunt.view.rounds[0].discord;
+
+		await makeViewChangeHandler(
+			context,
+			() => guild
+		)({
+			before,
+			after,
+			changes: [
+				{
+					type: 'node-changed',
+					before: before.rounds[0],
+					after: after.rounds[0],
+				},
+			],
+		});
+
+		const channel = serverState.findChannelBy(
+			'id',
+			after.puzzles[0].discord.channelId
+		);
+		const permissionRoles = channel.permission_overwrites.map(
+			(overwrite) => overwrite.id
+		);
+		expect(permissionRoles).toContain(currentAssociation.roleId);
+		expect(permissionRoles).not.toContain(after.rounds[0].discord.roleId);
 		expect(JSON.stringify(after)).toBe(saved);
 	});
 });
@@ -718,7 +794,7 @@ describe('Sync', () => {
 			}
 		});
 
-		it('updates moved rounds and all descendant permissions without consulting live ancestry', async () => {
+		it('updates moved rounds and all descendant permissions using current ancestry', async () => {
 			const guild = mockDiscord.getClient().guilds.cache.at(0);
 			const context = await getHuntContext(client, guild);
 			const before = context.puzzlehunt.view;
@@ -735,6 +811,9 @@ describe('Sync', () => {
 			};
 			const after = replacing(before, [movedAfter]);
 			const handler = makeViewChangeHandler(context, () => guild);
+			const viewSpy = vi
+				.spyOn(context.puzzlehunt, 'view', 'get')
+				.mockReturnValue(after);
 			try {
 				await handler({
 					before,
@@ -764,6 +843,7 @@ describe('Sync', () => {
 					value: channelRef(destination.discord.indexChannelId),
 				});
 			} finally {
+				viewSpy.mockRestore();
 				await handler({
 					before: after,
 					after: before,

@@ -145,15 +145,13 @@ const createRoundChannels = async (
 export async function syncRoles(
 	context: PuzzlehuntContext,
 	guild: Guild,
-	puzzleObj: DocumentNode,
-	view: PuzzlehuntView = context.puzzlehunt.view
+	puzzleObj: DocumentNode
 ): Promise<void> {
 	const channel = guild.channels.cache.get(puzzleObj.discord.channelId);
 	const permissionOverwrites = getViewPermissions(
 		context,
 		puzzleObj,
-		puzzleObj.discord.roleId,
-		view
+		puzzleObj.discord.roleId
 	);
 	assert(
 		channel.type === ChannelType.GuildText ||
@@ -347,14 +345,14 @@ function findEmbed(channel: TextChannel): Message {
 	);
 }
 
-/** Creation uses current state; event-driven role updates pass their historical view explicitly. */
+/** Permission updates resolve ancestor roles from the current model. */
 function getViewPermissions(
 	context: PuzzlehuntContext,
 	puzzleObj: DocumentNode,
-	puzzleObjRole: Role | string,
-	view: PuzzlehuntView = context.puzzlehunt.view
+	puzzleObjRole: Role | string
 ): OverwriteData[] {
 	const { puzzlehunt, allPuzzlesRoleId } = context;
+	const view = puzzlehunt.view;
 	const allowRoles = [puzzleObjRole, allPuzzlesRoleId];
 	for (let parentId = puzzleObj.parentId; parentId !== null; ) {
 		const parent = getRound(view, parentId);
@@ -400,12 +398,12 @@ export async function resyncServerFull(
 	const { puzzlehunt } = context;
 	const puzzles = puzzlehunt.view.puzzles;
 	// First ensure all sheets and discord channels are created
-	// Rounds are in depth-first order, so each parent's association is available to its children.
-	for (const round of puzzlehunt.view.rounds) {
-		if (!round.discord) {
-			await createDiscordAssociation(context, guild, round);
-		}
-	}
+	// Provision rounds in parallel before creating puzzle resources.
+	await Promise.all(
+		puzzlehunt.view.rounds
+			.filter((round) => !round.discord)
+			.map((round) => createDiscordAssociation(context, guild, round))
+	);
 	await Promise.all([
 		...puzzles
 			.filter((obj) => !obj.discord)

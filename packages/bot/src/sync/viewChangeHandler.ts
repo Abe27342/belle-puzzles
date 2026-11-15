@@ -82,12 +82,12 @@ export function makeViewChangeHandler(
 				.filter((change) => change.type === 'node-added')
 				.map((change) => change.node.id)
 		);
-		// Provision parents before their children, including whole added subtrees.
-		for (const node of after.rounds.filter((node) => added.has(node.id))) {
-			if (!node.discord) {
-				await createDiscordAssociation(context, guild, node);
-			}
-		}
+		// Provision rounds in parallel before creating puzzle resources.
+		await Promise.all(
+			after.rounds
+				.filter((node) => added.has(node.id) && !node.discord)
+				.map((node) => createDiscordAssociation(context, guild, node))
+		);
 		for (const node of after.puzzles.filter((node) => added.has(node.id))) {
 			if (!node.discord) {
 				tasks.push(createDiscordAssociation(context, guild, node));
@@ -114,7 +114,7 @@ export function makeViewChangeHandler(
 			...Array.from(roles, (id) => {
 				const node = nodes.get(id);
 				return node?.discord
-					? syncRoles(context, guild, node, after)
+					? syncRoles(context, guild, node)
 					: undefined;
 			}),
 		]);
