@@ -1,2 +1,8 @@
 packages:
-    - 'packages/**'
+  - packages/**
+
+onlyBuiltDependencies:
+  - '@embedded-postgres/windows-x64'
+  - classic-level
+  - esbuild
+  - keytar

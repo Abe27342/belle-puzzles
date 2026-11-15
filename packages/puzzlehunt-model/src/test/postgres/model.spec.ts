@@ -21,28 +21,69 @@ puzzlehuntModelContract(
 		};
 		await database.reset(scope);
 		const model = await PuzzlehuntModel.load(database.store, scope);
-		const models = [model];
+		const hunts = new Map([
+			['Contract test hunt', { scope, models: [model] }],
+		]);
 		return {
 			model,
-			async connect() {
+			async createModel(huntName = 'Contract test hunt') {
+				const hunt = hunts.get(huntName);
+				if (hunt === undefined) {
+					throw new Error(`Unknown hunt: ${huntName}`);
+				}
 				const connected = await PuzzlehuntModel.load(
 					database.store,
-					scope
+					hunt.scope
 				);
-				models.push(connected);
+				hunt.models.push(connected);
 				return connected;
 			},
-			async synchronize() {
-				await Promise.all(models.map((model) => model.flush()));
-				await Promise.all(models.map((model) => model.refresh()));
-				for (const other of models) {
+			async createHunt(huntName) {
+				if (hunts.has(huntName)) {
+					throw new Error(`Hunt already exists: ${huntName}`);
+				}
+				const independentScope = {
+					...scope,
+					huntId: crypto.randomUUID(),
+				};
+				await database.pool.query(
+					`INSERT INTO hunts (id, guild_id, name, schema_version)
+					 VALUES ($1, $2, $3, 1)`,
+					[
+						independentScope.huntId,
+						independentScope.guildId,
+						huntName,
+					]
+				);
+				const independent = await PuzzlehuntModel.load(
+					database.store,
+					independentScope
+				);
+				hunts.set(huntName, {
+					scope: independentScope,
+					models: [independent],
+				});
+				return independent;
+			},
+			async synchronize(huntName = 'Contract test hunt') {
+				const hunt = hunts.get(huntName);
+				if (hunt === undefined) {
+					throw new Error(`Unknown hunt: ${huntName}`);
+				}
+				await Promise.all(hunt.models.map((model) => model.flush()));
+				await Promise.all(hunt.models.map((model) => model.refresh()));
+				for (const other of hunt.models) {
 					expect(comparableView(other.view)).toEqual(
-						comparableView(model.view)
+						comparableView(hunt.models[0].view)
 					);
 				}
 			},
 			async close() {
-				await Promise.all(models.map((model) => model.flush()));
+				await Promise.all(
+					[...hunts.values()].flatMap(({ models }) =>
+						models.map((model) => model.flush())
+					)
+				);
 			},
 		};
 	}
