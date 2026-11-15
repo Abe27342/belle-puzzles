@@ -15,6 +15,9 @@ export interface PuzzlehuntView {
 	readonly puzzles: readonly DocumentPuzzle[];
 }
 
+/**
+ * Changed nodes contain full old/new values.
+ */
 export type PuzzlehuntNodeChange =
 	| { readonly type: 'node-added'; readonly node: DocumentNode }
 	| { readonly type: 'node-removed'; readonly node: DocumentNode }
@@ -24,9 +27,11 @@ export type PuzzlehuntNodeChange =
 			readonly after: DocumentNode;
 	  };
 
-/** One visible transition, including optimistic edits and rollback/rebase corrections.
- * Views are historical read-only values, not live handles or durable integration work.
- * Acknowledgement and pending/error-only changes do not repeat unchanged state.
+/**
+ * Raised when the backing data model changes. May include local optimistic edits.
+ * Each affected node appears once; whole added or removed subtrees include every domain node.
+ * Views are stable historical read-only values, including derived round children,
+ * even after the live model advances.
  */
 export interface PuzzlehuntChangeEvent {
 	readonly before: PuzzlehuntView;
@@ -42,6 +47,7 @@ export interface IPuzzlehunt<
 > {
 	readonly rounds: Iterable<TRound>;
 	readonly puzzles: Iterable<TPuzzle>;
+	/** Observe changes to the puzzlehunt model. Returns an unsubscribe function. */
 	subscribeChanges(
 		listener: (event: PuzzlehuntChangeEvent) => void
 	): () => void;
