@@ -9,6 +9,7 @@ import {
 	SharedTree,
 	StablePlace,
 	StableRange,
+	StableNodeId,
 	TraitLabel,
 	TreeView,
 	TreeNodeHandle,
@@ -20,9 +21,16 @@ import {
 import { waitContainerToCatchUp } from '@fluidframework/container-loader';
 import { AzureClient } from '@fluidframework/azure-client';
 import { IFluidContainer } from '@fluidframework/fluid-static';
-import { TypedEventEmitter } from '@fluidframework/common-utils';
-import { IEvent } from '@fluidframework/common-definitions';
 import type { IPuzzlehunt as SharedPuzzlehunt } from './model/types.js';
+import type { PuzzlehuntChangeEvent, PuzzlehuntView } from './model/types.js';
+import { projectPuzzlehuntView } from './model/types.js';
+import { diffPuzzlehuntViews } from './model/changes.js';
+import { snowflake } from './document.js';
+import type {
+	DocumentNode,
+	DocumentPuzzle,
+	DocumentRound,
+} from './document.js';
 
 function assert(condition: boolean, message: string): asserts condition {
 	if (!condition) {
@@ -116,13 +124,6 @@ export const loadExistingPuzzlehunt = async (
 	};
 };
 
-export interface IPuzzlehuntEvents extends IEvent {
-	(
-		event: 'viewChange',
-		listener: (before: TreeView, after: TreeView) => void
-	): void;
-}
-
 export interface DiscordPuzzleInfo {
 	channel: { /* channel ID */ id: string } | string;
 	role: { /* role ID */ id: string } | string;
@@ -132,11 +133,23 @@ export interface DiscordRoundInfo extends DiscordPuzzleInfo {
 	indexChannel: { /* channel ID */ id: string } | string;
 }
 
-export interface IPuzzlehunt
-	extends TypedEventEmitter<IPuzzlehuntEvents>,
-		SharedPuzzlehunt<Puzzle, Round> {
-	augmentWithDiscord(puzzle: Puzzle, discordInfo: DiscordPuzzleInfo): void;
-	augmentWithDiscord(round: Round, discordInfo: DiscordRoundInfo): void;
+export interface IPuzzlehunt extends SharedPuzzlehunt<Puzzle, Round> {
+	/** Plain stable-ID view, shared with the Fluid model adapter and event consumers. */
+	readonly view: PuzzlehuntView;
+	augmentWithDiscord(
+		puzzle: Puzzle | DocumentPuzzle,
+		discordInfo: DiscordPuzzleInfo
+	): void;
+	augmentWithDiscord(
+		round: Round | DocumentRound,
+		discordInfo: DiscordRoundInfo
+	): void;
+	augmentWithGoogleSheet(
+		puzzle: Puzzle | DocumentPuzzle,
+		sheetId: string
+	): void;
+	getRound(id: NodeId | string): Round;
+	getPuzzle(id: NodeId | string): Puzzle;
 	get guildId(): string;
 	setGuildId(id: string): void;
 	get loggingChannelIds(): LoggingChannelIds | undefined;
@@ -149,13 +162,13 @@ export interface LoggingChannelIds {
 	puzzleStatusUpdate: string;
 }
 
-export interface StringNode {
+interface StringNode {
 	type: 'string';
 	value: string;
 	parentage: TraitLocation;
 }
 
-export interface NumberNode {
+interface NumberNode {
 	type: 'number';
 	value: number;
 	parentage: TraitLocation;
@@ -489,16 +502,15 @@ const getHandle = (
 	}
 };
 
-class Puzzlehunt
-	extends TypedEventEmitter<IPuzzlehuntEvents>
-	implements IPuzzlehunt
-{
+class Puzzlehunt implements IPuzzlehunt {
 	private readonly hunt: SharedTree;
 	private readonly checkout: EagerCheckout;
 	private readonly guildInfoMap: SharedMap;
+	private readonly changeListeners = new Set<
+		(event: PuzzlehuntChangeEvent) => void
+	>();
 
 	constructor(container: IFluidContainer) {
-		super();
 		const { hunt, guildInfo } = container.initialObjects as {
 			guildInfo: SharedMap;
 			hunt: SharedTree;
@@ -510,9 +522,117 @@ class Puzzlehunt
 			console.log('EagerCheckout error:', err)
 		);
 		this.checkout.on('viewChange', (before: TreeView, after: TreeView) => {
-			this.emit('viewChange', before, after, getHandle);
+			// Raw leaf/structural deltas stay private; domain projection also captures
+			// sibling positions and every member of an added/removed subtree.
+			const delta = before.delta(after);
+			if (
+				delta.added.length === 0 &&
+				delta.removed.length === 0 &&
+				delta.changed.length === 0
+			) {
+				return;
+			}
+			const event = diffPuzzlehuntViews(
+				this.projectView(before),
+				this.projectView(after)
+			);
+			if (event.changes.length > 0) {
+				for (const listener of this.changeListeners) {
+					listener(event);
+				}
+			}
 		});
 		this.guildInfoMap = guildInfo;
+	}
+
+	public subscribeChanges(
+		listener: (event: PuzzlehuntChangeEvent) => void
+	): () => void {
+		this.changeListeners.add(listener);
+		return () => this.changeListeners.delete(listener);
+	}
+
+	public get view(): PuzzlehuntView {
+		return this.projectView(this.checkout.currentView);
+	}
+
+	private projectView(view: TreeView): PuzzlehuntView {
+		const nodes: Record<string, DocumentNode> = {};
+		const visit = (
+			nativeId: NodeId,
+			parentId: string | null,
+			position: number
+		): void => {
+			const node = getHandle(view, nativeId);
+			assert(
+				node?.type === 'round' || node?.type === 'puzzle',
+				'Expected a domain node.'
+			);
+			const id = this.hunt.convertToStableNodeId(nativeId);
+			const discordInfo = node.discordInfo;
+			const common = {
+				id,
+				name: node.name,
+				url: node.url,
+				parentId,
+				position,
+				...(discordInfo
+					? {
+							discord: {
+								channelId: snowflake(discordInfo.channelId),
+								roleId: snowflake(discordInfo.roleId),
+								...(discordInfo.indexChannelId === undefined
+									? {}
+									: {
+											indexChannelId: snowflake(
+												discordInfo.indexChannelId
+											),
+									  }),
+							},
+					  }
+					: {}),
+			};
+			if (node.type === 'round') {
+				nodes[id] = { ...common, type: 'round' };
+				node.children.forEach((child, index) =>
+					visit(child.id, id, index)
+				);
+			} else {
+				assert(parentId !== null, 'A puzzle must have a parent.');
+				nodes[id] = {
+					...common,
+					type: 'puzzle',
+					parentId,
+					...(node.answer === undefined
+						? {}
+						: { answer: node.answer }),
+					...(node.status === undefined
+						? {}
+						: { status: node.status }),
+					...(node.lastStatusUpdate === undefined
+						? {}
+						: { lastStatusUpdate: node.lastStatusUpdate }),
+					...(node.sheetId === undefined
+						? {}
+						: { sheetId: node.sheetId }),
+				};
+			}
+		};
+		(
+			view.getViewNode(view.root).traits.get(traitLabels.children) ?? []
+		).forEach((id, position) => visit(id, null, position));
+		return projectPuzzlehuntView({ nodes });
+	}
+
+	#normalizeId(id: NodeId | string): NodeId {
+		// Accept existing numeric menu values as well as stable IDs from new embeds.
+		if (typeof id !== 'string') {
+			return id;
+		}
+		if (/^-?\d+$/.test(id)) {
+			return Number(id) as NodeId;
+		}
+		return this.hunt.convertToNodeId(id as StableNodeId);
 	}
 
 	public setGuildId(id: string): void {
@@ -677,30 +797,31 @@ class Puzzlehunt
 	}
 
 	public augmentWithDiscord(
-		puzzle: Puzzle,
+		puzzle: Puzzle | DocumentPuzzle,
 		discordInfo: DiscordPuzzleInfo
 	): void;
 	public augmentWithDiscord(
-		round: Round,
+		round: Round | DocumentRound,
 		discordInfo: DiscordRoundInfo
 	): void;
 	public augmentWithDiscord(
-		obj: Puzzle | Round,
+		obj: Puzzle | Round | DocumentNode,
 		discordInfo: DiscordPuzzleInfo | DiscordRoundInfo
 	): void {
 		const { channel, role, indexChannel } = discordInfo as DiscordRoundInfo;
 		const channelId = typeof channel === 'string' ? channel : channel.id;
 		const roleId = typeof role === 'string' ? role : role.id;
+		const id = this.#normalizeId(obj.id);
 		this.checkout.openEdit();
 		this.checkout.applyChanges(
 			...replace(makeString(channelId), {
-				parent: obj.id,
+				parent: id,
 				label: traitLabels.channelId,
 			})
 		);
 		this.checkout.applyChanges(
 			...replace(makeString(roleId), {
-				parent: obj.id,
+				parent: id,
 				label: traitLabels.roleId,
 			})
 		);
@@ -711,7 +832,7 @@ class Puzzlehunt
 					: indexChannel.id;
 			this.checkout.applyChanges(
 				...replace(makeString(indexChannelId), {
-					parent: obj.id,
+					parent: id,
 					label: traitLabels.indexChannelId,
 				})
 			);
@@ -719,21 +840,30 @@ class Puzzlehunt
 		this.checkout.closeEdit();
 	}
 
-	public augmentWithGoogleSheet(puzzle: Puzzle, sheetId: string): void {
+	public augmentWithGoogleSheet(
+		puzzle: Puzzle | DocumentPuzzle,
+		sheetId: string
+	): void {
 		this.checkout.applyEdit(
 			...replace(makeString(sheetId), {
-				parent: puzzle.id,
+				parent: this.#normalizeId(puzzle.id),
 				label: traitLabels.sheetId,
 			})
 		);
 	}
 
-	public getRound(id: NodeId): Round {
-		return new RoundHandle(this.checkout.currentView, id);
+	public getRound(id: NodeId | string): Round {
+		return new RoundHandle(
+			this.checkout.currentView,
+			this.#normalizeId(id)
+		);
 	}
 
-	public getPuzzle(id: NodeId): Puzzle {
-		return new PuzzleHandle(this.checkout.currentView, id);
+	public getPuzzle(id: NodeId | string): Puzzle {
+		return new PuzzleHandle(
+			this.checkout.currentView,
+			this.#normalizeId(id)
+		);
 	}
 
 	public get rounds(): Iterable<Round> {

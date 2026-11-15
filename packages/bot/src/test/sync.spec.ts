@@ -23,6 +23,8 @@ import {
 import { makeFluidClient } from '../fluid/client';
 import { getHuntContext } from '../puzzlehunt-context';
 import { BELLE_USER_ID } from '../utils';
+import { makeViewChangeHandler } from '../sync/viewChangeHandler';
+import { createDiscordAssociation, resyncServerFull } from '../sync/sync.js';
 vi.mock('../integrations/google.js');
 
 // This file tests various aspects of the bot's synchronization of the discord server with the fluid file.
@@ -50,6 +52,363 @@ function useSimplePuzzlehuntProvider(): IPuzzlehuntProvider {
 		},
 	};
 }
+
+describe('Resource provisioning', () => {
+	const provider = useSimplePuzzlehuntProvider();
+
+	async function createContext() {
+		const discord = new MockDiscord();
+		const client = createClient({
+			token: 'mock-token',
+			puzzlehuntProvider: provider,
+			baseClient: discord.getClient(),
+		});
+		await runCommand(
+			'/create name: test-hunt folder_link: https://drive.google.com/drive/folders/mock-folder-id?usp=sharing',
+			client,
+			discord
+		);
+		const guild = discord.getGuild();
+		const context = await getHuntContext(client, guild);
+		return { context, guild, serverState: discord.serverState };
+	}
+
+	it.each(['change batch', 'full resync'] as const)(
+		'provisions rounds concurrently before puzzles during %s without modifying the captured view',
+		async (operation) => {
+			const { context, guild, serverState } = await createContext();
+			const { puzzlehunt } = context;
+			const root = puzzlehunt.addRound('Root', '');
+			await createDiscordAssociation(context, guild, root);
+			const before = puzzlehunt.view;
+			const first = puzzlehunt.addRound('First', '', root);
+			const second = puzzlehunt.addRound('Second', '', root);
+			puzzlehunt.addPuzzle('First puzzle', '', first);
+			puzzlehunt.addPuzzle('Second puzzle', '', second);
+			const after = puzzlehunt.view;
+			const saved = JSON.stringify(after);
+
+			const createRole = guild.roles.create.bind(guild.roles);
+			const createRoleSpy = vi.spyOn(guild.roles, 'create');
+			createRoleSpy.mockImplementationOnce(async (options) => {
+				await Promise.resolve();
+				expect(createRoleSpy).toHaveBeenNthCalledWith(
+					2,
+					expect.objectContaining({ name: 'Second' })
+				);
+				return createRole(options);
+			});
+			try {
+				if (operation === 'change batch') {
+					await makeViewChangeHandler(
+						context,
+						() => guild
+					)({
+						before,
+						after,
+						changes: [
+							...after.rounds.slice(1),
+							...after.puzzles,
+						].map((node) => ({
+							type: 'node-added',
+							node,
+						})),
+					});
+				} else {
+					await resyncServerFull(context, guild);
+				}
+			} finally {
+				createRoleSpy.mockRestore();
+			}
+
+			const current = puzzlehunt.view;
+			const rootAssociation = current.rounds[0].discord;
+			for (const puzzle of current.puzzles) {
+				const parentAssociation = current.rounds.find(
+					(round) => round.id === puzzle.parentId
+				).discord;
+				const puzzleChannel = serverState.findChannelBy(
+					'id',
+					puzzle.discord.channelId
+				);
+				expect(puzzleChannel.parent_id).toBe(
+					parentAssociation.channelId
+				);
+				expect(
+					puzzleChannel.permission_overwrites.map(
+						(overwrite) => overwrite.id
+					)
+				).toEqual(
+					expect.arrayContaining([
+						rootAssociation.roleId,
+						parentAssociation.roleId,
+					])
+				);
+				expect(puzzle.sheetId).toBe('mock-google-sheet-id');
+			}
+			expect(JSON.stringify(after)).toBe(saved);
+		}
+	);
+
+	it('uses current parent associations when an added-puzzle event contains older ones', async () => {
+		const { context, guild, serverState } = await createContext();
+		const { puzzlehunt } = context;
+		const root = puzzlehunt.addRound('Root', '');
+		await createDiscordAssociation(context, guild, root);
+		const before = puzzlehunt.view;
+		puzzlehunt.addPuzzle('Puzzle', '', root);
+		const after = puzzlehunt.view;
+		const saved = JSON.stringify(after);
+		const oldAssociation = after.rounds[0].discord;
+		await createDiscordAssociation(context, guild, root);
+		const currentAssociation = puzzlehunt.view.rounds[0].discord;
+		expect(currentAssociation.channelId).not.toBe(oldAssociation.channelId);
+
+		await makeViewChangeHandler(
+			context,
+			() => guild
+		)({
+			before,
+			after,
+			changes: [{ type: 'node-added', node: after.puzzles[0] }],
+		});
+
+		const puzzle = puzzlehunt.view.puzzles[0];
+		const channel = serverState.findChannelBy(
+			'id',
+			puzzle.discord.channelId
+		);
+		expect(channel.parent_id).toBe(currentAssociation.channelId);
+		const permissionRoles = channel.permission_overwrites.map(
+			(overwrite) => overwrite.id
+		);
+		expect(permissionRoles).toContain(currentAssociation.roleId);
+		expect(permissionRoles).not.toContain(oldAssociation.roleId);
+		expect(JSON.stringify(after)).toBe(saved);
+	});
+
+	it('uses current ancestor roles when a queued change batch contains older associations', async () => {
+		const { context, guild, serverState } = await createContext();
+		const { puzzlehunt } = context;
+		const root = puzzlehunt.addRound('Root', '');
+		await createDiscordAssociation(context, guild, root);
+		const puzzle = puzzlehunt.addPuzzle('Puzzle', '', root);
+		await createDiscordAssociation(context, guild, puzzle);
+		const before = puzzlehunt.view;
+		await createDiscordAssociation(context, guild, root);
+		const after = puzzlehunt.view;
+		const saved = JSON.stringify(after);
+		await createDiscordAssociation(context, guild, root);
+		const currentAssociation = puzzlehunt.view.rounds[0].discord;
+
+		await makeViewChangeHandler(
+			context,
+			() => guild
+		)({
+			before,
+			after,
+			changes: [
+				{
+					type: 'node-changed',
+					before: before.rounds[0],
+					after: after.rounds[0],
+				},
+			],
+		});
+
+		const channel = serverState.findChannelBy(
+			'id',
+			after.puzzles[0].discord.channelId
+		);
+		const permissionRoles = channel.permission_overwrites.map(
+			(overwrite) => overwrite.id
+		);
+		expect(permissionRoles).toContain(currentAssociation.roleId);
+		expect(permissionRoles).not.toContain(after.rounds[0].discord.roleId);
+		expect(JSON.stringify(after)).toBe(saved);
+	});
+
+	it('uses current names, children, and parent links when synchronizing a queued change batch', async () => {
+		const { context, guild, serverState } = await createContext();
+		const { puzzlehunt } = context;
+		const root = puzzlehunt.addRound('Root', '');
+		await createDiscordAssociation(context, guild, root);
+		const round = puzzlehunt.addRound('Round', '', root);
+		const puzzle = puzzlehunt.addPuzzle('Puzzle', '', round);
+		await resyncServerFull(context, guild);
+		const before = puzzlehunt.view;
+		puzzlehunt.changeName(round, 'Event round');
+		puzzlehunt.changeName(puzzle, 'Event puzzle');
+		const after = puzzlehunt.view;
+		const saved = JSON.stringify(after);
+		puzzlehunt.changeName(round, 'Current round');
+		puzzlehunt.changeName(puzzle, 'Current puzzle');
+		puzzlehunt.updateStatus(puzzle, 'Working');
+		const newerPuzzle = puzzlehunt.addPuzzle('New puzzle', '', round);
+		await createDiscordAssociation(context, guild, newerPuzzle);
+		await createDiscordAssociation(context, guild, root);
+
+		await makeViewChangeHandler(
+			context,
+			() => guild
+		)({
+			before,
+			after,
+			changes: [
+				{
+					type: 'node-changed',
+					before: before.rounds[1],
+					after: after.rounds[1],
+				},
+				{
+					type: 'node-changed',
+					before: before.puzzles[0],
+					after: after.puzzles[0],
+				},
+			],
+		});
+
+		const currentRound = puzzlehunt.getRound(round.id);
+		const currentPuzzle = puzzlehunt.getPuzzle(puzzle.id);
+		const currentRoot = puzzlehunt.getRound(root.id);
+		expect(
+			serverState.findChannelBy('id', currentRound.discordInfo.channelId)
+				.name
+		).toBe('current-round');
+		const roundEmbed = serverState.messages.get(
+			currentRound.discordInfo.indexChannelId
+		)[0].embeds[0];
+		expect(roundEmbed.description).toContain('**Current puzzle**');
+		expect(roundEmbed.description).toContain('**New puzzle**');
+		expect(roundEmbed.description).not.toContain('Event puzzle');
+		expect(roundEmbed.fields).toContainEqual({
+			name: 'Parent Round',
+			value: channelRef(currentRoot.discordInfo.indexChannelId),
+		});
+		const puzzleEmbed = serverState.messages.get(
+			currentPuzzle.discordInfo.channelId
+		)[0].embeds[0];
+		expect(puzzleEmbed.title).toBe('Current puzzle');
+		expect(puzzleEmbed.fields).toContainEqual({
+			name: 'Status',
+			value: 'Working',
+			inline: true,
+		});
+		expect(JSON.stringify(after)).toBe(saved);
+	});
+
+	it('updates both parent indexes and permissions for equal-count exchanges', async () => {
+		const { context, guild, serverState } = await createContext();
+		const { puzzlehunt } = context;
+		const firstRound = puzzlehunt.addRound('First round', '');
+		const secondRound = puzzlehunt.addRound('Second round', '');
+		const first = puzzlehunt.addPuzzle('First puzzle', '', firstRound);
+		const second = puzzlehunt.addPuzzle('Second puzzle', '', secondRound);
+		await resyncServerFull(context, guild);
+		const before = puzzlehunt.view;
+		puzzlehunt.move(first, secondRound);
+		puzzlehunt.move(second, firstRound);
+		const after = puzzlehunt.view;
+		expect(after.rounds.map((round) => round.children.length)).toEqual(
+			before.rounds.map((round) => round.children.length)
+		);
+
+		await makeViewChangeHandler(
+			context,
+			() => guild
+		)({
+			before,
+			after,
+			changes: before.puzzles.map((node) => ({
+				type: 'node-changed',
+				before: node,
+				after: after.puzzles.find((puzzle) => puzzle.id === node.id),
+			})),
+		});
+
+		for (const [puzzle, parent, oldParent] of [
+			[
+				puzzlehunt.getPuzzle(first.id),
+				puzzlehunt.getRound(secondRound.id),
+				puzzlehunt.getRound(firstRound.id),
+			],
+			[
+				puzzlehunt.getPuzzle(second.id),
+				puzzlehunt.getRound(firstRound.id),
+				puzzlehunt.getRound(secondRound.id),
+			],
+		] as const) {
+			const permissionRoles = serverState
+				.findChannelBy('id', puzzle.discordInfo.channelId)
+				.permission_overwrites.map((overwrite) => overwrite.id);
+			expect(permissionRoles).toContain(parent.discordInfo.roleId);
+			expect(permissionRoles).not.toContain(oldParent.discordInfo.roleId);
+			const parentEmbed = serverState.messages.get(
+				parent.discordInfo.indexChannelId
+			)[0].embeds[0];
+			expect(parentEmbed.description).toContain(`**${puzzle.name}**`);
+			const oldParentEmbed = serverState.messages.get(
+				oldParent.discordInfo.indexChannelId
+			)[0].embeds[0];
+			expect(oldParentEmbed.description).not.toContain(
+				`**${puzzle.name}**`
+			);
+		}
+	});
+
+	it('updates moved rounds and all descendant permissions using current ancestry', async () => {
+		const { context, guild, serverState } = await createContext();
+		const { puzzlehunt } = context;
+		const root = puzzlehunt.addRound('Root', '');
+		const destination = puzzlehunt.addRound('Destination', '');
+		await resyncServerFull(context, guild);
+		const moved = puzzlehunt.addRound('Moved', '', root);
+		const puzzle = puzzlehunt.addPuzzle('Puzzle', '', moved);
+		await resyncServerFull(context, guild);
+		const before = puzzlehunt.view;
+		puzzlehunt.move(moved, destination);
+		const after = puzzlehunt.view;
+
+		await makeViewChangeHandler(
+			context,
+			() => guild
+		)({
+			before,
+			after,
+			changes: [
+				{
+					type: 'node-changed',
+					before: before.rounds.find(
+						(round) => round.name === 'Moved'
+					),
+					after: after.rounds.find((round) => round.name === 'Moved'),
+				},
+			],
+		});
+
+		const currentMoved = puzzlehunt.getRound(moved.id);
+		const currentDestination = puzzlehunt.getRound(destination.id);
+		const currentRoot = puzzlehunt.getRound(root.id);
+		for (const node of [currentMoved, puzzlehunt.getPuzzle(puzzle.id)]) {
+			const permissionRoles = serverState
+				.findChannelBy('id', node.discordInfo.channelId)
+				.permission_overwrites.map((overwrite) => overwrite.id);
+			expect(permissionRoles).toContain(
+				currentDestination.discordInfo.roleId
+			);
+			expect(permissionRoles).not.toContain(
+				currentRoot.discordInfo.roleId
+			);
+		}
+		expect(
+			serverState.messages.get(currentMoved.discordInfo.indexChannelId)[0]
+				.embeds[0].fields
+		).toContainEqual({
+			name: 'Parent Round',
+			value: channelRef(currentDestination.discordInfo.indexChannelId),
+		});
+	});
+});
 
 function delay(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
@@ -479,6 +838,45 @@ describe('Sync', () => {
 					allowPermissionsForRole('All Puzzles'),
 				].sort(compareIds)
 			);
+		});
+	});
+
+	describe('historical change batches', () => {
+		it('removes Discord resources for every node of a deleted subtree', async () => {
+			const context = await getHuntContext(
+				client,
+				mockDiscord.getClient().guilds.cache.at(0)
+			);
+			const round = Array.from(context.puzzlehunt.rounds).find(
+				(round) => round.name === 'round 1d1'
+			);
+			const associations = [round, ...round.children].map(
+				(node) => node.discordInfo
+			);
+			context.puzzlehunt.delete(round);
+			await vi.waitFor(async () => {
+				expect(asyncErrors).toEqual([]);
+				await client.ensurePendingWorkProcessed();
+				for (const association of associations) {
+					expect(
+						serverState.roles.some(
+							(role) => role.id === association.roleId
+						)
+					).toBe(false);
+					expect(
+						serverState.channels.some(
+							(channel) =>
+								channel.id === association.channelId ||
+								channel.id === association.indexChannelId
+						)
+					).toBe(false);
+				}
+			});
+			expect(
+				serverState.channels.some(
+					(channel) => channel.name === 'puzzle-2'
+				)
+			).toBe(true);
 		});
 	});
 });

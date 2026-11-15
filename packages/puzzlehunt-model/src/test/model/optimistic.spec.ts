@@ -11,6 +11,7 @@ import type {
 	HuntSnapshot,
 } from '../../document.js';
 import { PuzzlehuntModel } from '../../model/puzzlehunt.js';
+import type { PuzzlehuntChangeEvent } from '../../model/types.js';
 
 const id = (n: number) =>
 	`00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -107,6 +108,137 @@ function transport() {
 }
 
 describe('Optimistic puzzlehunt model', () => {
+	it('batches every domain node of an authoritative added subtree', async () => {
+		const backend = transport();
+		const initial = backend.snapshot();
+		const model = new PuzzlehuntModel(backend.client, {
+			...initial,
+			document: { ...initial.document, nodes: {} },
+		});
+		const listener = vi.fn<(event: PuzzlehuntChangeEvent) => void>();
+		model.subscribeChanges(listener);
+		backend.replace({ ...initial, revision: 1 });
+		await model.refresh();
+		expect(listener).toHaveBeenCalledOnce();
+		const event = listener.mock.calls[0][0];
+		expect(event.changes).toEqual([
+			{ type: 'node-added', node: initial.document.nodes[rootId] },
+			{ type: 'node-added', node: initial.document.nodes[puzzleId] },
+		]);
+		expect(event.before).toEqual({ rounds: [], puzzles: [] });
+		expect(event.after.rounds[0].children[0].id).toBe(puzzleId);
+	});
+
+	it('observes authoritative reordering and Discord associations in one normalized batch', async () => {
+		const backend = transport();
+		const model = new PuzzlehuntModel(backend.client, backend.snapshot());
+		const sibling = model.addPuzzle('Sibling', '', model.getRound(rootId));
+		await model.flush();
+		const before = backend.snapshot();
+		const puzzle = model.getPuzzle(puzzleId);
+		const siblingBefore = model.getPuzzle(sibling.id);
+		const events: PuzzlehuntChangeEvent[] = [];
+		model.subscribeChanges((event) => events.push(event));
+		backend.replace({
+			...before,
+			revision: before.revision + 1,
+			document: {
+				...before.document,
+				nodes: {
+					...before.document.nodes,
+					[puzzleId]: {
+						...puzzle,
+						position: 1,
+						discord: {
+							channelId: snowflake('channel'),
+							roleId: snowflake('role'),
+						},
+					},
+					[sibling.id]: { ...siblingBefore, position: 0 },
+				},
+			},
+		});
+		await model.refresh();
+		expect(events).toHaveLength(1);
+		expect(events[0].changes).toHaveLength(2);
+		expect(events[0].changes[0]).toMatchObject({
+			type: 'node-changed',
+			before: { id: puzzleId, position: 0 },
+			after: {
+				id: puzzleId,
+				position: 1,
+				discord: { channelId: 'channel', roleId: 'role' },
+			},
+		});
+		expect(
+			events[0].before.rounds[0].children.map((node) => node.id)
+		).toEqual([puzzleId, sibling.id]);
+		expect(
+			events[0].after.rounds[0].children.map((node) => node.id)
+		).toEqual([sibling.id, puzzleId]);
+	});
+
+	it('separates visible transitions from acknowledgement, uncertainty and error invalidations', async () => {
+		const backend = transport();
+		backend.client.submit.mockRejectedValueOnce(new Error('Uncertain.'));
+		const model = new PuzzlehuntModel(backend.client, backend.snapshot());
+		const changes = vi.fn();
+		const invalidations = vi.fn();
+		model.subscribeChanges(changes);
+		model.subscribe(invalidations);
+		model.changeName(model.getPuzzle(puzzleId), 'Optimistic');
+		await expect(model.flush()).rejects.toThrow('Uncertain.');
+		expect(changes).toHaveBeenCalledOnce();
+		expect(invalidations).toHaveBeenCalledTimes(2);
+		await model.retryPending();
+		model.clearFailures();
+		expect(changes).toHaveBeenCalledOnce();
+		expect(invalidations).toHaveBeenCalledTimes(4);
+	});
+
+	it('batches rollback of rejected subtrees without altering retained event snapshots', async () => {
+		const backend = transport();
+		backend.client.submit.mockRejectedValueOnce(
+			new HuntCommandError('conflict', 'Rejected.')
+		);
+		const model = new PuzzlehuntModel(backend.client, backend.snapshot());
+		const events: PuzzlehuntChangeEvent[] = [];
+		model.subscribeChanges((event) => events.push(event));
+		const round = model.addRound('Rejected', '');
+		const puzzle = model.addPuzzle('Dependent', '', round);
+		const saved = JSON.stringify(events);
+		await expect(model.flush()).rejects.toBeInstanceOf(AggregateError);
+		expect(events).toHaveLength(3);
+		expect(events[2].changes).toEqual([
+			{
+				type: 'node-removed',
+				node: expect.objectContaining({ id: round.id }),
+			},
+			{
+				type: 'node-removed',
+				node: expect.objectContaining({ id: puzzle.id }),
+			},
+		]);
+		expect(JSON.stringify(events.slice(0, 2))).toBe(saved);
+	});
+
+	it('publishes authoritative rebase corrections as one transition per affected node', async () => {
+		const backend = transport();
+		const model = new PuzzlehuntModel(backend.client, backend.snapshot());
+		const events: PuzzlehuntChangeEvent[] = [];
+		model.subscribeChanges((event) => events.push(event));
+		model.updateStatus(model.getPuzzle(puzzleId), 'Working');
+		await model.flush();
+		expect(events).toHaveLength(2);
+		expect(events[0].changes).toHaveLength(1);
+		expect(events[1].changes).toHaveLength(1);
+		expect(events[1].changes[0]).toMatchObject({
+			type: 'node-changed',
+			before: { status: 'Working' },
+			after: { status: 'Working', lastStatusUpdate: 1234 },
+		});
+	});
+
 	it('coalesces repeated refresh requests behind an uncertain command', async () => {
 		const backend = transport();
 		backend.client.submit.mockRejectedValueOnce(new Error('Uncertain.'));

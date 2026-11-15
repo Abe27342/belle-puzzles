@@ -72,9 +72,13 @@ export const Puzzles: React.FC = () => {
 				client,
 				fileId
 			);
-			disposeFn = () => disposer.dispose();
+			let unsubscribe: (() => void) | undefined;
+			disposeFn = () => {
+				unsubscribe?.();
+				disposer.dispose();
+			};
 			if (isActive) {
-				puzzlehunt.on('viewChange', forceRerender);
+				unsubscribe = puzzlehunt.subscribeChanges(forceRerender);
 				setPuzzlehunt(puzzlehunt);
 			} else {
 				disposeFn();

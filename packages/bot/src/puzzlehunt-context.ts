@@ -1,17 +1,10 @@
-import type {
-	IPuzzlehunt,
-	NumberNode,
-	Puzzle,
-	Round,
-	StringNode,
-} from '@belle-puzzles/puzzlehunt-model';
+import type { IPuzzlehunt } from '@belle-puzzles/puzzlehunt-model';
 import { queue } from 'async';
 import type { Message } from 'discord.js';
 import { Guild, Interaction } from 'discord.js';
 import { assert, getHuntContextMessage } from './utils/index.js';
 import { makeViewChangeHandler } from './sync/viewChangeHandler.js';
 import type { BelleBotClient } from './client.js';
-import { NodeId, TreeView } from '@fluid-experimental/tree';
 
 // TODO: Throw a version field in here.
 export interface SerializedPuzzlehuntContext {
@@ -72,35 +65,21 @@ export async function getHuntContext(
 				1
 			);
 
-			puzzlehunt.on(
-				'viewChange',
-				(
-					before: TreeView,
-					after: TreeView,
-					getHandle: (
-						view: TreeView,
-						id: NodeId
-					) => StringNode | NumberNode | Puzzle | Round | undefined
-				) => {
-					// In addition to the bot sync tracking mechanism, we also execute any concurrent view
-					// updates we receive in serial. This assumption could be removed if sync logic was a bit more robust,
-					// but the perf considerations from doing this are pretty negligible--website puzzle adds
-					// will already come in as a single viewChange due to call of `addPuzzles` and `addRounds`,
-					// so this just means we don't parallelize puzzle adds from different clients interacting
-					// with the bot/website.
-					viewUpdateQ.push(() => {
-						const workload = viewChangeHandler(
-							before,
-							after,
-							getHandle
-						);
-						client.pushAsyncWork('viewChange', workload);
-						return workload;
-					});
+			puzzlehunt.subscribeChanges((event) => {
+				// In addition to the bot sync tracking mechanism, we also execute any concurrent view
+				// updates we receive in serial. This assumption could be removed if sync logic was a bit more robust,
+				// but the perf considerations from doing this are pretty negligible--website puzzle adds
+				// will already come in as a single change event due to call of `addPuzzles` and `addRounds`,
+				// so this just means we don't parallelize puzzle adds from different clients interacting
+				// with the bot/website.
+				viewUpdateQ.push(() => {
+					const workload = viewChangeHandler(event);
+					client.pushAsyncWork('viewChange', workload);
+					return workload;
+				});
 
-					client.pushAsyncWork('viewChange', viewUpdateQ.drain());
-				}
-			);
+				client.pushAsyncWork('viewChange', viewUpdateQ.drain());
+			});
 		}
 	);
 	return { ...context, puzzlehunt, huntContextMessage: adminMessage };

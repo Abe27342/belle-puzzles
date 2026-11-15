@@ -1,12 +1,10 @@
-import { NodeId, TreeView } from '@fluid-experimental/tree';
-import { assert } from '../utils/index.js';
 import { Guild } from 'discord.js';
 import type { PuzzlehuntContext } from '../puzzlehunt-context.js';
-import {
-	Puzzle,
+import type {
+	PuzzlehuntChangeEvent,
+	DocumentNode,
 	Round,
-	StringNode,
-	NumberNode,
+	Puzzle,
 } from '@belle-puzzles/puzzlehunt-model';
 import {
 	createDiscordAssociation,
@@ -19,122 +17,119 @@ import { createGoogleSheet } from '../integrations/google.js';
 export function makeViewChangeHandler(
 	context: PuzzlehuntContext,
 	getGuild: () => Guild
-): (
-	before: TreeView,
-	after: TreeView,
-	getHandle: (
-		view: TreeView,
-		id: NodeId
-	) => StringNode | NumberNode | Puzzle | Round | undefined
-) => Promise<void> {
-	const { puzzlehunt } = context;
-	const viewChangeHandler = async (
-		before: TreeView,
-		after: TreeView,
-		// Can return undefined when it's the root note that changed (ex: new root round added)
-		getHandle: (
-			view: TreeView,
-			id: NodeId
-		) => StringNode | NumberNode | Puzzle | Round | undefined
-	) => {
+): (event: PuzzlehuntChangeEvent) => Promise<void> {
+	const resolveNode = (node: DocumentNode): Puzzle | Round =>
+		node.type === 'puzzle'
+			? context.puzzlehunt.getPuzzle(node.id)
+			: context.puzzlehunt.getRound(node.id);
+	return async ({ after, changes }) => {
 		const guild = getGuild();
-		const delta = before.delta(after);
-		const added = delta.added.map((id) => getHandle(after, id));
-
-		const addedNodeIds = new Set(delta.added);
-		// TODO: Do something with removed here.
-		// TODO: Handle channel drag n drop
-		const removed = delta.removed.map((id) => getHandle(before, id));
-		const changed = delta.changed.map((id) => ({
-			before: getHandle(before, id),
-			after: getHandle(after, id),
-		}));
-
-		const tasks: Promise<void>[] = [];
-		// Note: we explicitly don't delete google sheets here, since it's riskier in case the delete
-		// was an accident.
-		for (const node of removed) {
-			if (node.type === 'puzzle' || node.type === 'round') {
-				tasks.push(removeDiscordAssociation(guild, node));
-			}
-		}
-
-		for (const node of added) {
-			if (node.type === 'puzzle' && !node.sheetId) {
-				const task = createGoogleSheet(
-					node.name,
-					context.googleFolderId
-				).then((id) => {
-					puzzlehunt.augmentWithGoogleSheet(node, id);
-				});
-				tasks.push(task);
-			}
-
-			if (
-				(node.type === 'puzzle' || node.type === 'round') &&
-				!node.discordInfo
-			) {
-				tasks.push(createDiscordAssociation(context, guild, node));
-			}
-		}
-
+		const nodes = new Map<string, DocumentNode>(
+			[...after.rounds, ...after.puzzles].map((node) => [node.id, node])
+		);
+		const channelsToSync = new Set<string>(/* document node id_s */);
+		const rolesToSync = new Set<string>(/* document node id_s */);
 		// TODO: Need a task queue to ensure concurrent tasks don't cause issues. If there is overlap between create/delete
 		// current code likely can into issues.
-		const discordObjectsToSync = new Set<NodeId>();
-
-		// Observation: all operations that we need to act on will show up on the "changed" map,
-		// since they're edits of existing rounds/puzzles.
-		for (const { after: node, before: beforeNode } of changed) {
-			if (node === undefined) {
-				continue;
+		const tasks: Promise<void>[] = [];
+		const refreshParent = (node: DocumentNode) => {
+			if (node.parentId !== null) {
+				channelsToSync.add(node.parentId);
 			}
+		};
 
-			if (node.type === 'string' || node.type === 'number') {
-				// Note: I guess this could reasonably fire for re-solving a puzzle with an existing answer
-				// if we went for setPayload instead. But it shouldn't happen now.
-				console.log(`Unexpected change fired for ${node.type} handle.`);
-			} else if (node.discordInfo) {
-				discordObjectsToSync.add(node.id);
-				if (node.roundId) {
-					discordObjectsToSync.add(node.roundId);
+		const refreshRoles = (node: DocumentNode) => {
+			rolesToSync.add(node.id);
+			for (const child of after.rounds.find(
+				(round) => round.id === node.id
+			)?.children ?? []) {
+				refreshRoles(child);
+			}
+		};
+
+		for (const change of changes) {
+			if (change.type === 'node-removed') {
+				// Note: we explicitly don't delete google sheets here, since it's riskier in case the delete
+				// was an accident.
+				tasks.push(removeDiscordAssociation(guild, change.node));
+				refreshParent(change.node);
+			} else if (change.type === 'node-added') {
+				channelsToSync.add(change.node.id);
+				refreshParent(change.node);
+			} else {
+				channelsToSync.add(change.after.id);
+				refreshParent(change.before);
+				refreshParent(change.after);
+				if (
+					change.before.parentId !== change.after.parentId ||
+					change.before.discord?.roleId !==
+						change.after.discord?.roleId
+				) {
+					refreshRoles(change.after);
+				}
+				if (
+					change.before.discord?.indexChannelId !==
+					change.after.discord?.indexChannelId
+				) {
+					// Embeds have a reference to their parent round.
+					// This ensures that reference remains valid on index channel changes
+					// (though I don't think user interaction flows ever currently cause an index channel
+					// to be recreated)
+					for (const round of after.rounds.filter(
+						(round) => round.parentId === change.after.id
+					)) {
+						channelsToSync.add(round.id);
+					}
 				}
 			}
+		}
+		await Promise.all(tasks);
+		tasks.length = 0;
 
-			// Moving a node to a new parent in the tree causes the old and new parents to show up in `changed`.
-			// In this case we need to update the role assignments on the puzzle to reflect the new tree structure.
-			// Random musing, but a lot of this code might be cleaner by a proper dependency system.
-			if (
-				node.type === 'round' &&
-				beforeNode.type === 'round' &&
-				node.children.length !== beforeNode.children.length
-			) {
-				const oldChildren = new Set(
-					beforeNode.children.map((child) => child.id)
-				);
-				const movedChildren = node.children.filter(
-					(child) =>
-						!oldChildren.has(child.id) &&
-						!addedNodeIds.has(child.id)
-				);
+		const added = new Set(
+			changes
+				.filter((change) => change.type === 'node-added')
+				.map((change) => change.node.id)
+		);
+		// Provision rounds in parallel before creating puzzle resources.
+		await Promise.all(
+			after.rounds
+				.filter((node) => added.has(node.id) && !node.discord)
+				.map((node) =>
+					createDiscordAssociation(context, guild, resolveNode(node))
+				)
+		);
+		for (const node of after.puzzles.filter((node) => added.has(node.id))) {
+			if (!node.discord) {
 				tasks.push(
-					...movedChildren.map((child) =>
-						syncRoles(context, guild, child)
+					createDiscordAssociation(context, guild, resolveNode(node))
+				);
+			}
+			if (!node.sheetId) {
+				tasks.push(
+					createGoogleSheet(node.name, context.googleFolderId).then(
+						(id) => {
+							context.puzzlehunt.augmentWithGoogleSheet(node, id);
+						}
 					)
 				);
 			}
 		}
+
 		await Promise.all([
-			...Array.from(discordObjectsToSync, (id) => {
-				const obj = getHandle(after, id);
-				assert(
-					obj.type === 'puzzle' || obj.type === 'round',
-					'Expected only puzzles and rounds to sync.'
-				);
-				return syncChannel(context, guild, obj);
-			}),
 			...tasks,
+			...Array.from(channelsToSync, (id) => {
+				const node = nodes.get(id);
+				return node?.discord
+					? syncChannel(context, guild, resolveNode(node))
+					: undefined;
+			}),
+			...Array.from(rolesToSync, (id) => {
+				const node = nodes.get(id);
+				return node?.discord
+					? syncRoles(context, guild, resolveNode(node))
+					: undefined;
+			}),
 		]);
 	};
-
-	return viewChangeHandler;
 }

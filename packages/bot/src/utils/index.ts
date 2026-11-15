@@ -89,7 +89,7 @@ export function generateRoundEmbed(
 	const embed = new EmbedBuilder()
 		.setTitle('List of Puzzles')
 		.setDescription(description);
-	if (round.roundId) {
+	if (round.roundId !== undefined) {
 		embed.addFields({
 			name: 'Parent Round',
 			value: `<#${

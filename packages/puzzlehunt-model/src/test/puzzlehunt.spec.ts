@@ -1,16 +1,19 @@
 import { beforeEach, afterEach, describe, expect, inject, it, vi } from 'vitest';
 import { AzureClient } from '@fluidframework/azure-client';
 import { InsecureTokenProvider } from '@fluidframework/test-client-utils';
-import { Delta, NodeId, TreeView } from '@fluid-experimental/tree';
 import {
 	createNewPuzzlehunt,
 	IPuzzlehunt,
-	NumberNode,
 	Puzzle,
 	Round,
-	StringNode,
 } from '../puzzlehunt.js';
 import { TestLogger } from './utils.js';
+import type {
+	DocumentNode,
+	DocumentPuzzle,
+	DocumentRound,
+} from '../document.js';
+import type { PuzzlehuntChangeEvent } from '../model/types.js';
 
 const guildId = 'mock-guild-id';
 const user = {
@@ -252,7 +255,123 @@ describe('Puzzlehunt', () => {
 		});
 	});
 
-	describe("fires a 'viewChange' event", () => {
+	describe('raises backend-neutral changes', () => {
+		it('reports reordering through positions and historical child order', () => {
+			const round = puzzlehunt.addRound('Round', '');
+			const puzzle = puzzlehunt.addPuzzle('First', '', round);
+			puzzlehunt.addPuzzle('Second', '', round);
+			const listener = vi.fn<(event: PuzzlehuntChangeEvent) => void>();
+			puzzlehunt.subscribeChanges(listener);
+			puzzlehunt.move(puzzle, round);
+			expect(listener).toHaveBeenCalledOnce();
+			const event = listener.mock.calls[0][0];
+			expect(
+				event.before.rounds[0].children.map((node) => node.name)
+			).toEqual(['First', 'Second']);
+			expect(
+				event.after.rounds[0].children.map((node) => node.name)
+			).toEqual(['Second', 'First']);
+			expect(event.changes).toEqual([
+				{
+					type: 'node-changed',
+					before: expect.objectContaining({
+						name: 'First',
+						position: 0,
+					}),
+					after: expect.objectContaining({
+						name: 'First',
+						position: 1,
+					}),
+				},
+				{
+					type: 'node-changed',
+					before: expect.objectContaining({
+						name: 'Second',
+						position: 1,
+					}),
+					after: expect.objectContaining({
+						name: 'Second',
+						position: 0,
+					}),
+				},
+			]);
+		});
+
+		it('accepts stable snapshots at integration mutation boundaries and retains old menu identities', () => {
+			const round = puzzlehunt.addRound('Round', '');
+			const puzzle = puzzlehunt.addPuzzle('Puzzle', '', round);
+			const snapshot = puzzlehunt.view;
+			expect(puzzlehunt.getPuzzle(snapshot.puzzles[0].id).id).toBe(
+				puzzle.id
+			);
+			expect(puzzlehunt.getPuzzle(String(puzzle.id)).id).toBe(puzzle.id);
+			expect(puzzlehunt.getRound(snapshot.rounds[0].id).id).toBe(
+				round.id
+			);
+			puzzlehunt.augmentWithDiscord(snapshot.rounds[0], {
+				channel: 'round-channel',
+				role: 'round-role',
+				indexChannel: 'index',
+			});
+			puzzlehunt.augmentWithDiscord(snapshot.puzzles[0], {
+				channel: 'channel',
+				role: 'role',
+			});
+			puzzlehunt.augmentWithGoogleSheet(snapshot.puzzles[0], 'sheet');
+			expect(puzzlehunt.getPuzzle(puzzle.id).sheetId).toBe('sheet');
+			expect(
+				puzzlehunt.getRound(round.id).discordInfo.indexChannelId
+			).toBe('index');
+			expect(snapshot.puzzles[0].sheetId).toBeUndefined();
+			expect(snapshot.rounds[0].discord).toBeUndefined();
+		});
+
+		it('batches Discord associations and retains removal values with stable IDs', () => {
+			const round = puzzlehunt.addRound('Round', '');
+			const puzzle = puzzlehunt.addPuzzle('Puzzle', '', round);
+			const listener = vi.fn<(event: PuzzlehuntChangeEvent) => void>();
+			puzzlehunt.subscribeChanges(listener);
+			puzzlehunt.augmentWithDiscord(puzzle, {
+				channel: 'channel',
+				role: 'role',
+			});
+			expect(listener).toHaveBeenCalledOnce();
+			const event = listener.mock.calls[0][0];
+			const stableId = puzzlehunt.view.puzzles[0].id;
+			expect(event.changes).toEqual([
+				{
+					type: 'node-changed',
+					before: expect.objectContaining({
+						id: stableId,
+						name: 'Puzzle',
+					}),
+					after: expect.objectContaining({
+						id: stableId,
+						discord: { channelId: 'channel', roleId: 'role' },
+					}),
+				},
+			]);
+			const saved = JSON.stringify(event);
+			puzzlehunt.delete(round);
+			expect(listener.mock.calls[1][0].changes).toEqual(
+				expect.arrayContaining([
+					{
+						type: 'node-removed',
+						node: expect.objectContaining({
+							id: stableId,
+							discord: { channelId: 'channel', roleId: 'role' },
+						}),
+					},
+				])
+			);
+			expect(JSON.stringify(event)).toBe(saved);
+		});
+
+		interface Delta<T> {
+			added: T[];
+			changed: T[];
+			removed: T[];
+		}
 		function mapDelta<T, O>(delta: Delta<T>, f: (t: T) => O): Delta<O> {
 			return {
 				added: delta.added.map(f),
@@ -272,26 +391,23 @@ describe('Puzzlehunt', () => {
 			};
 		}
 
-		type TreeNode = Round | Puzzle | NumberNode | StringNode | undefined;
+		type TreeNode = DocumentNode;
 
 		function spyOnPuzzlehunt(puzzlehunt: IPuzzlehunt): Delta<TreeNode>[] {
 			const deltas: Delta<TreeNode>[] = [];
-			puzzlehunt.on(
-				'viewChange',
-				(
-					before: TreeView,
-					after: TreeView,
-					getHandle: (view: TreeView, id: NodeId) => TreeNode
-				) => {
-					deltas.push(
-						mapDelta(before.delta(after), (id) =>
-							after.hasNode(id)
-								? getHandle(after, id)
-								: getHandle(before, id)
-						)
-					);
-				}
-			);
+			puzzlehunt.subscribeChanges(({ changes }) => {
+				deltas.push({
+					added: changes.flatMap((change) =>
+						change.type === 'node-added' ? [change.node] : []
+					),
+					removed: changes.flatMap((change) =>
+						change.type === 'node-removed' ? [change.node] : []
+					),
+					changed: changes.flatMap((change) =>
+						change.type === 'node-changed' ? [change.after] : []
+					),
+				});
+			});
 			return deltas;
 		}
 
@@ -302,7 +418,7 @@ describe('Puzzlehunt', () => {
 			const [delta] = deltas;
 			const changedRounds = filterDelta(
 				delta,
-				(id): id is Round => id?.type === 'round'
+				(id): id is DocumentRound => id?.type === 'round'
 			);
 			expect(mapDelta(changedRounds, (round) => round.name)).toEqual({
 				added: ['test round'],
@@ -319,7 +435,7 @@ describe('Puzzlehunt', () => {
 			const [delta] = deltas;
 			const changedRounds = filterDelta(
 				delta,
-				(id): id is Round => id?.type === 'round'
+				(id): id is DocumentRound => id?.type === 'round'
 			);
 			expect(mapDelta(changedRounds, (round) => round.name)).toEqual({
 				added: [],
@@ -336,7 +452,7 @@ describe('Puzzlehunt', () => {
 			const [delta] = deltas;
 			const changedRounds = filterDelta(
 				delta,
-				(id): id is Puzzle => id?.type === 'puzzle'
+				(id): id is DocumentPuzzle => id?.type === 'puzzle'
 			);
 			expect(mapDelta(changedRounds, (puzzle) => puzzle.name)).toEqual({
 				added: ['test puzzle'],
@@ -357,14 +473,12 @@ describe('Puzzlehunt', () => {
 			puzzlehunt.move(puzzle, round2);
 			expect(deltas).toHaveLength(1);
 			const [delta] = deltas;
-			const changedRounds = filterDelta(
-				delta,
-				(id): id is Puzzle | Round =>
-					['puzzle', 'round'].includes(id?.type)
+			const changedRounds = filterDelta(delta, (id): id is DocumentNode =>
+				['puzzle', 'round'].includes(id?.type)
 			);
 			expect(mapDelta(changedRounds, (puzzle) => puzzle.name)).toEqual({
 				added: [],
-				changed: ['test round', 'test round 2'],
+				changed: ['test puzzle'],
 				removed: [],
 			});
 		});
@@ -378,7 +492,7 @@ describe('Puzzlehunt', () => {
 			const [delta] = deltas;
 			const changedRounds = filterDelta(
 				delta,
-				(id): id is Puzzle => id?.type === 'puzzle'
+				(id): id is DocumentPuzzle => id?.type === 'puzzle'
 			);
 			expect(mapDelta(changedRounds, (puzzle) => puzzle.name)).toEqual({
 				added: [],

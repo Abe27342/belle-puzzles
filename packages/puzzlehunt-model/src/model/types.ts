@@ -15,6 +15,30 @@ export interface PuzzlehuntView {
 	readonly puzzles: readonly DocumentPuzzle[];
 }
 
+/**
+ * Changed nodes contain full old/new values.
+ */
+export type PuzzlehuntNodeChange =
+	| { readonly type: 'node-added'; readonly node: DocumentNode }
+	| { readonly type: 'node-removed'; readonly node: DocumentNode }
+	| {
+			readonly type: 'node-changed';
+			readonly before: DocumentNode;
+			readonly after: DocumentNode;
+	  };
+
+/**
+ * Raised when the backing data model changes. May include local optimistic edits.
+ * Each affected node appears once; whole added or removed subtrees include every domain node.
+ * Views are stable historical read-only values, including derived round children,
+ * even after the live model advances.
+ */
+export interface PuzzlehuntChangeEvent {
+	readonly before: PuzzlehuntView;
+	readonly after: PuzzlehuntView;
+	readonly changes: readonly PuzzlehuntNodeChange[];
+}
+
 /** Reads and mutations shared by native Fluid handles and storage-independent views. */
 export interface IPuzzlehunt<
 	TPuzzle extends { readonly id: unknown },
@@ -23,6 +47,10 @@ export interface IPuzzlehunt<
 > {
 	readonly rounds: Iterable<TRound>;
 	readonly puzzles: Iterable<TPuzzle>;
+	/** Observe changes to the puzzlehunt model. Returns an unsubscribe function. */
+	subscribeChanges(
+		listener: (event: PuzzlehuntChangeEvent) => void
+	): () => void;
 	getRound(id: TPuzzle['id']): TRound;
 	getPuzzle(id: TPuzzle['id']): TPuzzle;
 	addRound(name: string, url: string, parent?: TRound): TRound;
@@ -47,6 +75,7 @@ export interface IPuzzlehuntModel
 	readonly rounds: readonly PuzzlehuntRound[];
 	readonly puzzles: readonly DocumentPuzzle[];
 	readonly isPending: boolean;
+	/** UI invalidation, including pending/error-only changes. */
 	subscribe(listener: () => void): () => void;
 	/** Wait for authoritative acknowledgement; rejects on failure or uncertainty. */
 	flush(): Promise<void>;

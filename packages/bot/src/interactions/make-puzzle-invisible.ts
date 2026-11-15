@@ -1,4 +1,3 @@
-import { NodeId } from '@fluid-experimental/tree';
 import { MessageFlags, SelectMenuInteraction } from 'discord.js';
 import { getAncestorRounds } from '../utils/index.js';
 import { PuzzlehuntContext } from '../puzzlehunt-context.js';
@@ -24,9 +23,7 @@ export const makePuzzleInvisible: InteractionHandler = {
 			interaction.user.id
 		);
 
-		const puzzleIds = interaction.values.map(
-			(strPuzzleId) => Number.parseInt(strPuzzleId) as NodeId
-		);
+		const puzzleIds = interaction.values;
 
 		const roles = puzzleIds.map((puzzleId) => {
 			const puzzle = puzzlehunt.getPuzzle(puzzleId);
