@@ -16,6 +16,10 @@ export function makeViewChangeHandler(
 	context: PuzzlehuntContext,
 	getGuild: () => Guild
 ): (event: PuzzlehuntChangeEvent) => Promise<void> {
+	const resolveNode = (node: DocumentNode) =>
+		node.type === 'puzzle'
+			? context.puzzlehunt.getPuzzle(node.id)
+			: context.puzzlehunt.getRound(node.id);
 	return async ({ after, changes }) => {
 		const guild = getGuild();
 		const nodes = new Map<string, DocumentNode>(
@@ -86,11 +90,15 @@ export function makeViewChangeHandler(
 		await Promise.all(
 			after.rounds
 				.filter((node) => added.has(node.id) && !node.discord)
-				.map((node) => createDiscordAssociation(context, guild, node))
+				.map((node) =>
+					createDiscordAssociation(context, guild, resolveNode(node))
+				)
 		);
 		for (const node of after.puzzles.filter((node) => added.has(node.id))) {
 			if (!node.discord) {
-				tasks.push(createDiscordAssociation(context, guild, node));
+				tasks.push(
+					createDiscordAssociation(context, guild, resolveNode(node))
+				);
 			}
 			if (!node.sheetId) {
 				tasks.push(
@@ -108,13 +116,13 @@ export function makeViewChangeHandler(
 			...Array.from(channels, (id) => {
 				const node = nodes.get(id);
 				return node?.discord
-					? syncChannel(context, guild, node, after)
+					? syncChannel(context, guild, resolveNode(node))
 					: undefined;
 			}),
 			...Array.from(roles, (id) => {
 				const node = nodes.get(id);
 				return node?.discord
-					? syncRoles(context, guild, node)
+					? syncRoles(context, guild, resolveNode(node))
 					: undefined;
 			}),
 		]);
