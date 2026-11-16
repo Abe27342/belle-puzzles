@@ -4,7 +4,7 @@ import { expect, inject, vi } from 'vitest';
 import {
 	createNewPuzzlehunt,
 	loadExistingPuzzlehunt,
-} from '../../puzzlehunt.js';
+} from '../../fluid/load.js';
 import { FluidPuzzlehuntModel } from '../../fluid/model.js';
 import { comparableView, puzzlehuntModelContract } from '../model/contract.js';
 import { TestLogger } from '../utils.js';

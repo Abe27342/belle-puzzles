@@ -5,7 +5,7 @@ import {
 	createNewPuzzlehunt,
 	createNewPuzzlehuntFromExisting,
 	loadExistingPuzzlehunt,
-} from '../puzzlehunt.js';
+} from '../fluid/load.js';
 import { TestLogger } from './utils.js';
 
 const guildId = 'mock-guild-id';
