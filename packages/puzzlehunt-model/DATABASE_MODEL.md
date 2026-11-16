@@ -2,9 +2,10 @@
 
 ## Status and boundaries
 
-This is an opt-in foundation, not a cutover. The existing Fluid exports, bot
-commands, Discord event handlers, website components, and pinned hunt-context
-messages remain unchanged. Their startup opens no new database connection; only
+This is an opt-in foundation, not a database cutover. Existing bot commands,
+Discord event handlers, website components, and pinned hunt-context messages
+remain Fluid-backed. Their public model/events and session loading are now
+storage-neutral. Their startup opens no new database connection; only
 the explicitly started application service connects to PostgreSQL.
 
 Implemented:
@@ -12,16 +13,18 @@ Implemented:
 - The Fluid-independent `@belle-puzzles/puzzlehunt-model/document` entry point:
   snapshots, semantic commands, invariant checks, command application, async
   read/write contracts, and a synchronous view projection.
-- A common generic `IPuzzlehunt` for reads/mutations, specialized by legacy Fluid
-  handles and by `IPuzzlehuntModel` with plain views and synchronous local mutations.
+- A common non-generic `IPuzzlehunt` for reads/mutations, configuration, augmentation,
+  and storage-neutral change events using stable IDs and `DocumentNode` values.
+  `IPuzzlehuntModel` adds plain views and asynchronous settlement over synchronous
+  local mutations.
   `PuzzlehuntModel` in the `model` entry point tracks optimistic commands over
-  `HuntDocumentClient`; `FluidPuzzlehuntModel` in `fluid` delegates to the existing
-  Fluid implementation with stable string IDs and storage-neutral notifications.
+  `HuntDocumentClient`; factories in `fluid` return `IPuzzlehuntSession`, exposing
+  the Fluid-backed model without container/tree handles and saving before close.
 - `PostgresPuzzlehuntStore` in the model package's server-only `postgres` entry
   point: scoped reads and serialized transactional
   commands, retry receipts, and durable integration intent.
   `PostgresHuntIntegrationStore` separately owns worker association writes and
-  conditional reconciliation acknowledgement. Both accept a structural subset of
+  individual durable-work completion. Both accept a structural subset of
   `pg.Pool` and can use independent instances/pools.
 - A browser-safe `http` adapter for that same `HuntDocumentClient` interface,
   plus the independent `packages/puzzlehunt-service` Express executable with
@@ -59,7 +62,9 @@ monotonic revision, configuration, optional source provenance, and
 timestamps. Configuration brings the existing Google folder, Discord index and
 all-puzzles role IDs, and logging channel IDs out of pinned messages/SharedMap.
 Hunt/guild identity is outside the editable document and absent from commands.
-The configuration also has no generic user-patch command in this initial model.
+The typed `update-configuration` command replaces supplied configuration fields
+and preserves omitted/undefined fields; supplying logging channels replaces that
+complete mapping. It cannot change hunt/guild identity or active-hunt selection.
 `active_hunts` explicitly selects one hunt per guild while retaining archived
 hunts; its composite foreign key prevents a cross-guild pointer.
 
@@ -68,8 +73,9 @@ parent ID, and sibling position, plus nullable puzzle and Discord properties.
 Its primary key is `(hunt_id, id)`. A composite foreign key requires the parent
 to be an existing round in the same hunt. The generated `parent_type` column is
 always `'round'`; it is a constraint helper, not separately editable tree state.
-Only rounds may have a null parent, meaning a top-level child of the implicit
-hunt root.
+Only rounds may have a SQL null parent, meaning a top-level child of the implicit
+hunt root. Document values use omitted/undefined `parentId` for root rounds;
+JSON creation and move commands omit it rather than sending `null`.
 
 SQL checks restrict answers, statuses, status timestamps, and sheet IDs to
 puzzles; require status and its timestamp together; and require complete Discord
@@ -101,8 +107,9 @@ round deleted earlier fails explicitly.
 
 Puzzle fields include optional answer, status, last-status-update time, Google
 sheet ID, and Discord associations. Optional SQL columns use `NULL`; snapshots
-omit absent properties, and commands use explicit `null`, never JSON-ambiguous
-`undefined`. Status and its timestamp are present/absent together. A Discord round
+omit absent properties, and nullable property assignments use explicit `null`
+to clear. Root-parent omission and unchanged configuration fields are separate
+from property clearing. Status and its timestamp are present/absent together. A Discord round
 association additionally requires an index channel. Google sheets are retained
 when a node is deleted, matching existing behavior.
 
@@ -116,11 +123,13 @@ JSONB remains for configuration, provenance, command receipts, and event payload
 
 ## Commands, ordering, and retries
 
-The public command vocabulary is `add`, `delete`, `move`, and `set-property`.
+The public command vocabulary is `add`, `delete`, `move`, `set-property`, and
+`update-configuration`.
 Property names are the typed union `name`, `url`, `answer`, `status`, and `sheetId`,
 with their corresponding value types. Nullable properties use `null` to clear;
 setting/clearing `answer` expresses solve/unsolve. A separate worker-only
-`set-property` command attaches/clears `discord` resources. Both existing bulk
+`set-property` result attaches/clears `discord` or `sheetId` resources through
+trusted durable-work completion, not the public command transport. Both existing bulk
 creation methods map to one `add` command; parents must exist in the final graph,
 but may appear later in the same batch. Creation accepts structural fields only;
 answer/status, sheet, and Discord associations must be
@@ -152,8 +161,9 @@ default READ COMMITTED isolation:
    after acquiring the lock for status timestamps. Validate the complete graph
    before writing.
 4. Insert/update only changed node rows and delete removed nodes as a batch;
-   increment the hunt revision and insert the command receipt, coalescing
-   integration jobs, and separate lifecycle/log events. Foreign keys prevent a
+   increment the hunt revision and insert the command receipt, individual
+   integration work items for changed surviving nodes, and separate lifecycle/log
+   events. Cancel pending items for removed nodes. Foreign keys prevent a
    standalone parent deletion while children still reference it; a subtree
    deletion removes all its rows in one statement.
 5. Transactionally `pg_notify` a small hunt/revision hint and commit. Return only
@@ -185,7 +195,7 @@ solving does not emit an additional status-cleared log.
 
 `HuntDocumentClient` separates asynchronous `read`/`submit` from synchronous
 `projectHuntDocument(snapshot)`. The projection returns root rounds, all rounds,
-puzzles, and ordered `childrenByRound`; it does not contain mutable setters,
+puzzles, and an ordered child index; it does not contain mutable setters,
 Fluid handles, or `TreeView`. Its objects are read-only by TypeScript contract,
 not recursively frozen/copied. Treat a snapshot as immutable and replace it when
 a newer committed snapshot arrives.
@@ -213,6 +223,16 @@ original command ID for `retryPending()`. `refresh()` shares the command queue t
 avoid applying accepted pending commands twice. See the decision record for this
 simple protocol's latency trade-off and the legacy Fluid adapter's semantics.
 
+Both backends implement the same non-generic `IPuzzlehunt` with stable IDs and
+read-only `DocumentNode` values. `subscribeChanges` supplies historical
+before/after views and full added/removed/changed node values, including every
+node in added or removed subtrees. These may describe optimistic edits, not durable
+integration delivery. The separate `subscribe` invalidation also reports
+pending/error-only changes. Fluid factories return `IPuzzlehuntSession` with
+the model as `puzzlehunt`; await or handle `close()` to save before release and
+use `subscribeLifecycle` to observe terminal failures. Disconnecting alone is
+not terminal, and closing with unacknowledged edits must not silently lose them.
+
 Authenticated routes in the opt-in application service:
 
 | Route | Contract |
@@ -230,9 +250,13 @@ The HTTP boundary uses shared Zod schemas to decode/validate unknown JSON, enfor
 and the public command allowlist, and authorizes before invoking the store.
 The model's typed `validateHuntDocument` invariant checker is not a JSON decoder.
 The store's guild predicate is defense in depth, not authentication. Never accept
-the guild, active-hunt selection, configuration, or integration-only commands from
-freely editable document JSON. Map domain errors to user-facing 400/404/409
-responses, and authentication failures to 401/403. Propagate other errors explicitly
+the guild, active-hunt selection, or integration-only commands from
+freely editable document JSON. Configuration changes use only strict
+`update-configuration` commands with known fields; omitted fields stay unchanged.
+Discord assignment, task-completion commands, and `durableTaskId` injection are
+rejected even for requests using service credentials. Map domain errors to
+user-facing 400/404/409 responses, and authentication failures to 401/403.
+Propagate other errors explicitly
 and do not report success until the transaction commits. The client treats
 network failures, invalid responses, and 5xx results as uncertain, keeping the
 original command ID. Only matching explicit API rejection envelopes allow rollback.
@@ -277,7 +301,7 @@ process; initial cohosting does not require keeping those responsibilities coupl
 ## Change notification protocol
 
 **Status:** Implemented in the PostgreSQL store, standalone service, and HTTP
-adapter. Legacy Fluid consumers are unchanged; deployment and integration worker
+adapter. Existing consumers remain Fluid-backed; deployment and integration worker
 execution remain separate work.
 
 Keep initial full-snapshot reads and mutation semantics. Extend reads and command
@@ -510,28 +534,49 @@ test binaries are development dependencies; use a non-root account on Unix.
 
 ## Durable Discord and Google work
 
-Every successful new command atomically upserts one `integration_jobs` row per
-target (`discord`, `google`), recording the desired revision. This deliberately
-coarse hunt-level queue avoids a per-field dependency graph at current scale.
+User commands atomically append `integration_jobs` items for each changed
+surviving node and service: Discord for rounds/puzzles and Google for puzzles.
+Each item has its own UUID and is unique by hunt, source command, node, and
+target, with event-time node/configuration data. `source_revision` records when
+it was enqueued; it is not a hunt-wide generation or completion watermark.
+Configuration-only commands advance synchronization state but do not themselves
+enqueue per-node work.
 Read current desired state, not the old command snapshot, for state refreshes:
 names, answers, topics, indexes, membership/permission changes, and associations.
 A round rename/move can affect descendant permissions and both old/new indexes,
-so reconcile the whole relevant hunt, not just the edited node.
+so a worker may need surrounding hunt state, not just the item's node payload.
 
 On startup and periodically, workers scan persisted pending jobs/events even if
-no notification arrives. Run external calls outside hunt transactions and apply
-bounded retries/backoff, persisted attempt/error details, and operator-visible
-failures. A worker records the requested generation it read. On completion,
-`acknowledgeReconciliation(scope, target, requestedRevision)` deletes only that
-generation. This method belongs to `PostgresHuntIntegrationStore`, not the
-user-facing `PostgresPuzzlehuntStore`. Its worker-only `submitIntegration` shares
-the same transactional command implementation, preserving locking, receipts,
-notifications, and durable integration work even when workers use a separate
-store instance or process. A newer mutation leaves its pending job intact.
-An intervening association write also advances the revision and schedules another pass; only
-write associations when the desired value actually changes, allowing convergence.
-Retain an existing job's backoff on a new change rather than retrying a broken
-integration on every edit.
+no notification arrives. Due items have `available_at <= now()` and neither
+`completed_at` nor `cancelled_at` set. Run external calls outside hunt transactions
+and apply bounded retries/backoff, persisted attempt/error details, and operator-visible
+failures. A newer source intent creates separate items; completing one must leave
+unrelated and later pending work intact.
+
+`PostgresHuntIntegrationStore.completeWork(scope, workId, result?)` implements
+the separate trusted `HuntIntegrationClient` capability, not a user command or
+an HTTP worker endpoint. Under the hunt lock it validates the pending item's
+scope, node, and target, optionally writes its matching `discord`/`sheetId`
+association, and marks only that item complete in the same transaction. The work
+ID is also the receipt ID: retrying the same result returns the original receipt
+and current snapshot without overwriting later state; a different result conflicts.
+A result write advances the revision and notifies readers but does not enqueue
+more integration work. Completion without a result records its receipt at the
+current revision and sends no document-change hint.
+
+Deleting nodes atomically cancels all their pending items. Retained items have
+no node foreign key and do not reserve deleted IDs; a cancelled item's result
+cannot attach to a replacement node reusing the ID. Missing, cancelled,
+mismatched, or differently completed tasks fail explicitly.
+
+The common model's `augmentWithDiscord` and `augmentWithGoogleSheet` methods
+accept optional `durableTaskId`. The PostgreSQL-backed model requires a task ID
+and an injected trusted integration client for Discord; task-backed Google writes
+use the same capability, while a Google edit without a task ID remains a public
+`sheetId` command. Task-backed results become visible after durable acknowledgement,
+not optimistically. Fluid has no durable task records and ignores the parameter.
+Possessing an ID alone grants no permission, and public HTTP commands cannot
+inject task IDs or complete work.
 
 `integration_events` records every add/delete/solve/status action separately,
 keyed by hunt, command, and event ordinal, with event-time node data and logging
@@ -558,8 +603,8 @@ progress and worker ownership/leases, not just a loop over pending rows:
   overwrite a sheet/Discord association changed while its external call was in
   flight. The initial assignment primitives are not that complete worker
   protocol. Do not delete Google sheets, including duplicate/orphaned sheets.
-- Serialize/lease work per hunt/target across processes so an older external pass
-  cannot overwrite a newer completed pass. Conditional queue acknowledgement
+- Serialize/lease related node/service work across processes so an older external pass
+  cannot overwrite a newer completed pass. Individual task completion
   prevents lost work but does not by itself fence stale external side effects.
   Lease expiry also needs recovery of still-running calls and a final fresh-state
   pass; never hold a hunt row lock across an external call.
@@ -583,10 +628,11 @@ separate API/worker container can follow without changing the model contract.
 Use separate database credentials/roles and TLS configuration at deployment;
 no resources are provisioned by this change.
 
-Before cutover: test the store against real PostgreSQL with independently leased
-connections, complete scoped auth/JSON decoding and async UI adapters, implement
+Before cutover: complete async UI adapters, implement
 and failure-test the resource journal/worker protocol, create an audited import
 with ID/provenance mapping, and define backup/restore and
-rollback procedures. The current embedded tests execute PostgreSQL SQL and
-transaction rollback but use a size-one pool; they are not evidence of production
-multi-connection locking, external API idempotence, or a completed migration.
+rollback procedures. Scoped auth/JSON decoding and real PostgreSQL tests with
+independently leased connections are implemented; the latter exercise locking
+and consistent reads beyond the size-one PGlite constraint suite. Neither proves
+production capacity, external API idempotence, or a completed migration. The
+application-level real HTTP-plus-database automated suite remains deferred.

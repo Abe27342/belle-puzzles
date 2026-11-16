@@ -16,7 +16,8 @@ dependency on the bot. The schema is an exported SQL asset; applying it is expli
 
 The PostgreSQL adapter still accepts an injected connection pool. Moving it
 changes no transaction, receipt, outbox, or graph-validation behavior. Existing
-Fluid exports and consumers remain unchanged. PGlite tests move with the adapter;
+bot/site consumers remain Fluid-backed; their public model and loading boundaries
+are now storage-neutral, as described below. PGlite tests move with the adapter;
 they exercise SQL constraints but do not prove multi-connection locking.
 
 **Reason:** Code ownership should follow responsibilities, not the first process
@@ -39,11 +40,12 @@ a local adapter is also useful for tests and initial cohosting.
 Pending-command rejection, rebasing, and acknowledgement handling must be tested.
 Do not add a disconnected-edit protocol or duplicate the domain rules in a UI.
 
-The `model` entry point now exports `IPuzzlehuntModel`, plain read-only views, and
-the optimistic `PuzzlehuntModel`. Familiar methods delegate to the existing
-command reducer. The `fluid` entry point adds `FluidPuzzlehuntModel`, a small
-adapter over the existing `IPuzzlehunt`; it does not reimplement Fluid persistence.
-The legacy package root remains compatible.
+The `model` entry point now exports `IPuzzlehunt`, `IPuzzlehuntModel`, plain
+read-only views, and the optimistic `PuzzlehuntModel`. Familiar methods delegate
+to the existing command reducer. The `fluid` entry point owns Fluid loading and returns
+`IPuzzlehuntSession`, whose `puzzlehunt` implements the same `IPuzzlehuntModel`;
+it does not reimplement Fluid persistence. The package root exports the
+storage-neutral model contract, not Fluid SDK objects.
 
 ## 3. External integrations consume durable server intent
 
@@ -121,21 +123,32 @@ failures stay visible even when a later batch succeeds.
 **Status:** Implementation choice consistent with the confirmed model direction.
 
 The common interface retains familiar model operations and round child lists, but
-IDs are strings and notifications are parameterless invalidations. Read fresh
-values after notification; returned views are immutable values, not live handles.
+IDs are stable strings and nodes are shared `DocumentNode` values.
+`subscribeChanges` reports storage-neutral `PuzzlehuntChangeEvent` values with
+historical before/after views and complete added/removed/changed node records,
+including every node in added or removed subtrees. The separate
+`IPuzzlehuntModel.subscribe` remains a parameterless UI invalidation, including
+pending/error-only changes. Read fresh values after notification; returned views
+are read-only snapshots, not live handles.
 Both backends use the same parent-pointer view projection and depth-first ordering.
 
 The Fluid adapter uses SharedTree's existing stable-ID conversion, rather than a
 new identity map or exposing session-local compressed numeric IDs. Tree access is
-isolated to that adapter. It preserves legacy solve/status semantics and client
-timestamps. An additive typed `unsolve` method removes the answer trait; existing
-callers have not been switched. Worker-only Discord association writes are not
-part of the ordinary model interface.
+isolated behind the Fluid implementation. It preserves legacy solve/status semantics
+and client timestamps. The typed `unsolve` method removes the answer trait.
+Common augmentation methods retain backend-specific durable-task rules; a task ID
+does not grant permission to complete trusted integration work.
 
 `flush()` on Fluid waits for service acknowledgement; remote readers still receive
 changes asynchronously. Its `refresh()` flushes local changes because remote
 updates are already streamed. Fixtures wait for actual convergence rather than
 assuming every observer has processed an acknowledged change.
+
+Fluid factories return an `IPuzzlehuntSession` rather than a container/tree handle.
+Observe `subscribeLifecycle` for terminal failures and await or handle `close()`,
+which stops mutations, waits for acknowledgement, and releases backend resources.
+Unexpected closure with pending edits fails rather than reporting a successful
+save. Disconnection alone is not terminal; closing may wait for reconnection.
 
 ## 7. Own disposable services in the tests
 
@@ -175,7 +188,8 @@ implementation choices.
 The model's browser-safe `http` entry point implements `HuntDocumentClient`.
 `PuzzlehuntModel` remains the only optimistic command facade; HTTP introduces no
 second domain implementation. Tokens are obtained per request. There are no
-automatic retries, cookies, redirect following, or change subscriptions.
+automatic mutation retries, cookies, or redirect following. Change observations
+are a separate opt-in API, described below.
 
 `packages/puzzlehunt-service` owns the Express host, production PostgreSQL pool,
 Discord authorization, startup configuration, and shutdown. It depends on the
@@ -190,7 +204,9 @@ service credential and `Service` authorization scheme, distinct from OAuth
 service checks the configured bot's guild access with
 Discord rather than trusting a client-supplied guild assertion. The URL scopes
 authorization, and the database independently checks hunt ownership. Public JSON
-cannot change ownership/configuration or invoke worker-only commands.
+cannot change ownership or invoke worker-only commands. Strict
+`update-configuration` commands accept the common configuration fields while
+preserving omitted fields; they are not arbitrary document replacement.
 
 Expose active selection at `/guilds/:guildId/hunts/active`, returning a snapshot,
 instead of changing the old Fluid-context endpoint. Snapshot reads and command
@@ -221,28 +237,38 @@ that boundary is necessary for deterministic, fully local application tests;
 there is no other known architectural obstacle. The existing model/service
 contract suite remains unchanged. New tests cover the protocol, transport, and
 authorization/configuration functions, not a local HTTP-plus-database application
-suite. Notifications/reconnection, external workers, consumer cutover, provisioning,
+suite. External workers, consumer cutover, provisioning,
 and deployment remain separate follow-up work.
 
 ## 10. Simplify commands and share the core model interface
 
 **Status:** Implemented from user review feedback.
 
-Use only `add`, `delete`, `move`, and `set-property` commands. A mapped union ties
-each known property name to its value type; nullable properties use explicit
-`null` to clear. Public properties are `name`, `url`, `answer`, `status`, and
-`sheetId`. Worker-only `discord` assignments use the same shape but remain a
-separate command type, not part of the public HTTP allowlist. Answer/status
+Use `add`, `delete`, `move`, `set-property`, and `update-configuration` commands.
+A mapped union ties each known property name to its value type; nullable properties
+use explicit `null` to clear. Public properties are `name`, `url`, `answer`, `status`, and
+`sheetId`. Configuration updates replace only supplied fields, including the
+complete logging-channel mapping when supplied. Root rounds omit `parentId`
+rather than sending `null`; puzzles always require a parent round.
+Trusted `discord` and task-backed `sheetId` assignments use a separate integration
+capability, not the public HTTP command allowlist. Answer/status
 assignments retain their domain side effects and distinct integration events;
 this is not unrestricted object patching.
 
-The shared generic `IPuzzlehunt` defines common reads and mutations once. The
-legacy interface specializes it for Fluid handles/numeric IDs and adds existing
-metadata, Discord association, and tree event APIs. `IPuzzlehuntModel` specializes
-it for stable IDs/plain views and adds subscriptions and asynchronous settlement.
-The earlier duplicated signatures were a compatibility shortcut, not a required
-architectural boundary. Existing Fluid implementations and consumers keep their
-behavior.
+The shared non-generic `IPuzzlehunt` defines common reads, mutations, configuration,
+augmentation methods, and storage-neutral change events once, using stable IDs
+and `DocumentNode` values for both backends. `IPuzzlehuntModel` adds UI invalidation,
+pending state, and asynchronous settlement. Fluid SDK types and low-level tree
+events are no longer part of the public model interface; existing consumers
+remain Fluid-backed.
+
+Augmentation accepts an optional `durableTaskId`. The PostgreSQL-backed model
+requires it and a separately injected `HuntIntegrationClient` for Discord
+association completion; a Google Sheet edit without a task ID remains a public
+command. Task-backed results become visible only after durable acknowledgement.
+Fluid has no persisted tasks and ignores the task ID. Public HTTP requests reject
+Discord assignment, task completion, and `durableTaskId` injection; no HTTP
+worker-completion endpoint is added.
 
 Both projections build and sort a parent-to-children index once, rather than
 scanning every node for each round. `validateHuntDocument` names the existing
@@ -295,7 +321,7 @@ flowchart LR
     DB -.->|Committed revision hint| API
     API -->|Authenticated SSE| Views["Open webpage models"]
     DB -.->|Wake-up hint| Worker["Integration worker"]
-    Worker -->|Read / claim / conditional acknowledgement| DB
+    Worker -->|Read / claim / individual completion| DB
     Worker -->|Reconcile| External["Discord / Google"]
 ```
 
@@ -372,12 +398,14 @@ scale-to-zero savings while clients are connected.
 
 Workers must scan pending jobs/events on startup and periodically, including
 retries whose `available_at` becomes due without a new notification. Wake-up hints
-only reduce latency. Reconcile current desired state and conditionally acknowledge
-the exact generation; preserve distinct lifecycle/log events. Leases, retry
+only reduce latency. Reconcile current desired state and complete individual
+persisted work IDs; `source_revision` is metadata, not a completion watermark.
+Preserve distinct lifecycle/log events. Leases, retry
 scheduling, and external-effect recovery still need implementation. A separately
-hosted worker can access this through trusted server-side database access or new
-private claim/acknowledgement endpoints; the public model API is not that worker
-API. If the Discord gateway process also holds a model for commands, it can use
+hosted worker needs trusted server-side access to
+`HuntIntegrationClient.completeWork`; no HTTP worker-completion endpoint is
+implemented. Public model transport alone does not grant that capability. If the
+Discord gateway process also holds a model for commands, it can use
 the same scoped invalidation stream as the webpage.
 
 Managed fan-out likewise needs a durable outbox publisher/retry path: publishing
@@ -439,8 +467,10 @@ References: [node-postgres queries](https://node-postgres.com/features/queries);
 ## 14. Document and store review checkpoint
 
 **Status:** Implemented from user review after rebasing the unmerged HTTP/SSE
-work onto the reviewed model on main. Fluid adapter/event redesign remains
-explicitly deferred.
+work onto the reviewed model. Storage-neutral change events, stable-ID
+`DocumentNode` values, the common `IPuzzlehunt` contract, trusted durable-task
+completion, and encapsulated Fluid sessions are now reviewed dependencies,
+not deferred Fluid/event redesign.
 
 Put `name` and `configuration` on `HuntDocument`, alongside `nodes`.
 `HuntSnapshot` adds only scope, schema version, and committed revision. SQL
@@ -465,10 +495,12 @@ correlation, and a new cast/helper abstraction would obscure rather than simplif
 these few assignments.
 
 Separate `PostgresPuzzlehuntStore` (reads and user commands) from
-`PostgresHuntIntegrationStore` (worker association writes and conditional
-reconciliation acknowledgements). They share connection helpers and one internal
+`PostgresHuntIntegrationStore` (trusted individual work completion with optional
+association results). They share connection helpers and one internal
 transactional command path, not a required store instance or process. User
-commands still atomically record integration intent. Remove `submitUpdates`;
+commands still atomically record per-node/service/source-intent work and distinct
+events. Completion uses the work ID for receipt deduplication and never clears
+other pending items. Remove `submitUpdates`;
 the HTTP route explicitly submits and reads the requested synchronization state.
 Post-commit read failures must remain uncertain even if the read throws a domain
 error.
