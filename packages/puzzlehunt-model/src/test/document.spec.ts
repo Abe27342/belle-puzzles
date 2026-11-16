@@ -33,7 +33,7 @@ function seed(): HuntDocument {
 					type: 'round',
 					name: 'Root',
 					url: '',
-					parentId: null,
+					parentId: undefined,
 				},
 				{
 					id: puzzleId,
@@ -55,6 +55,20 @@ function seed(): HuntDocument {
 }
 
 describe('database document commands', () => {
+	it('preserves root rounds when undefined parents are omitted by JSON', () => {
+		const document: HuntDocument = JSON.parse(JSON.stringify(seed()));
+		expect(document.nodes[rootId].parentId).toBeUndefined();
+		expect(() => validateHuntDocument(document)).not.toThrow();
+		expect(
+			documentChildren(document, undefined).map((node) => node.id)
+		).toEqual([rootId]);
+		expect(
+			projectPuzzlehuntView(document).rounds[0].children.map(
+				(node) => node.id
+			)
+		).toEqual([puzzleId, nestedId]);
+	});
+
 	it.each(['puzzle', 'round'] as const)(
 		'leaves a %s in place when moved to its current parent',
 		(type) => {
@@ -126,7 +140,7 @@ describe('database document commands', () => {
 				{
 					id: id(5),
 					type: 'round',
-					parentId: null,
+					parentId: undefined,
 					name: 'Parent',
 					url: '',
 				},
@@ -145,7 +159,7 @@ describe('database document commands', () => {
 					{
 						id: id(4),
 						type: 'puzzle',
-						parentId: null,
+						parentId: undefined,
 						name: 'Root puzzle',
 						url: '',
 					},
@@ -295,7 +309,7 @@ describe('database document commands', () => {
 				type: 'round',
 				name: 'Round',
 				url: '',
-				parentId: index === 1 ? null : id(index - 1),
+				parentId: index === 1 ? undefined : id(index - 1),
 				position: 0,
 			};
 		}
@@ -455,12 +469,11 @@ describe('database document commands', () => {
 		const root = apply(moved, {
 			type: 'move',
 			nodeId: nestedId,
-			parentId: null,
+			parentId: undefined,
 		}).document;
-		expect(documentChildren(root, null).map((node) => node.id)).toEqual([
-			rootId,
-			nestedId,
-		]);
+		expect(
+			documentChildren(root, undefined).map((node) => node.id)
+		).toEqual([rootId, nestedId]);
 	});
 
 	it('captures recursive deletion tombstones including associations and retained sheets', () => {
@@ -549,14 +562,14 @@ describe('database document commands', () => {
 						type: 'round',
 						name: 'New',
 						url: '',
-						parentId: null,
+						parentId: undefined,
 					},
 					{
 						id: rootId,
 						type: 'round',
 						name: 'Replacement',
 						url: '',
-						parentId: null,
+						parentId: undefined,
 					},
 				],
 			})
@@ -571,7 +584,7 @@ describe('database document commands', () => {
 						type: 'round',
 						name: 'Invalid',
 						url: '',
-						parentId: null,
+						parentId: undefined,
 					},
 				],
 			})
@@ -644,7 +657,7 @@ describe('database document view', () => {
 					type: 'round',
 					name: 'Round',
 					url: '',
-					parentId: null,
+					parentId: undefined,
 					position: index,
 				};
 				const childId = id(index + 100);
@@ -691,6 +704,9 @@ describe('database document view', () => {
 		};
 		const view = projectHuntDocument(JSON.parse(JSON.stringify(snapshot)));
 		expect(view.rootRounds.map((round) => round.id)).toEqual([rootId]);
+		expect(
+			view.childrenIndex.childrenOf(undefined).map((round) => round.id)
+		).toEqual([rootId]);
 		expect(view.rounds.map((round) => round.id)).toEqual([
 			rootId,
 			nestedId,

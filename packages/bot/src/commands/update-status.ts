@@ -29,7 +29,7 @@ export const updateStatus: Command = {
 		}
 
 		const matchingPuzzles = Array.from(puzzlehunt.puzzles).filter(
-			(puzzle) => puzzle.discordInfo?.channelId === interaction.channelId
+			(puzzle) => puzzle.discord?.channelId === interaction.channelId
 		);
 
 		if (matchingPuzzles.length === 0) {

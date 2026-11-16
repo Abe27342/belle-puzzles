@@ -22,10 +22,14 @@ import { waitContainerToCatchUp } from '@fluidframework/container-loader';
 import { AzureClient } from '@fluidframework/azure-client';
 import { IFluidContainer } from '@fluidframework/fluid-static';
 import type { IPuzzlehunt as SharedPuzzlehunt } from './model/types.js';
-import type { PuzzlehuntChangeEvent, PuzzlehuntView } from './model/types.js';
+import type {
+	PuzzlehuntChangeEvent,
+	PuzzlehuntView,
+	PuzzlehuntRound,
+} from './model/types.js';
 import { projectPuzzlehuntView } from './model/types.js';
 import { diffPuzzlehuntViews } from './model/changes.js';
-import { snowflake } from './document.js';
+import { HuntCommandError, snowflake } from './document.js';
 import type {
 	DocumentNode,
 	DocumentPuzzle,
@@ -133,23 +137,17 @@ export interface DiscordRoundInfo extends DiscordPuzzleInfo {
 	indexChannel: { /* channel ID */ id: string } | string;
 }
 
-export interface IPuzzlehunt extends SharedPuzzlehunt<Puzzle, Round> {
+export interface IPuzzlehunt extends SharedPuzzlehunt {
 	/** Plain stable-ID view, shared with the Fluid model adapter and event consumers. */
 	readonly view: PuzzlehuntView;
 	augmentWithDiscord(
-		puzzle: Puzzle | DocumentPuzzle,
+		puzzle: DocumentPuzzle,
 		discordInfo: DiscordPuzzleInfo
 	): void;
 	augmentWithDiscord(
-		round: Round | DocumentRound,
+		round: DocumentRound,
 		discordInfo: DiscordRoundInfo
 	): void;
-	augmentWithGoogleSheet(
-		puzzle: Puzzle | DocumentPuzzle,
-		sheetId: string
-	): void;
-	getRound(id: NodeId | string): Round;
-	getPuzzle(id: NodeId | string): Puzzle;
 	get guildId(): string;
 	setGuildId(id: string): void;
 	get loggingChannelIds(): LoggingChannelIds | undefined;
@@ -174,7 +172,10 @@ interface NumberNode {
 	parentage: TraitLocation;
 }
 
-export interface Puzzle extends Omit<PuzzleObject, 'roundId'> {
+export type Puzzle = DocumentPuzzle;
+export type Round = PuzzlehuntRound;
+
+interface NativePuzzle extends Omit<NativePuzzleObject, 'roundId'> {
 	type: 'puzzle';
 	roundId: NodeId;
 	// color: string;
@@ -186,25 +187,25 @@ export interface Puzzle extends Omit<PuzzleObject, 'roundId'> {
 	lastStatusUpdate?: number;
 }
 
-export interface Round extends PuzzleObject {
+interface NativeRound extends NativePuzzleObject {
 	type: 'round';
-	children: (Round | Puzzle)[];
+	children: (NativeRound | NativePuzzle)[];
 	// color: string;
 	// idxMsgId: string; used in previous version to update discord stuff
 }
 
-export interface DiscordAssociation {
+interface NativeDiscordAssociation {
 	channelId: string;
 	// Only populated for rounds
 	indexChannelId?: string;
 	roleId: string;
 }
 
-export interface PuzzleObject {
+interface NativePuzzleObject {
 	id: NodeId;
 	name: string;
 	url: string;
-	discordInfo?: DiscordAssociation;
+	discordInfo?: NativeDiscordAssociation;
 	roundId?: NodeId; // undefined means root
 }
 
@@ -339,7 +340,7 @@ function str(content: any): string {
 	return content;
 }
 
-class RoundHandle implements Round {
+class RoundHandle implements NativeRound {
 	private readonly handle: TreeNodeHandle;
 	private readonly traits: TraitMap<TreeNodeHandle>;
 	public readonly type = 'round';
@@ -355,7 +356,7 @@ class RoundHandle implements Round {
 		return str(readCell(this.traits.url).payload);
 	}
 
-	public get discordInfo(): DiscordAssociation | undefined {
+	public get discordInfo(): NativeDiscordAssociation | undefined {
 		const roleIdNode = readOptional(this.traits.roleId);
 		const channelIdNode = readOptional(this.traits.channelId);
 		const indexChannelIdNode = readOptional(this.traits.indexChannelId);
@@ -376,7 +377,7 @@ class RoundHandle implements Round {
 		return grandparent === undefined ? undefined : parentId;
 	}
 
-	public get children(): (Puzzle | Round)[] {
+	public get children(): (NativePuzzle | NativeRound)[] {
 		return Array.from(
 			this.handle.node.traits.get(traitLabels.children) ?? [],
 			(childId) => {
@@ -426,7 +427,7 @@ class NumberHandle implements NumberNode {
 	}
 }
 
-class PuzzleHandle implements Puzzle {
+class PuzzleHandle implements NativePuzzle {
 	private readonly handle: TreeNodeHandle;
 	private readonly traits: TraitMap<TreeNodeHandle>;
 	public readonly type = 'puzzle';
@@ -442,7 +443,7 @@ class PuzzleHandle implements Puzzle {
 		return str(readCell(this.traits.url).payload);
 	}
 
-	public get discordInfo(): DiscordAssociation | undefined {
+	public get discordInfo(): NativeDiscordAssociation | undefined {
 		const roleIdNode = readOptional(this.traits.roleId);
 		const channelIdNode = readOptional(this.traits.channelId);
 		if (roleIdNode && channelIdNode) {
@@ -488,7 +489,7 @@ function replace(
 const getHandle = (
 	view: TreeView,
 	id: NodeId
-): Puzzle | Round | StringHandle | NumberNode | undefined => {
+): NativePuzzle | NativeRound | StringHandle | NumberNode | undefined => {
 	const viewNode = view.getViewNode(id);
 	switch (viewNode.definition) {
 		case roundDef:
@@ -560,7 +561,7 @@ class Puzzlehunt implements IPuzzlehunt {
 		const nodes: Record<string, DocumentNode> = {};
 		const visit = (
 			nativeId: NodeId,
-			parentId: string | null,
+			parentId: string | undefined,
 			position: number
 		): void => {
 			const node = getHandle(view, nativeId);
@@ -598,7 +599,7 @@ class Puzzlehunt implements IPuzzlehunt {
 					visit(child.id, id, index)
 				);
 			} else {
-				assert(parentId !== null, 'A puzzle must have a parent.');
+				assert(parentId !== undefined, 'A puzzle must have a parent.');
 				nodes[id] = {
 					...common,
 					type: 'puzzle',
@@ -620,15 +621,12 @@ class Puzzlehunt implements IPuzzlehunt {
 		};
 		(
 			view.getViewNode(view.root).traits.get(traitLabels.children) ?? []
-		).forEach((id, position) => visit(id, null, position));
+		).forEach((id, position) => visit(id, undefined, position));
 		return projectPuzzlehuntView({ nodes });
 	}
 
-	#normalizeId(id: NodeId | string): NodeId {
+	#normalizeId(id: string): NodeId {
 		// Accept existing numeric menu values as well as stable IDs from new embeds.
-		if (typeof id !== 'string') {
-			return id;
-		}
 		if (/^-?\d+$/.test(id)) {
 			return Number(id) as NodeId;
 		}
@@ -652,28 +650,30 @@ class Puzzlehunt implements IPuzzlehunt {
 	}
 
 	public addPuzzle(name: string, url: string, round: Round): Puzzle {
+		this.getRound(round.id);
 		const id = this.hunt.generateNodeId();
 		this.checkout.applyEdit(
 			...Change.insertTree(
 				makePuzzleBuildNode(name, url, id),
 				StablePlace.atEndOf({
-					parent: round.id,
+					parent: this.#normalizeId(round.id),
 					label: 'children' as TraitLabel,
 				})
 			)
 		);
-		return new PuzzleHandle(this.checkout.currentView, id);
+		return this.getPuzzle(this.hunt.convertToStableNodeId(id));
 	}
 
 	public addPuzzles(
 		puzzles: { name: string; url: string }[],
 		round: Round
 	): void {
+		this.getRound(round.id);
 		this.checkout.applyEdit(
 			...Change.insertTree(
 				puzzles.map(({ name, url }) => makePuzzleBuildNode(name, url)),
 				StablePlace.atEndOf({
-					parent: round.id,
+					parent: this.#normalizeId(round.id),
 					label: 'children' as TraitLabel,
 				})
 			)
@@ -681,10 +681,14 @@ class Puzzlehunt implements IPuzzlehunt {
 	}
 
 	public addRound(name: string, url: string, parentRound?: Round): Round {
+		if (parentRound !== undefined) {
+			this.getRound(parentRound.id);
+		}
 		const id = this.hunt.generateNodeId();
 		const parentNodeId =
-			parentRound?.id ??
-			this.hunt.convertToNodeId(initialTree.identifier);
+			parentRound === undefined
+				? this.hunt.convertToNodeId(initialTree.identifier)
+				: this.#normalizeId(parentRound.id);
 		this.checkout.applyEdit(
 			...Change.insertTree(
 				makeRoundBuildNode(name, url, id),
@@ -694,102 +698,113 @@ class Puzzlehunt implements IPuzzlehunt {
 				})
 			)
 		);
-		return new RoundHandle(this.checkout.currentView, id);
+		return this.getRound(this.hunt.convertToStableNodeId(id));
 	}
 
 	public addRounds(
 		rounds: { name: string; url: string }[],
 		parentRound: Round
 	): void {
+		this.getRound(parentRound.id);
 		this.checkout.applyEdit(
 			...Change.insertTree(
 				rounds.map(({ name, url }) => makeRoundBuildNode(name, url)),
 				StablePlace.atEndOf({
-					parent: parentRound.id,
+					parent: this.#normalizeId(parentRound.id),
 					label: 'children' as TraitLabel,
 				})
 			)
 		);
 	}
 
-	public delete(puzzleObj: Puzzle | Round): void {
-		this.checkout.applyEdit(Change.delete(StableRange.only(puzzleObj.id)));
+	public delete(puzzleObj: DocumentNode): void {
+		this.checkout.applyEdit(
+			Change.delete(StableRange.only(this.#normalizeId(puzzleObj.id)))
+		);
 	}
 
-	public changeName(puzzleObj: Puzzle | Round, name: string): void {
+	public changeName(puzzleObj: DocumentNode, name: string): void {
 		this.checkout.applyEdit(
 			...replace(makeString(name), {
-				parent: puzzleObj.id,
+				parent: this.#normalizeId(puzzleObj.id),
 				label: traitLabels.name,
 			})
 		);
 	}
 
-	public changeUrl(puzzleObj: Puzzle | Round, url: string): void {
+	public changeUrl(puzzleObj: DocumentNode, url: string): void {
 		this.checkout.applyEdit(
 			...replace(makeString(url), {
-				parent: puzzleObj.id,
+				parent: this.#normalizeId(puzzleObj.id),
 				label: traitLabels.url,
 			})
 		);
 	}
 
-	public solve(id: NodeId, answer: string): Puzzle {
-		const answerTraitLocation = { parent: id, label: traitLabels.answer };
+	public solve(id: string, answer: string): Puzzle {
+		this.getPuzzle(id);
+		const answerTraitLocation = {
+			parent: this.#normalizeId(id),
+			label: traitLabels.answer,
+		};
 		this.checkout.applyEdit(
 			...replace(makeString(answer), answerTraitLocation)
 		);
-		return new PuzzleHandle(this.checkout.currentView, id);
+		return this.getPuzzle(id);
 	}
 
-	public unsolve(id: NodeId): Puzzle {
+	public unsolve(id: string): Puzzle {
+		this.getPuzzle(id);
 		this.checkout.applyEdit(
 			Change.delete(
 				StableRange.all({
-					parent: id,
+					parent: this.#normalizeId(id),
 					label: traitLabels.answer,
 				})
 			)
 		);
-		return new PuzzleHandle(this.checkout.currentView, id);
+		return this.getPuzzle(id);
 	}
 
 	public updateStatus(puzzle: Puzzle, status: string): void {
+		this.getPuzzle(puzzle.id);
 		this.checkout.applyEdit(
 			...replace(makeString(status), {
-				parent: puzzle.id,
+				parent: this.#normalizeId(puzzle.id),
 				label: traitLabels.status,
 			}),
 			...replace(makeNumber(Date.now()), {
-				parent: puzzle.id,
+				parent: this.#normalizeId(puzzle.id),
 				label: traitLabels.lastStatusUpdate,
 			})
 		);
 	}
 
 	public clearStatus(puzzle: Puzzle): void {
+		this.getPuzzle(puzzle.id);
 		this.checkout.applyEdit(
 			Change.delete(
 				StableRange.all({
-					parent: puzzle.id,
+					parent: this.#normalizeId(puzzle.id),
 					label: traitLabels.status,
 				})
 			),
 			Change.delete(
 				StableRange.all({
-					parent: puzzle.id,
+					parent: this.#normalizeId(puzzle.id),
 					label: traitLabels.lastStatusUpdate,
 				})
 			)
 		);
 	}
 
-	public move(obj: Puzzle | Round, newParent: Round): void {
+	public move(obj: DocumentNode, newParent: Round): void {
+		this.getRound(newParent.id);
 		this.checkout.applyEdit(
 			...Change.move(
-				StableRange.only(obj.id),
+				StableRange.only(this.#normalizeId(obj.id)),
 				StablePlace.atEndOf({
-					parent: newParent.id,
+					parent: this.#normalizeId(newParent.id),
 					label: traitLabels.children,
 				})
 			)
@@ -797,15 +812,15 @@ class Puzzlehunt implements IPuzzlehunt {
 	}
 
 	public augmentWithDiscord(
-		puzzle: Puzzle | DocumentPuzzle,
+		puzzle: DocumentPuzzle,
 		discordInfo: DiscordPuzzleInfo
 	): void;
 	public augmentWithDiscord(
-		round: Round | DocumentRound,
+		round: DocumentRound,
 		discordInfo: DiscordRoundInfo
 	): void;
 	public augmentWithDiscord(
-		obj: Puzzle | Round | DocumentNode,
+		obj: DocumentNode,
 		discordInfo: DiscordPuzzleInfo | DiscordRoundInfo
 	): void {
 		const { channel, role, indexChannel } = discordInfo as DiscordRoundInfo;
@@ -841,9 +856,10 @@ class Puzzlehunt implements IPuzzlehunt {
 	}
 
 	public augmentWithGoogleSheet(
-		puzzle: Puzzle | DocumentPuzzle,
+		puzzle: DocumentPuzzle,
 		sheetId: string
 	): void {
+		this.getPuzzle(puzzle.id);
 		this.checkout.applyEdit(
 			...replace(makeString(sheetId), {
 				parent: this.#normalizeId(puzzle.id),
@@ -852,42 +868,34 @@ class Puzzlehunt implements IPuzzlehunt {
 		);
 	}
 
-	public getRound(id: NodeId | string): Round {
-		return new RoundHandle(
-			this.checkout.currentView,
-			this.#normalizeId(id)
-		);
+	public getRound(id: string): Round {
+		const stableId = /^-?\d+$/.test(id)
+			? this.hunt.convertToStableNodeId(this.#normalizeId(id))
+			: id;
+		const round = this.view.rounds.find((node) => node.id === stableId);
+		if (!round) {
+			throw new HuntCommandError('not-found', 'Round not found.');
+		}
+		return round;
 	}
 
-	public getPuzzle(id: NodeId | string): Puzzle {
-		return new PuzzleHandle(
-			this.checkout.currentView,
-			this.#normalizeId(id)
-		);
+	public getPuzzle(id: string): Puzzle {
+		const stableId = /^-?\d+$/.test(id)
+			? this.hunt.convertToStableNodeId(this.#normalizeId(id))
+			: id;
+		const puzzle = this.view.puzzles.find((node) => node.id === stableId);
+		if (!puzzle) {
+			throw new HuntCommandError('not-found', 'Puzzle not found.');
+		}
+		return puzzle;
 	}
 
 	public get rounds(): Iterable<Round> {
-		return Array.from(
-			this.getAllDefsMatching(this.checkout.currentView.root, roundDef),
-			(id) => new RoundHandle(this.checkout.currentView, id)
-		);
+		return this.view.rounds;
 	}
 
 	public get puzzles(): Iterable<Puzzle> {
-		return Array.from(
-			this.getAllDefsMatching(this.checkout.currentView.root, puzzleDef),
-			(id) => new PuzzleHandle(this.checkout.currentView, id)
-		);
-	}
-
-	private *getAllDefsMatching(id: NodeId, def: string): Iterable<NodeId> {
-		const viewNode = this.checkout.currentView.getViewNode(id);
-		if (viewNode.definition === def) {
-			yield viewNode.identifier;
-		}
-		for (const child of viewNode.traits.get(traitLabels.children) ?? []) {
-			yield* this.getAllDefsMatching(child, def);
-		}
+		return this.view.puzzles;
 	}
 
 	public copyFrom(other: Puzzlehunt): void {

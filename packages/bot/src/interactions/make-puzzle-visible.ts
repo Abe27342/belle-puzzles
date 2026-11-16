@@ -20,7 +20,7 @@ export const makePuzzleVisible: InteractionHandler = {
 
 		const roles = puzzleIds.map((puzzleId) => {
 			const puzzle = puzzlehunt.getPuzzle(puzzleId);
-			return interaction.guild.roles.cache.get(puzzle.discordInfo.roleId);
+			return interaction.guild.roles.cache.get(puzzle.discord.roleId);
 		});
 
 		await member.roles.add(roles);

@@ -51,8 +51,7 @@ export function generateRoundEmbed(
 	puzzlehunt: IPuzzlehunt
 ): EmbedContent {
 	const puzzles = Array.from(puzzlehunt.puzzles).filter(
-		(puzzle) =>
-			puzzle.roundId === round.id && puzzle.discordInfo !== undefined
+		(puzzle) => puzzle.parentId === round.id && puzzle.discord !== undefined
 	);
 
 	const descriptionLines = [
@@ -65,7 +64,7 @@ export function generateRoundEmbed(
 					puzzle.sheetId
 						? `[Spreadsheet](https://docs.google.com/spreadsheets/d/${puzzle.sheetId})`
 						: 'No spreadsheet'
-				} | <#${puzzle.discordInfo.channelId}>${
+				} | <#${puzzle.discord.channelId}>${
 					puzzle.answer === undefined
 						? ''
 						: ` | SOLVED: ${puzzle.answer}`
@@ -89,11 +88,11 @@ export function generateRoundEmbed(
 	const embed = new EmbedBuilder()
 		.setTitle('List of Puzzles')
 		.setDescription(description);
-	if (round.roundId !== undefined) {
+	if (round.parentId !== undefined) {
 		embed.addFields({
 			name: 'Parent Round',
 			value: `<#${
-				puzzlehunt.getRound(round.roundId).discordInfo.indexChannelId
+				puzzlehunt.getRound(round.parentId).discord.indexChannelId
 			}>`,
 		});
 	}
@@ -156,7 +155,7 @@ export function computeAssociatedRoundOrPuzzle(
 	puzzlehunt: IPuzzlehunt
 ): Round | Puzzle | undefined {
 	for (const round of puzzlehunt.rounds) {
-		const { discordInfo } = round;
+		const { discord: discordInfo } = round;
 		if (
 			discordInfo?.channelId === channel.id ||
 			discordInfo?.indexChannelId === channel.id
@@ -166,7 +165,7 @@ export function computeAssociatedRoundOrPuzzle(
 	}
 
 	for (const puzzle of puzzlehunt.puzzles) {
-		const { discordInfo } = puzzle;
+		const { discord: discordInfo } = puzzle;
 		if (discordInfo?.channelId === channel.id) {
 			return puzzle;
 		}
@@ -191,8 +190,8 @@ export async function computeParentRound(
 		const indexChannelId = parentRoundArg.id;
 		parentRound = Array.from(puzzlehunt.rounds).find(
 			(round) =>
-				round.discordInfo?.indexChannelId === indexChannelId ||
-				round.discordInfo?.channelId === indexChannelId
+				round.discord?.indexChannelId === indexChannelId ||
+				round.discord?.channelId === indexChannelId
 		);
 		if (!parentRound) {
 			await interaction.editReply(
@@ -203,7 +202,7 @@ export async function computeParentRound(
 	} else {
 		parentRound =
 			puzzleObj?.type === 'puzzle'
-				? puzzlehunt.getRound(puzzleObj.roundId)
+				? puzzlehunt.getRound(puzzleObj.parentId)
 				: puzzleObj;
 	}
 	return { valid: true, parentRound };
@@ -227,8 +226,8 @@ export function getAncestorRounds(
 		let ancestorRound = puzzleObj;
 		ancestorRound !== undefined;
 		ancestorRound =
-			ancestorRound.roundId !== undefined
-				? puzzlehunt.getRound(ancestorRound.roundId)
+			ancestorRound.parentId !== undefined
+				? puzzlehunt.getRound(ancestorRound.parentId)
 				: undefined
 	) {
 		ancestorRounds.push(ancestorRound);

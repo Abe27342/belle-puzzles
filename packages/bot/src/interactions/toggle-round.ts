@@ -17,10 +17,9 @@ export const toggleRound: InteractionHandler = {
 		);
 
 		const round = Array.from(puzzlehunt.rounds).find(
-			(round) =>
-				round.discordInfo.indexChannelId === interaction.channel.id
+			(round) => round.discord.indexChannelId === interaction.channel.id
 		);
-		const role = round.discordInfo.roleId;
+		const role = round.discord.roleId;
 
 		if (member.roles.cache.has(role)) {
 			await member.roles.remove(role);

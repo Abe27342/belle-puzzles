@@ -33,7 +33,7 @@ export function makeViewChangeHandler(
 		// current code likely can into issues.
 		const tasks: Promise<void>[] = [];
 		const refreshParent = (node: DocumentNode) => {
-			if (node.parentId !== null) {
+			if (node.parentId !== undefined) {
 				channelsToSync.add(node.parentId);
 			}
 		};

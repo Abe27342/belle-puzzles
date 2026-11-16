@@ -222,7 +222,7 @@ export function createClient({
 
 		const { puzzlehunt } = await getHuntContext(client, newChannel.guild);
 		const puzzle = Array.from(puzzlehunt.puzzles).find(
-			(puzzle) => puzzle.discordInfo?.channelId === oldChannel.id
+			(puzzle) => puzzle.discord?.channelId === oldChannel.id
 		);
 		if (!puzzle) {
 			return;
@@ -230,7 +230,7 @@ export function createClient({
 
 		const findParentRound = (channelId: string) =>
 			Array.from(puzzlehunt.rounds).find(
-				(round) => round.discordInfo?.channelId === channelId
+				(round) => round.discord?.channelId === channelId
 			);
 		const oldParentRound = findParentRound(oldChannel.parentId);
 		const newParentRound = findParentRound(newChannel.parentId);

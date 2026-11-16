@@ -47,7 +47,7 @@ beforeEach(async () => {
 					type: 'round',
 					name: 'Root',
 					url: '',
-					parentId: null,
+					parentId: undefined,
 				},
 				{
 					id: puzzleId,
@@ -203,7 +203,7 @@ describe('Authoritative commands on multiple PostgreSQL connections', () => {
 						type: 'round',
 						name: 'Second',
 						url: '',
-						parentId: null,
+						parentId: undefined,
 					},
 				],
 			},

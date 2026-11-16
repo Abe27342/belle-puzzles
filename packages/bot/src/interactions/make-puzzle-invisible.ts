@@ -27,20 +27,20 @@ export const makePuzzleInvisible: InteractionHandler = {
 
 		const roles = puzzleIds.map((puzzleId) => {
 			const puzzle = puzzlehunt.getPuzzle(puzzleId);
-			return interaction.guild.roles.cache.get(puzzle.discordInfo.roleId);
+			return interaction.guild.roles.cache.get(puzzle.discord.roleId);
 		});
 
 		// In addition to removing role for the puzzle, also remove "all puzzles in a round" role for all ancestors
 		// Rationale: intent is to hide these puzzles. Just removing the role won't do it. User can always add back
 		// just the ones they cared about if they want.
 		const parent = puzzlehunt.getRound(
-			puzzlehunt.getPuzzle(puzzleIds[0]).roundId
+			puzzlehunt.getPuzzle(puzzleIds[0]).parentId
 		);
 
 		await member.roles.remove([
 			...roles,
 			...getAncestorRounds(puzzlehunt, parent)
-				.map((round) => round.discordInfo.roleId)
+				.map((round) => round.discord.roleId)
 				.filter((roleId) => member.roles.cache.has(roleId)),
 		]);
 		await interaction.message.edit('');

@@ -109,7 +109,7 @@ async function seed() {
 				type: 'round',
 				name: 'Root',
 				url: '',
-				parentId: null,
+				parentId: undefined,
 			},
 			{
 				id: puzzleId,
@@ -149,6 +149,25 @@ afterAll(async () => {
 });
 
 describe('PostgreSQL hunt store', () => {
+	it('maps SQL NULL root parents to undefined in snapshots and deltas', async () => {
+		await seed();
+		const { rows } = await database.query(
+			'SELECT parent_id FROM hunt_nodes WHERE hunt_id = $1 AND id = $2',
+			[scope.huntId, rootId]
+		);
+		expect(rows).toEqual([{ parent_id: null }]);
+		const snapshot = await store.read(scope);
+		expect(snapshot.document.nodes[rootId].parentId).toBeUndefined();
+		validateHuntDocument(JSON.parse(JSON.stringify(snapshot.document)));
+		const update = await store.readUpdates(scope, 0);
+		if (update.type !== 'delta') {
+			throw new Error('Expected initial additions as a delta.');
+		}
+		expect(
+			update.delta.upsertNodes.find((node) => node.id === rootId).parentId
+		).toBeUndefined();
+	});
+
 	it('returns only affected final-state nodes and deletion IDs across a revision interval', async () => {
 		await seed();
 		const base = await store.read(scope);
@@ -182,7 +201,11 @@ describe('PostgreSQL hunt store', () => {
 
 	it('tracks empty revisions, includes metadata, and returns empty updates at the current revision', async () => {
 		await seed();
-		await submit(101, { type: 'move', nodeId: rootId, parentId: null });
+		await submit(101, {
+			type: 'move',
+			nodeId: rootId,
+			parentId: undefined,
+		});
 		await database.query(
 			'UPDATE hunts SET name = \'Metadata\', configuration = \'{"indexId":"index"}\' WHERE id = $1',
 			[scope.huntId]
@@ -257,7 +280,11 @@ describe('PostgreSQL hunt store', () => {
 		await database.query('UPDATE hunts SET revision = 1001 WHERE id = $1', [
 			scope.huntId,
 		]);
-		await submit(101, { type: 'move', nodeId: rootId, parentId: null });
+		await submit(101, {
+			type: 'move',
+			nodeId: rootId,
+			parentId: undefined,
+		});
 		const { rows } = await database.query<{ count: number }>(
 			'SELECT count(*)::int AS count FROM hunt_changes'
 		);
@@ -275,7 +302,7 @@ describe('PostgreSQL hunt store', () => {
 					type: 'round',
 					name: 'Root',
 					url: '',
-					parentId: null,
+					parentId: undefined,
 				},
 				{
 					id: puzzleId,
@@ -603,7 +630,11 @@ describe('PostgreSQL hunt store', () => {
 				)
 			).rows
 		).toEqual(before.rows);
-		await submit(101, { type: 'move', nodeId: rootId, parentId: null });
+		await submit(101, {
+			type: 'move',
+			nodeId: rootId,
+			parentId: undefined,
+		});
 		expect(
 			queries.filter((text) =>
 				text.includes('INSERT INTO integration_jobs')
@@ -901,7 +932,7 @@ describe('PostgreSQL hunt store', () => {
 					type: 'round',
 					name: 'New round',
 					url: '',
-					parentId: null,
+					parentId: undefined,
 				},
 			],
 		});
@@ -1112,7 +1143,7 @@ describe('PostgreSQL hunt store', () => {
 					type: 'round',
 					name: 'Other',
 					url: '',
-					parentId: null,
+					parentId: undefined,
 				},
 			],
 		});
@@ -1131,7 +1162,7 @@ describe('PostgreSQL hunt store', () => {
 		const snapshot = await store.read(scope);
 		expect(snapshot.revision).toBe(3);
 		expect(snapshot.document.nodes[rootId].parentId).toBe(id(12));
-		expect(snapshot.document.nodes[id(12)].parentId).toBeNull();
+		expect(snapshot.document.nodes[id(12)].parentId).toBeUndefined();
 		validateHuntDocument(snapshot.document);
 	});
 });
