@@ -7,7 +7,8 @@ import {
 	IPuzzlehunt,
 	Puzzle,
 	Round,
-} from '../puzzlehunt.js';
+} from '../fluid/index.js';
+import type { IPuzzlehuntSession } from '../model/types.js';
 import { TestLogger } from './utils.js';
 import type {
 	DocumentNode,
@@ -24,7 +25,7 @@ const user = {
 
 describe('Puzzlehunt', () => {
 	let puzzlehunt: IPuzzlehunt;
-	let disposer: { dispose: () => void };
+	let session: IPuzzlehuntSession;
 	let logger: TestLogger;
 
 	beforeEach(async () => {
@@ -39,14 +40,14 @@ describe('Puzzlehunt', () => {
 		});
 		const results = await createNewPuzzlehunt(client, guildId);
 		puzzlehunt = results.puzzlehunt;
-		disposer = results.disposer;
+		session = results;
 	});
 
 	afterEach(async () => {
 		vi.restoreAllMocks();
-		disposer.dispose();
+		await session.close();
 		puzzlehunt = undefined;
-		disposer = undefined;
+		session = undefined;
 		expect(logger.errorEvents).toEqual([]);
 	});
 
