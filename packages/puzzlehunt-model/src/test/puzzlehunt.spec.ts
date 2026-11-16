@@ -2,12 +2,8 @@ import { beforeEach, afterEach, describe, expect, inject, it, vi } from 'vitest'
 import { AzureClient } from '@fluidframework/azure-client';
 import { InsecureTokenProvider } from '@fluidframework/test-client-utils';
 import { TreeView } from '@fluid-experimental/tree';
-import {
-	createNewPuzzlehunt,
-	IPuzzlehunt,
-	Puzzle,
-	Round,
-} from '../puzzlehunt.js';
+import { createNewPuzzlehunt } from '../fluid/load.js';
+import { IPuzzlehunt, Puzzle, Round } from '../puzzlehunt.js';
 import { TestLogger } from './utils.js';
 import type {
 	DocumentNode,
