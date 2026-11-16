@@ -1,9 +1,18 @@
 import { SharedTree } from '@fluid-experimental/tree';
+import { SharedMap } from 'fluid-framework';
 import type { IFluidContainer } from '@fluidframework/fluid-static';
-import type { DocumentNode, DocumentPuzzle } from '../document.js';
-import type { IPuzzlehunt } from '../puzzlehunt.js';
+import { HuntCommandError } from '../document.js';
 import type {
+	DocumentNode,
+	DocumentPuzzle,
+	DocumentRound,
+} from '../document.js';
+import type {
+	DiscordPuzzleInfo,
+	DiscordRoundInfo,
+	IPuzzlehunt,
 	IPuzzlehuntModel,
+	LoggingChannelIds,
 	PuzzlehuntRound,
 	PuzzlehuntView,
 	PuzzlehuntChangeEvent,
@@ -11,6 +20,8 @@ import type {
 
 /** Adapt the existing Fluid model; preserve its existing domain behavior. */
 export class FluidPuzzlehuntModel implements IPuzzlehuntModel {
+	private readonly guildInfo: SharedMap;
+
 	constructor(
 		private readonly hunt: IPuzzlehunt,
 		private readonly container: IFluidContainer
@@ -19,6 +30,13 @@ export class FluidPuzzlehuntModel implements IPuzzlehuntModel {
 		if (!(tree instanceof SharedTree)) {
 			throw new Error('Fluid puzzlehunt container has no SharedTree.');
 		}
+		const guildInfo = container.initialObjects.guildInfo;
+		if (!(guildInfo instanceof SharedMap)) {
+			throw new Error(
+				'Fluid puzzlehunt container has no guild metadata.'
+			);
+		}
+		this.guildInfo = guildInfo;
 	}
 
 	get view(): PuzzlehuntView {
@@ -35,6 +53,18 @@ export class FluidPuzzlehuntModel implements IPuzzlehuntModel {
 
 	get isPending(): boolean {
 		return this.container.isDirty;
+	}
+
+	get guildId(): string {
+		return this.hunt.guildId;
+	}
+
+	get loggingChannelIds(): LoggingChannelIds | undefined {
+		return this.hunt.loggingChannelIds;
+	}
+
+	setLoggingChannelIds(ids: LoggingChannelIds): void {
+		this.hunt.setLoggingChannelIds(ids);
 	}
 
 	getRound(id: string): PuzzlehuntRound {
@@ -107,17 +137,50 @@ export class FluidPuzzlehuntModel implements IPuzzlehuntModel {
 		this.hunt.clearStatus(puzzle);
 	}
 
-	augmentWithGoogleSheet(puzzle: DocumentPuzzle, sheetId: string): void {
-		this.hunt.augmentWithGoogleSheet(puzzle, sheetId);
+	augmentWithDiscord(
+		puzzle: DocumentPuzzle,
+		discordInfo: DiscordPuzzleInfo,
+		durableTaskId?: string
+	): void;
+	augmentWithDiscord(
+		round: DocumentRound,
+		discordInfo: DiscordRoundInfo,
+		durableTaskId?: string
+	): void;
+	augmentWithDiscord(
+		node: DocumentNode,
+		discordInfo: DiscordPuzzleInfo | DiscordRoundInfo,
+		durableTaskId?: string
+	): void {
+		if (node.type === 'puzzle') {
+			this.hunt.augmentWithDiscord(node, discordInfo, durableTaskId);
+		} else if ('indexChannel' in discordInfo) {
+			this.hunt.augmentWithDiscord(node, discordInfo, durableTaskId);
+		} else {
+			throw new HuntCommandError(
+				'invalid-command',
+				'A round Discord association requires an index channel.'
+			);
+		}
+	}
+
+	augmentWithGoogleSheet(
+		puzzle: DocumentPuzzle,
+		sheetId: string,
+		durableTaskId?: string
+	): void {
+		this.hunt.augmentWithGoogleSheet(puzzle, sheetId, durableTaskId);
 	}
 
 	subscribe(listener: () => void): () => void {
 		const notify = () => listener();
 		const unsubscribe = this.hunt.subscribeChanges(notify);
+		this.guildInfo.on('valueChanged', notify);
 		this.container.on('dirty', notify);
 		this.container.on('saved', notify);
 		return () => {
 			unsubscribe();
+			this.guildInfo.off('valueChanged', notify);
 			this.container.off('dirty', notify);
 			this.container.off('saved', notify);
 		};

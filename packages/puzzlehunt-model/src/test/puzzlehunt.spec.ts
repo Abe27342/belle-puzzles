@@ -417,16 +417,28 @@ describe('Puzzlehunt', () => {
 			expect(puzzlehunt.getRound(snapshot.rounds[0].id).id).toBe(
 				round.id
 			);
-			puzzlehunt.augmentWithDiscord(snapshot.rounds[0], {
-				channel: 'round-channel',
-				role: 'round-role',
-				indexChannel: 'index',
-			});
-			puzzlehunt.augmentWithDiscord(snapshot.puzzles[0], {
-				channel: 'channel',
-				role: 'role',
-			});
-			puzzlehunt.augmentWithGoogleSheet(snapshot.puzzles[0], 'sheet');
+			puzzlehunt.augmentWithDiscord(
+				snapshot.rounds[0],
+				{
+					channel: 'round-channel',
+					role: 'round-role',
+					indexChannel: 'index',
+				},
+				'round-task'
+			);
+			puzzlehunt.augmentWithDiscord(
+				snapshot.puzzles[0],
+				{
+					channel: 'channel',
+					role: 'role',
+				},
+				'puzzle-task'
+			);
+			puzzlehunt.augmentWithGoogleSheet(
+				snapshot.puzzles[0],
+				'sheet',
+				'sheet-task'
+			);
 			expect(puzzlehunt.getPuzzle(puzzle.id).sheetId).toBe('sheet');
 			expect(puzzlehunt.getRound(round.id).discord.indexChannelId).toBe(
 				'index'

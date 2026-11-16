@@ -507,9 +507,14 @@ export async function commitHuntCommand(
 				[scope.huntId, committed.revision - retainedChangeRevisions]
 			);
 			await connection.query(
-				`UPDATE hunts SET revision = $3, updated_at = clock_timestamp()
+				`UPDATE hunts SET revision = $3, configuration = $4::jsonb, updated_at = clock_timestamp()
 				 WHERE id = $1 AND guild_id = $2`,
-				[scope.huntId, scope.guildId, committed.revision]
+				[
+					scope.huntId,
+					scope.guildId,
+					committed.revision,
+					JSON.stringify(committed.document.configuration),
+				]
 			);
 		}
 		await connection.query(

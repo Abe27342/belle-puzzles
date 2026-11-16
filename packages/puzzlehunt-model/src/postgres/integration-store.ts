@@ -1,5 +1,6 @@
 import type {
 	HuntCommandResult,
+	HuntIntegrationClient,
 	HuntIntegrationCommand,
 	HuntScope,
 } from '../document.js';
@@ -7,7 +8,7 @@ import type { HuntDatabasePool } from './database.js';
 import { commitHuntCommand } from './store.js';
 
 /** Worker-only bookkeeping, independent of the user-facing document store instance. */
-export class PostgresHuntIntegrationStore {
+export class PostgresHuntIntegrationStore implements HuntIntegrationClient {
 	constructor(private readonly pool: HuntDatabasePool) {}
 
 	/**

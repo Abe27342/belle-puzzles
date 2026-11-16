@@ -302,12 +302,22 @@ export type HuntMoveCommand = {
 };
 
 /**
+ * Intent to update hunt configuration. Omitted or undefined fields are unchanged;
+ * supplied fields replace their previous values, including the complete logging channel mapping.
+ */
+export type HuntUpdateConfigurationCommand = {
+	readonly type: 'update-configuration';
+	readonly configuration: HuntConfiguration;
+};
+
+/**
  * Union of all possible user intents for modifying the document.
  */
 export type HuntCommand =
 	| HuntAddCommand
 	| HuntDeleteCommand
 	| HuntMoveCommand
+	| HuntUpdateConfigurationCommand
 	| SetHuntProperty<HuntPropertyValues>;
 
 export interface HuntPropertyValues {
@@ -355,6 +365,16 @@ export interface HuntDocumentClient {
 	submit(
 		scope: HuntScope,
 		request: HuntCommandRequest
+	): Promise<HuntCommandResult>;
+}
+
+/** Trusted worker capability; keep separate from the user-facing document client. */
+export interface HuntIntegrationClient {
+	/** Atomically record a result and complete its persisted task, deduplicating by task ID. */
+	completeWork(
+		scope: HuntScope,
+		durableTaskId: string,
+		result?: HuntIntegrationCommand
 	): Promise<HuntCommandResult>;
 }
 
@@ -703,6 +723,45 @@ export function applyHuntCommand(
 	const events: HuntDocumentEvent[] = [];
 
 	switch (command.type) {
+		case 'update-configuration': {
+			const configuration = command.configuration;
+			requireCommand(
+				configuration !== null &&
+					typeof configuration === 'object' &&
+					!Array.isArray(configuration),
+				'Hunt configuration must be an object.'
+			);
+			for (const field of [
+				'googleFolderId',
+				'indexId',
+				'allPuzzlesRoleId',
+			] as const) {
+				requireCommand(
+					configuration[field] === undefined ||
+						typeof configuration[field] === 'string',
+					'Configuration IDs must be strings when present.'
+				);
+			}
+			const ids = configuration.loggingChannelIds;
+			requireCommand(
+				ids === undefined ||
+					(ids !== null &&
+						typeof ids === 'object' &&
+						typeof ids.puzzleAdd === 'string' &&
+						typeof ids.puzzleSolve === 'string' &&
+						typeof ids.puzzleStatusUpdate === 'string'),
+				'Logging channel IDs must be strings.'
+			);
+			next.configuration = {
+				...document.configuration,
+				...Object.fromEntries(
+					Object.entries(configuration).filter(
+						([, value]) => value !== undefined
+					)
+				),
+			};
+			break;
+		}
 		case 'add': {
 			requireCommand(
 				command.nodes.length > 0,

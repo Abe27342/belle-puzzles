@@ -1,6 +1,9 @@
 export type {
+	DiscordPuzzleInfo,
+	DiscordRoundInfo,
 	IPuzzlehunt,
 	IPuzzlehuntModel,
+	LoggingChannelIds,
 	PuzzlehuntRound,
 	PuzzlehuntView,
 	PuzzlehuntChangeEvent,

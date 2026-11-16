@@ -89,6 +89,34 @@ export function puzzlehuntModelContract(
 			return other;
 		}
 
+		it('persists logging configuration across clients without node changes', async () => {
+			const other = await fixture.createModel();
+			expect(model.guildId).toBe(other.guildId);
+			const metadataChanges = vi.fn();
+			const unsubscribe = other.subscribe(() =>
+				metadataChanges(other.loggingChannelIds)
+			);
+			const changes = vi.fn();
+			model.subscribeChanges(changes);
+			const ids = {
+				puzzleAdd: 'add-channel',
+				puzzleSolve: 'solve-channel',
+				puzzleStatusUpdate: 'status-channel',
+			};
+			model.setLoggingChannelIds(ids);
+			expect(model.loggingChannelIds).toEqual(ids);
+			await fixture.synchronize();
+			await vi.waitFor(() =>
+				expect(other.loggingChannelIds).toEqual(ids)
+			);
+			await vi.waitFor(() =>
+				expect(metadataChanges).toHaveBeenCalledWith(ids)
+			);
+			unsubscribe();
+			expect((await reload()).loggingChannelIds).toEqual(ids);
+			expect(changes).not.toHaveBeenCalled();
+		});
+
 		describe('rounds', () => {
 			it('starts empty', () => {
 				expect(model.rounds).toEqual([]);
