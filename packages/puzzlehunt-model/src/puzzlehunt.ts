@@ -31,6 +31,7 @@ import { projectPuzzlehuntView } from './model/types.js';
 import { diffPuzzlehuntViews } from './model/changes.js';
 import { HuntCommandError, snowflake } from './document.js';
 import type {
+	DocumentDiscordAssociation,
 	DocumentNode,
 	DocumentPuzzle,
 	DocumentRound,
@@ -175,40 +176,6 @@ interface NumberNode {
 export type Puzzle = DocumentPuzzle;
 export type Round = PuzzlehuntRound;
 
-interface NativePuzzle extends Omit<NativePuzzleObject, 'roundId'> {
-	type: 'puzzle';
-	roundId: NodeId;
-	// color: string;
-	// Google drive id
-	sheetId?: string;
-	answer?: string;
-	status?: string;
-	// Note: client-side timestamp. It would be great to leverage platform-provided attribution for this prop.
-	lastStatusUpdate?: number;
-}
-
-interface NativeRound extends NativePuzzleObject {
-	type: 'round';
-	children: (NativeRound | NativePuzzle)[];
-	// color: string;
-	// idxMsgId: string; used in previous version to update discord stuff
-}
-
-interface NativeDiscordAssociation {
-	channelId: string;
-	// Only populated for rounds
-	indexChannelId?: string;
-	roleId: string;
-}
-
-interface NativePuzzleObject {
-	id: NodeId;
-	name: string;
-	url: string;
-	discordInfo?: NativeDiscordAssociation;
-	roundId?: NodeId; // undefined means root
-}
-
 const puzzleDef = '34edbf0a-7479-4124-ae4f-7091724dc58a';
 const roundDef = '81cfc8eb-fd54-4071-b991-fea6db4456d7';
 const stringDef = '13574b71-cd65-4672-98bd-e0c045f04f6a';
@@ -340,13 +307,23 @@ function str(content: any): string {
 	return content;
 }
 
-class RoundHandle implements NativeRound {
+class RoundHandle implements PuzzlehuntRound {
 	private readonly handle: TreeNodeHandle;
 	private readonly traits: TraitMap<TreeNodeHandle>;
 	public readonly type = 'round';
-	constructor(private readonly view: TreeView, public readonly id: NodeId) {
-		this.handle = new TreeNodeHandle(view, id);
+	// color: string;
+	// idxMsgId: string; used in previous version to update discord stuff
+	constructor(
+		private readonly view: TreeView,
+		private readonly nodeId: NodeId,
+		private readonly hunt: SharedTree
+	) {
+		this.handle = new TreeNodeHandle(view, nodeId);
 		this.traits = this.handle.traits;
+	}
+
+	public get id(): string {
+		return this.hunt.convertToStableNodeId(this.nodeId);
 	}
 
 	public get name(): string {
@@ -356,32 +333,38 @@ class RoundHandle implements NativeRound {
 		return str(readCell(this.traits.url).payload);
 	}
 
-	public get discordInfo(): NativeDiscordAssociation | undefined {
+	public get discord(): DocumentDiscordAssociation | undefined {
 		const roleIdNode = readOptional(this.traits.roleId);
 		const channelIdNode = readOptional(this.traits.channelId);
 		const indexChannelIdNode = readOptional(this.traits.indexChannelId);
 		if (roleIdNode && channelIdNode && indexChannelIdNode) {
 			return {
-				roleId: str(roleIdNode.payload),
-				channelId: str(channelIdNode.payload),
-				indexChannelId: str(indexChannelIdNode.payload),
+				roleId: snowflake(str(roleIdNode.payload)),
+				channelId: snowflake(str(channelIdNode.payload)),
+				indexChannelId: snowflake(str(indexChannelIdNode.payload)),
 			};
 		}
 		return undefined;
 	}
 
-	public get roundId(): NodeId | undefined {
+	public get parentId(): string | undefined {
 		const parentId = this.handle.node.parentage.parent;
 		const grandparent = this.view.tryGetParentViewNode(parentId);
 		// grandparent === undefined implies parent is the root node. So this round has no parent.
-		return grandparent === undefined ? undefined : parentId;
+		return grandparent === undefined
+			? undefined
+			: this.hunt.convertToStableNodeId(parentId);
 	}
 
-	public get children(): (NativePuzzle | NativeRound)[] {
+	public get position(): number {
+		return this.view.getIndexInTrait(this.nodeId);
+	}
+
+	public get children(): (DocumentPuzzle | PuzzlehuntRound)[] {
 		return Array.from(
 			this.handle.node.traits.get(traitLabels.children) ?? [],
 			(childId) => {
-				const childHandle = getHandle(this.view, childId);
+				const childHandle = getHandle(this.view, childId, this.hunt);
 				assert(
 					childHandle.type === 'puzzle' ||
 						childHandle.type === 'round',
@@ -427,13 +410,22 @@ class NumberHandle implements NumberNode {
 	}
 }
 
-class PuzzleHandle implements NativePuzzle {
+class PuzzleHandle implements DocumentPuzzle {
 	private readonly handle: TreeNodeHandle;
 	private readonly traits: TraitMap<TreeNodeHandle>;
 	public readonly type = 'puzzle';
-	constructor(view: TreeView, public readonly id: NodeId) {
-		this.handle = new TreeNodeHandle(view, id);
+	// color: string;
+	constructor(
+		private readonly view: TreeView,
+		private readonly nodeId: NodeId,
+		private readonly hunt: SharedTree
+	) {
+		this.handle = new TreeNodeHandle(view, nodeId);
 		this.traits = this.handle.traits;
+	}
+
+	public get id(): string {
+		return this.hunt.convertToStableNodeId(this.nodeId);
 	}
 
 	public get name(): string {
@@ -443,22 +435,32 @@ class PuzzleHandle implements NativePuzzle {
 		return str(readCell(this.traits.url).payload);
 	}
 
-	public get discordInfo(): NativeDiscordAssociation | undefined {
+	public get discord(): DocumentDiscordAssociation | undefined {
 		const roleIdNode = readOptional(this.traits.roleId);
 		const channelIdNode = readOptional(this.traits.channelId);
 		if (roleIdNode && channelIdNode) {
 			return {
-				roleId: str(roleIdNode.payload),
-				channelId: str(channelIdNode.payload),
+				roleId: snowflake(str(roleIdNode.payload)),
+				channelId: snowflake(str(channelIdNode.payload)),
 			};
 		}
 		return undefined;
 	}
 
-	public get roundId(): NodeId {
-		return this.handle.node.parentage.parent;
+	public get parentId(): string {
+		const parentId = this.handle.node.parentage.parent;
+		assert(
+			parentId !== this.view.root,
+			'A puzzle must have a parent round.'
+		);
+		return this.hunt.convertToStableNodeId(parentId);
 	}
 
+	public get position(): number {
+		return this.view.getIndexInTrait(this.nodeId);
+	}
+
+	// Google drive id
 	public get sheetId(): string | undefined {
 		return readOptional(this.traits.sheetId)?.payload;
 	}
@@ -471,6 +473,7 @@ class PuzzleHandle implements NativePuzzle {
 		return readOptional(this.traits.status)?.payload;
 	}
 
+	// Note: client-side timestamp. It would be great to leverage platform-provided attribution for this prop.
 	public get lastStatusUpdate(): number | undefined {
 		return readOptional(this.traits.lastStatusUpdate)?.payload;
 	}
@@ -488,14 +491,15 @@ function replace(
 
 const getHandle = (
 	view: TreeView,
-	id: NodeId
-): NativePuzzle | NativeRound | StringHandle | NumberNode | undefined => {
+	id: NodeId,
+	hunt: SharedTree
+): DocumentPuzzle | PuzzlehuntRound | StringHandle | NumberNode | undefined => {
 	const viewNode = view.getViewNode(id);
 	switch (viewNode.definition) {
 		case roundDef:
-			return new RoundHandle(view, id);
+			return new RoundHandle(view, id, hunt);
 		case puzzleDef:
-			return new PuzzleHandle(view, id);
+			return new PuzzleHandle(view, id, hunt);
 		case stringDef:
 			return new StringHandle(view, id);
 		case numberDef:
@@ -559,51 +563,24 @@ class Puzzlehunt implements IPuzzlehunt {
 
 	private projectView(view: TreeView): PuzzlehuntView {
 		const nodes: Record<string, DocumentNode> = {};
-		const visit = (
-			nativeId: NodeId,
-			parentId: string | undefined,
-			position: number
-		): void => {
-			const node = getHandle(view, nativeId);
-			assert(
-				node?.type === 'round' || node?.type === 'puzzle',
-				'Expected a domain node.'
-			);
-			const id = this.hunt.convertToStableNodeId(nativeId);
-			const discordInfo = node.discordInfo;
+		const visit = (node: DocumentPuzzle | PuzzlehuntRound): void => {
+			const { id, name, url, parentId, position, discord } = node;
 			const common = {
 				id,
-				name: node.name,
-				url: node.url,
+				name,
+				url,
 				parentId,
 				position,
-				...(discordInfo
-					? {
-							discord: {
-								channelId: snowflake(discordInfo.channelId),
-								roleId: snowflake(discordInfo.roleId),
-								...(discordInfo.indexChannelId === undefined
-									? {}
-									: {
-											indexChannelId: snowflake(
-												discordInfo.indexChannelId
-											),
-									  }),
-							},
-					  }
-					: {}),
+				...(discord === undefined ? {} : { discord }),
 			};
 			if (node.type === 'round') {
 				nodes[id] = { ...common, type: 'round' };
-				node.children.forEach((child, index) =>
-					visit(child.id, id, index)
-				);
+				node.children.forEach(visit);
 			} else {
-				assert(parentId !== undefined, 'A puzzle must have a parent.');
 				nodes[id] = {
 					...common,
 					type: 'puzzle',
-					parentId,
+					parentId: node.parentId,
 					...(node.answer === undefined
 						? {}
 						: { answer: node.answer }),
@@ -621,7 +598,14 @@ class Puzzlehunt implements IPuzzlehunt {
 		};
 		(
 			view.getViewNode(view.root).traits.get(traitLabels.children) ?? []
-		).forEach((id, position) => visit(id, undefined, position));
+		).forEach((id) => {
+			const node = getHandle(view, id, this.hunt);
+			assert(
+				node?.type === 'round' || node?.type === 'puzzle',
+				'Expected a domain node.'
+			);
+			visit(node);
+		});
 		return projectPuzzlehuntView({ nodes });
 	}
 

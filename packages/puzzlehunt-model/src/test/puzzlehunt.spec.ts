@@ -296,6 +296,56 @@ describe('Puzzlehunt', () => {
 	});
 
 	describe('raises backend-neutral changes', () => {
+		it('keeps round ancestry and mixed sibling positions in plain historical values', () => {
+			const root = puzzlehunt.addRound('Root', '');
+			const destination = puzzlehunt.addRound('Destination', '');
+			puzzlehunt.addPuzzle('First', '', root);
+			puzzlehunt.addPuzzle('Second', '', root);
+			const nested = puzzlehunt.addRound('Nested', '', root);
+			const child = puzzlehunt.addPuzzle('Child', '', nested);
+			puzzlehunt.addPuzzle('Existing', '', destination);
+			const listener = vi.fn<(event: PuzzlehuntChangeEvent) => void>();
+			puzzlehunt.subscribeChanges(listener);
+
+			puzzlehunt.move(nested, destination);
+			expect(listener).toHaveBeenCalledOnce();
+			const event = listener.mock.calls[0][0];
+			const before = event.before.rounds.find(
+				(round) => round.id === nested.id
+			);
+			const after = event.after.rounds.find(
+				(round) => round.id === nested.id
+			);
+			expect(
+				event.after.rounds.find((round) => round.id === root.id)
+			).toMatchObject({ parentId: undefined, position: 0 });
+			expect(
+				event.after.rounds.find((round) => round.id === destination.id)
+			).toMatchObject({ parentId: undefined, position: 1 });
+			expect(before).toMatchObject({
+				parentId: root.id,
+				position: 2,
+				children: [{ id: child.id, parentId: nested.id, position: 0 }],
+			});
+			expect(after).toMatchObject({
+				parentId: destination.id,
+				position: 1,
+				children: [{ id: child.id, parentId: nested.id, position: 0 }],
+			});
+			for (const node of [
+				...event.before.rounds,
+				...event.before.puzzles,
+				...event.after.rounds,
+				...event.after.puzzles,
+			]) {
+				expect(Object.getPrototypeOf(node)).toBe(Object.prototype);
+			}
+			expect(structuredClone(event)).toEqual(event);
+			puzzlehunt.delete(destination);
+			expect(before.parentId).toBe(root.id);
+			expect(after.children[0].name).toBe('Child');
+		});
+
 		it('reports reordering through positions and historical child order', () => {
 			const round = puzzlehunt.addRound('Round', '');
 			const puzzle = puzzlehunt.addPuzzle('First', '', round);
