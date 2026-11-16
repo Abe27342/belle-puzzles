@@ -64,6 +64,21 @@ export async function startLocalPostgres(): Promise<LocalPostgres> {
 		max: 5,
 		connectionTimeoutMillis: 10000,
 	});
+	const connections = new Set<Promise<void>>();
+	pool.on('connect', (client) => {
+		const closed = new Promise<void>((resolve) => {
+			client.once('end', () => {
+				connections.delete(closed);
+				resolve();
+			});
+		});
+		connections.add(closed);
+	});
+	async function closePool() {
+		// pool.end() can resolve before its clients have actually disconnected.
+		await pool.end();
+		await Promise.all(connections);
+	}
 	try {
 		await cluster.initialise();
 		await cluster.start();
@@ -77,7 +92,7 @@ export async function startLocalPostgres(): Promise<LocalPostgres> {
 			)
 		);
 	} catch (error) {
-		await pool.end();
+		await closePool();
 		if (started) {
 			await cluster.stop();
 		} else {
@@ -98,7 +113,7 @@ export async function startLocalPostgres(): Promise<LocalPostgres> {
 		},
 		async close() {
 			try {
-				await pool.end();
+				await closePool();
 			} finally {
 				await cluster.stop();
 			}
