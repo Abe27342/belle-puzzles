@@ -9,7 +9,7 @@ import * as commandsModule from '../commands/index.js';
 import { IPuzzlehuntProvider } from '../puzzlehunt-provider.js';
 import {
 	IPuzzlehunt,
-	PuzzleObject,
+	DocumentNode,
 	Round,
 } from '@belle-puzzles/puzzlehunt-model';
 import { SerializedPuzzlehuntContext } from '../puzzlehunt-context.js';
@@ -208,7 +208,7 @@ export function loadPuzzlehunt(
 	);
 }
 
-export function expectParentChild(parent: Round, child: PuzzleObject) {
+export function expectParentChild(parent: Round, child: DocumentNode) {
 	expect(parent.children.map((child) => child.id)).toContain(child.id);
-	expect(child.roundId).toEqual(parent.id);
+	expect(child.parentId).toEqual(parent.id);
 }

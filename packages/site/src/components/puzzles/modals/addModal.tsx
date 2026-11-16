@@ -25,7 +25,7 @@ export const AddModal: React.FC<AddModalProps> = ({
 	const parent =
 		puzzleObj.type === 'round'
 			? puzzleObj
-			: puzzlehunt.getRound(puzzleObj.roundId);
+			: puzzlehunt.getRound(puzzleObj.parentId);
 
 	const [puzzleData, setPuzzleData] = React.useState<PuzzleFormData[]>([
 		{ key: uuid() },

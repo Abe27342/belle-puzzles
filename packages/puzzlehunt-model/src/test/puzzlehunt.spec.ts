@@ -1,6 +1,7 @@
 import { beforeEach, afterEach, describe, expect, inject, it, vi } from 'vitest';
 import { AzureClient } from '@fluidframework/azure-client';
 import { InsecureTokenProvider } from '@fluidframework/test-client-utils';
+import { TreeView } from '@fluid-experimental/tree';
 import {
 	createNewPuzzlehunt,
 	IPuzzlehunt,
@@ -54,6 +55,65 @@ describe('Puzzlehunt', () => {
 		expect(Array.from(puzzlehunt.puzzles)).toEqual([]);
 	});
 
+	it.each([1, 50])(
+		'bounds node reads for direct lookups with %i unrelated puzzles',
+		(count) => {
+			const round = puzzlehunt.addRound('Round', '');
+			const puzzle = puzzlehunt.addPuzzle('Puzzle', '', round);
+			puzzlehunt.addPuzzles(
+				Array.from({ length: count }, (_, index) => ({
+					name: `Other ${index}`,
+					url: '',
+				})),
+				round
+			);
+			const reads = vi.spyOn(TreeView.prototype, 'tryGetViewNode');
+			expect(puzzlehunt.getRound(round.id).name).toBe('Round');
+			expect(puzzlehunt.getPuzzle(puzzle.id).name).toBe('Puzzle');
+			expect(reads.mock.calls.length).toBeLessThanOrEqual(6);
+		}
+	);
+
+	it('returns document-shaped snapshots and resolves subsequent edits by stable ID', () => {
+		const root = puzzlehunt.addRound('Root', 'root-url');
+		const first: DocumentPuzzle = puzzlehunt.addPuzzle(
+			'First',
+			'first-url',
+			root
+		);
+		const second = puzzlehunt.addPuzzle('Second', 'second-url', root);
+		expect(root).toMatchObject({
+			id: expect.stringMatching(/^[0-9a-f-]{36}$/),
+			parentId: undefined,
+			position: 0,
+			children: [],
+		});
+		expect(first).toMatchObject({
+			id: expect.any(String),
+			type: 'puzzle',
+			name: 'First',
+			url: 'first-url',
+			parentId: root.id,
+			position: 0,
+		});
+		puzzlehunt.changeName(first, 'Renamed');
+		puzzlehunt.move(first, root);
+		const current = puzzlehunt.getPuzzle(first.id);
+		expect(current).toMatchObject({
+			id: first.id,
+			name: 'Renamed',
+			parentId: root.id,
+			position: 1,
+		});
+		expect(puzzlehunt.getPuzzle(second.id).position).toBe(0);
+		expect(first.name).toBe('First');
+		expect(first.position).toBe(0);
+		expect(root.children).toEqual([]);
+		expect(
+			puzzlehunt.getRound(root.id).children.map((node) => node.id)
+		).toEqual([second.id, first.id]);
+	});
+
 	describe('supports round addition', () => {
 		it('via .addRound', () => {
 			const round = puzzlehunt.addRound('Test round 1', 'mock url');
@@ -74,7 +134,7 @@ describe('Puzzlehunt', () => {
 				],
 				rootRound
 			);
-			// auto-refresh doesn't happen: handles needs to be refreshed manually.
+			// auto-refresh doesn't happen: snapshots need to be refreshed manually.
 			// This is true throughout the tests.
 			rootRound = puzzlehunt.getRound(rootRound.id);
 			expect(rootRound.children).toHaveLength(2);
@@ -82,11 +142,11 @@ describe('Puzzlehunt', () => {
 				rootRound.children.map((child) => ({
 					name: child.name,
 					url: child.url,
-					roundId: child.roundId,
+					parentId: child.parentId,
 				}))
 			).toEqual([
-				{ name: 'child 1', url: 'child 1 url', roundId: rootRound.id },
-				{ name: 'child 2', url: 'child 2 url', roundId: rootRound.id },
+				{ name: 'child 1', url: 'child 1 url', parentId: rootRound.id },
+				{ name: 'child 2', url: 'child 2 url', parentId: rootRound.id },
 			]);
 			expect(Array.from(puzzlehunt.rounds)).toHaveLength(3);
 		});
@@ -112,7 +172,7 @@ describe('Puzzlehunt', () => {
 			);
 			expect(puzzle.name).toEqual('test puzzle');
 			expect(puzzle.url).toEqual('test url');
-			expect(puzzle.roundId).toEqual(round.id);
+			expect(puzzle.parentId).toEqual(round.id);
 			const allPuzzles = Array.from(puzzlehunt.puzzles);
 			expect(allPuzzles).toHaveLength(1);
 			expect(allPuzzles[0].id).toEqual(puzzle.id);
@@ -131,18 +191,18 @@ describe('Puzzlehunt', () => {
 				round.children.map((child) => ({
 					name: child.name,
 					url: child.url,
-					roundId: child.roundId,
+					parentId: child.parentId,
 				}))
 			).toEqual([
 				{
 					name: 'test puzzle 1',
 					url: 'test puzzle 1 url',
-					roundId: round.id,
+					parentId: round.id,
 				},
 				{
 					name: 'test puzzle 2',
 					url: 'test puzzle 2 url',
-					roundId: round.id,
+					parentId: round.id,
 				},
 			]);
 			expect(Array.from(puzzlehunt.puzzles)).toHaveLength(2);
@@ -160,7 +220,7 @@ describe('Puzzlehunt', () => {
 		expect(round1.children).toHaveLength(1);
 		expect(round2.children).toHaveLength(1);
 		expect(round2.children[0].id).toEqual(puzzle.id);
-		expect(puzzle.roundId).toEqual(round2.id);
+		expect(puzzle.parentId).toEqual(round2.id);
 	});
 
 	it('supports puzzle deletion', () => {
@@ -178,14 +238,14 @@ describe('Puzzlehunt', () => {
 			});
 
 			it('with discord info', () => {
-				expect(round.discordInfo).toEqual(undefined);
+				expect(round.discord).toEqual(undefined);
 				puzzlehunt.augmentWithDiscord(round, {
 					indexChannel: 'index channel id',
 					channel: 'channel id',
 					role: 'role id',
 				});
 				round = puzzlehunt.getRound(round.id);
-				expect(round.discordInfo).toEqual({
+				expect(round.discord).toEqual({
 					indexChannelId: 'index channel id',
 					channelId: 'channel id',
 					roleId: 'role id',
@@ -212,13 +272,13 @@ describe('Puzzlehunt', () => {
 			});
 
 			it('with discord info', () => {
-				expect(puzzle.discordInfo).toEqual(undefined);
+				expect(puzzle.discord).toEqual(undefined);
 				puzzlehunt.augmentWithDiscord(puzzle, {
 					channel: 'channel id',
 					role: 'role id',
 				});
 				puzzle = puzzlehunt.getPuzzle(puzzle.id);
-				expect(puzzle.discordInfo).toEqual({
+				expect(puzzle.discord).toEqual({
 					channelId: 'channel id',
 					roleId: 'role id',
 				});
@@ -256,6 +316,56 @@ describe('Puzzlehunt', () => {
 	});
 
 	describe('raises backend-neutral changes', () => {
+		it('keeps round ancestry and mixed sibling positions in plain historical values', () => {
+			const root = puzzlehunt.addRound('Root', '');
+			const destination = puzzlehunt.addRound('Destination', '');
+			puzzlehunt.addPuzzle('First', '', root);
+			puzzlehunt.addPuzzle('Second', '', root);
+			const nested = puzzlehunt.addRound('Nested', '', root);
+			const child = puzzlehunt.addPuzzle('Child', '', nested);
+			puzzlehunt.addPuzzle('Existing', '', destination);
+			const listener = vi.fn<(event: PuzzlehuntChangeEvent) => void>();
+			puzzlehunt.subscribeChanges(listener);
+
+			puzzlehunt.move(nested, destination);
+			expect(listener).toHaveBeenCalledOnce();
+			const event = listener.mock.calls[0][0];
+			const before = event.before.rounds.find(
+				(round) => round.id === nested.id
+			);
+			const after = event.after.rounds.find(
+				(round) => round.id === nested.id
+			);
+			expect(
+				event.after.rounds.find((round) => round.id === root.id)
+			).toMatchObject({ parentId: undefined, position: 0 });
+			expect(
+				event.after.rounds.find((round) => round.id === destination.id)
+			).toMatchObject({ parentId: undefined, position: 1 });
+			expect(before).toMatchObject({
+				parentId: root.id,
+				position: 2,
+				children: [{ id: child.id, parentId: nested.id, position: 0 }],
+			});
+			expect(after).toMatchObject({
+				parentId: destination.id,
+				position: 1,
+				children: [{ id: child.id, parentId: nested.id, position: 0 }],
+			});
+			for (const node of [
+				...event.before.rounds,
+				...event.before.puzzles,
+				...event.after.rounds,
+				...event.after.puzzles,
+			]) {
+				expect(Object.getPrototypeOf(node)).toBe(Object.prototype);
+			}
+			expect(structuredClone(event)).toEqual(event);
+			puzzlehunt.delete(destination);
+			expect(before.parentId).toBe(root.id);
+			expect(after.children[0].name).toBe('Child');
+		});
+
 		it('reports reordering through positions and historical child order', () => {
 			const round = puzzlehunt.addRound('Round', '');
 			const puzzle = puzzlehunt.addPuzzle('First', '', round);
@@ -297,14 +407,13 @@ describe('Puzzlehunt', () => {
 			]);
 		});
 
-		it('accepts stable snapshots at integration mutation boundaries and retains old menu identities', () => {
+		it('accepts stable snapshots at integration mutation boundaries', () => {
 			const round = puzzlehunt.addRound('Round', '');
 			const puzzle = puzzlehunt.addPuzzle('Puzzle', '', round);
 			const snapshot = puzzlehunt.view;
 			expect(puzzlehunt.getPuzzle(snapshot.puzzles[0].id).id).toBe(
 				puzzle.id
 			);
-			expect(puzzlehunt.getPuzzle(String(puzzle.id)).id).toBe(puzzle.id);
 			expect(puzzlehunt.getRound(snapshot.rounds[0].id).id).toBe(
 				round.id
 			);
@@ -319,9 +428,9 @@ describe('Puzzlehunt', () => {
 			});
 			puzzlehunt.augmentWithGoogleSheet(snapshot.puzzles[0], 'sheet');
 			expect(puzzlehunt.getPuzzle(puzzle.id).sheetId).toBe('sheet');
-			expect(
-				puzzlehunt.getRound(round.id).discordInfo.indexChannelId
-			).toBe('index');
+			expect(puzzlehunt.getRound(round.id).discord.indexChannelId).toBe(
+				'index'
+			);
 			expect(snapshot.puzzles[0].sheetId).toBeUndefined();
 			expect(snapshot.rounds[0].discord).toBeUndefined();
 		});

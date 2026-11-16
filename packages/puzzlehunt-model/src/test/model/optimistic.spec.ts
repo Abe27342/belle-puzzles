@@ -33,7 +33,7 @@ function initialSnapshot(): HuntSnapshot {
 					type: 'round',
 					name: 'Root',
 					url: '',
-					parentId: null,
+					parentId: undefined,
 					position: 0,
 				},
 				[puzzleId]: {
@@ -194,6 +194,23 @@ describe('Optimistic puzzlehunt model', () => {
 		model.clearFailures();
 		expect(changes).toHaveBeenCalledOnce();
 		expect(invalidations).toHaveBeenCalledTimes(4);
+	});
+
+	it('does not repeat root changes when JSON acknowledgements omit undefined parent IDs', async () => {
+		const backend = transport();
+		backend.client.submit.mockImplementation(async (_scope, request) =>
+			JSON.parse(JSON.stringify(backend.commit(request)))
+		);
+		const model = new PuzzlehuntModel(backend.client, backend.snapshot());
+		const listener = vi.fn();
+		model.subscribeChanges(listener);
+		const round = model.addRound('New root', '');
+		expect(listener).toHaveBeenCalledOnce();
+		await model.flush();
+		expect(model.getRound(round.id).parentId).toBeUndefined();
+		expect(listener).toHaveBeenCalledOnce();
+		await model.refresh();
+		expect(listener).toHaveBeenCalledOnce();
 	});
 
 	it('batches rollback of rejected subtrees without altering retained event snapshots', async () => {

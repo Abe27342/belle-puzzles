@@ -73,7 +73,7 @@ describe('add_puzzle', () => {
 			const puzzlehunt = await getPuzzlehunt();
 			const puzzles = Array.from(puzzlehunt.puzzles);
 			expect(puzzles).toHaveLength(1);
-			expect(puzzlehunt.getRound(puzzles[0].roundId).name).toEqual(
+			expect(puzzlehunt.getRound(puzzles[0].parentId).name).toEqual(
 				'round 1'
 			);
 		});
@@ -116,7 +116,8 @@ describe('add_puzzle', () => {
 			expect(puzzles).toHaveLength(2);
 			expect(
 				puzzlehunt.getRound(
-					puzzles.find((puzzle) => puzzle.name === 'puzzle 2').roundId
+					puzzles.find((puzzle) => puzzle.name === 'puzzle 2')
+						.parentId
 				).name
 			).toEqual('round 1');
 			expect(
@@ -170,7 +171,8 @@ describe('add_puzzle', () => {
 			expect(puzzles).toHaveLength(2);
 			expect(
 				puzzlehunt.getRound(
-					puzzles.find((puzzle) => puzzle.name === 'puzzle 2').roundId
+					puzzles.find((puzzle) => puzzle.name === 'puzzle 2')
+						.parentId
 				).name
 			).toEqual('round 1');
 			expect(

@@ -1,6 +1,5 @@
 import * as React from 'react';
 import '../css/puzzles.css';
-import type { NodeId } from '@fluid-experimental/tree';
 import { useParams } from 'react-router-dom';
 import {
 	Anchor,
@@ -199,12 +198,11 @@ function useEditingUI(puzzlehunt: IPuzzlehunt): {
 					node: HTMLElement
 				): Puzzle | Round | undefined => {
 					const [, type, strId] =
-						node.id.match(/(puzzle|round)\-obj\-(\-?\d*)/) ?? [];
+						node.id.match(/^(puzzle|round)-obj-(.+)$/) ?? [];
 					if (strId) {
-						const id = Number.parseInt(strId) as unknown as NodeId;
 						return type === 'round'
-							? puzzlehunt.getRound(id)
-							: puzzlehunt.getPuzzle(id);
+							? puzzlehunt.getRound(strId)
+							: puzzlehunt.getPuzzle(strId);
 					}
 					return undefined;
 				};
@@ -458,7 +456,7 @@ const PuzzleObjCommonListItems: React.FC<{
 	puzzleObj: Puzzle | Round;
 	guildId: string;
 }> = ({ puzzleObj, guildId }) => {
-	const { name, url, type, discordInfo } = puzzleObj;
+	const { name, url, type, discord: discordInfo } = puzzleObj;
 	return (
 		<>
 			<div className="puzzle-or-round-info" />

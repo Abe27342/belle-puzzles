@@ -101,9 +101,9 @@ interface DocumentNodeBase {
 	 */
 	readonly url: string;
 	/**
-	 * ID of the parent document node, or null if this is a top-level round.
+	 * ID of the parent document node, or undefined if this is a top-level round.
 	 */
-	readonly parentId: string | null;
+	readonly parentId?: string;
 
 	/**
 	 * Position of this document node relative to its siblings.
@@ -293,12 +293,12 @@ export type HuntDeleteCommand = {
 	readonly nodeId: string;
 };
 /**
- * Intent to move a node to a new parent (or to the root if parentId is null)
+ * Intent to move a node to a new parent (or to the root if parentId is undefined)
  */
 export type HuntMoveCommand = {
 	readonly type: 'move';
 	readonly nodeId: string;
-	readonly parentId: string | null;
+	readonly parentId?: string;
 };
 
 /**
@@ -422,11 +422,11 @@ export function isSafeIndex(value: unknown): value is number {
 class ChildrenIndex {
 	readonly #document: HuntDocument;
 	readonly #children: Map<
-		/* id, null for root rounds */ string | null,
+		/* id, undefined for root rounds */ string | undefined,
 		DocumentNode[]
 	>;
 
-	readonly #nextPositions = new Map<string | null, number>();
+	readonly #nextPositions = new Map<string | undefined, number>();
 
 	constructor(document: HuntDocument) {
 		this.#document = document;
@@ -456,21 +456,20 @@ class ChildrenIndex {
 	}
 
 	// TODO: The mutation here is not well-aligned with how the rest of this class functions. Seems like an easy trap.
-	appendPosition(parentId: string | null): number {
+	appendPosition(parentId: string | undefined): number {
 		const position = this.#nextPositions.get(parentId) ?? 0;
 		this.#nextPositions.set(parentId, position + 1);
 		return position;
 	}
 
-	public childrenOf(parentId: string | null): DocumentNode[] {
-		const idKey = parentId !== null ? parentId : 'root';
-		return this.#children.get(idKey) ?? [];
+	public childrenOf(parentId: string | undefined): DocumentNode[] {
+		return this.#children.get(parentId) ?? [];
 	}
 
 	public parentOf(id: string): DocumentNode | undefined {
 		const node = this.get(id);
 		const { parentId } = node;
-		return parentId === null ? undefined : this.get(parentId);
+		return parentId === undefined ? undefined : this.get(parentId);
 	}
 
 	public get nodes(): Iterable<DocumentNode> {
@@ -523,12 +522,12 @@ function requireParent(index: ChildrenIndex, parentId: string): void {
 
 /**
  * @param document The hunt document containing the nodes.
- * @param parentId The ID of the parent round, or null for top-level round nodes.
+ * @param parentId The ID of the parent round, or undefined for top-level round nodes.
  * @returns An array of child nodes sorted by position and ID.
  */
 export function documentChildren(
 	document: HuntDocument,
-	parentId: string | null
+	parentId: string | undefined
 ): readonly DocumentNode[] {
 	return Object.values(document.nodes)
 		.filter((node) => node.parentId === parentId)
@@ -542,8 +541,8 @@ function compareDocumentNodes(a: DocumentNode, b: DocumentNode): number {
 /** Build once per projection rather than scanning the document for each round. */
 export function indexDocumentChildren(
 	document: Pick<HuntDocument, 'nodes'>
-): Map<string | null, DocumentNode[]> {
-	const children = new Map<string | null, DocumentNode[]>();
+): Map<string | undefined, DocumentNode[]> {
+	const children = new Map<string | undefined, DocumentNode[]>();
 	for (const node of Object.values(document.nodes)) {
 		const siblings = getOrCreate(
 			children,
@@ -552,7 +551,7 @@ export function indexDocumentChildren(
 		);
 		siblings.push(node);
 
-		if (node.parentId !== null) {
+		if (node.parentId !== undefined) {
 			const parentNode = document.nodes[node.parentId ?? ''];
 			requireCommand(
 				parentNode !== undefined,
@@ -593,7 +592,7 @@ export function projectHuntDocument(snapshot: HuntSnapshot): HuntDocumentView {
 	const childrenIndex = new ChildrenIndex(snapshot.document);
 	return {
 		snapshot,
-		rootRounds: rounds.filter((node) => node.parentId === null),
+		rootRounds: rounds.filter((node) => node.parentId === undefined),
 		rounds,
 		puzzles: nodes.filter(isPuzzle),
 		childrenIndex,
@@ -637,6 +636,10 @@ function validateUniqueValues<T>(values: T[], message: string): void {
 function validateDocumentForest(childrenIndex: ChildrenIndex): void {
 	for (const node of childrenIndex.nodes) {
 		if (isPuzzle(node)) {
+			requireCommand(
+				node.parentId !== undefined,
+				'Puzzles must have a parent round.'
+			);
 			const { answer, sheetId, status, lastStatusUpdate } = node;
 			requireCommand(
 				(answer === undefined || typeof answer === 'string') &&
@@ -743,7 +746,7 @@ export function applyHuntCommand(
 					};
 				} else {
 					requireCommand(
-						input.parentId !== null,
+						input.parentId !== undefined,
 						'Puzzles must have a parent round.'
 					);
 					node = {
@@ -766,14 +769,14 @@ export function applyHuntCommand(
 		}
 		case 'move': {
 			const node = childrenIndex.get(command.nodeId);
-			if (command.parentId !== null) {
+			if (command.parentId !== undefined) {
 				requireParent(childrenIndex, command.parentId);
 			}
 			if (node.parentId !== command.parentId) {
 				const position = childrenIndex.appendPosition(command.parentId);
 				if (node.type === 'puzzle') {
 					requireCommand(
-						command.parentId !== null,
+						command.parentId !== undefined,
 						'Puzzles must have a parent round.'
 					);
 					nodes[node.id] = {

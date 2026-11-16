@@ -272,21 +272,20 @@ describe('Resource provisioning', () => {
 		const currentPuzzle = puzzlehunt.getPuzzle(puzzle.id);
 		const currentRoot = puzzlehunt.getRound(root.id);
 		expect(
-			serverState.findChannelBy('id', currentRound.discordInfo.channelId)
-				.name
+			serverState.findChannelBy('id', currentRound.discord.channelId).name
 		).toBe('current-round');
 		const roundEmbed = serverState.messages.get(
-			currentRound.discordInfo.indexChannelId
+			currentRound.discord.indexChannelId
 		)[0].embeds[0];
 		expect(roundEmbed.description).toContain('**Current puzzle**');
 		expect(roundEmbed.description).toContain('**New puzzle**');
 		expect(roundEmbed.description).not.toContain('Event puzzle');
 		expect(roundEmbed.fields).toContainEqual({
 			name: 'Parent Round',
-			value: channelRef(currentRoot.discordInfo.indexChannelId),
+			value: channelRef(currentRoot.discord.indexChannelId),
 		});
 		const puzzleEmbed = serverState.messages.get(
-			currentPuzzle.discordInfo.channelId
+			currentPuzzle.discord.channelId
 		)[0].embeds[0];
 		expect(puzzleEmbed.title).toBe('Current puzzle');
 		expect(puzzleEmbed.fields).toContainEqual({
@@ -339,16 +338,16 @@ describe('Resource provisioning', () => {
 			],
 		] as const) {
 			const permissionRoles = serverState
-				.findChannelBy('id', puzzle.discordInfo.channelId)
+				.findChannelBy('id', puzzle.discord.channelId)
 				.permission_overwrites.map((overwrite) => overwrite.id);
-			expect(permissionRoles).toContain(parent.discordInfo.roleId);
-			expect(permissionRoles).not.toContain(oldParent.discordInfo.roleId);
+			expect(permissionRoles).toContain(parent.discord.roleId);
+			expect(permissionRoles).not.toContain(oldParent.discord.roleId);
 			const parentEmbed = serverState.messages.get(
-				parent.discordInfo.indexChannelId
+				parent.discord.indexChannelId
 			)[0].embeds[0];
 			expect(parentEmbed.description).toContain(`**${puzzle.name}**`);
 			const oldParentEmbed = serverState.messages.get(
-				oldParent.discordInfo.indexChannelId
+				oldParent.discord.indexChannelId
 			)[0].embeds[0];
 			expect(oldParentEmbed.description).not.toContain(
 				`**${puzzle.name}**`
@@ -391,21 +390,19 @@ describe('Resource provisioning', () => {
 		const currentRoot = puzzlehunt.getRound(root.id);
 		for (const node of [currentMoved, puzzlehunt.getPuzzle(puzzle.id)]) {
 			const permissionRoles = serverState
-				.findChannelBy('id', node.discordInfo.channelId)
+				.findChannelBy('id', node.discord.channelId)
 				.permission_overwrites.map((overwrite) => overwrite.id);
 			expect(permissionRoles).toContain(
-				currentDestination.discordInfo.roleId
+				currentDestination.discord.roleId
 			);
-			expect(permissionRoles).not.toContain(
-				currentRoot.discordInfo.roleId
-			);
+			expect(permissionRoles).not.toContain(currentRoot.discord.roleId);
 		}
 		expect(
-			serverState.messages.get(currentMoved.discordInfo.indexChannelId)[0]
+			serverState.messages.get(currentMoved.discord.indexChannelId)[0]
 				.embeds[0].fields
 		).toContainEqual({
 			name: 'Parent Round',
-			value: channelRef(currentDestination.discordInfo.indexChannelId),
+			value: channelRef(currentDestination.discord.indexChannelId),
 		});
 	});
 });
@@ -514,7 +511,7 @@ describe('Sync', () => {
 			puzzle111DiscordExists =
 				Array.from(webPuzzlehunt.puzzles).find(
 					(puzzle) => puzzle.name === 'puzzle 1d1d1'
-				)?.discordInfo?.channelId !== undefined;
+				)?.discord?.channelId !== undefined;
 		}
 	};
 
@@ -565,7 +562,7 @@ describe('Sync', () => {
 				expect(channel.type).toBe(ChannelType.GuildCategory);
 				// Additionally verify that child puzzles are in the right category channel.
 				const roundObj = Array.from(webPuzzlehunt.rounds).find(
-					(round) => round.discordInfo?.channelId === channel.id
+					(round) => round.discord?.channelId === channel.id
 				);
 				expect(roundObj).toBeDefined();
 				for (const puzzle of roundObj.children) {
@@ -574,7 +571,7 @@ describe('Sync', () => {
 					}
 					const puzzleChannel = serverState.findChannelBy(
 						'id',
-						puzzle.discordInfo?.channelId
+						puzzle.discord?.channelId
 					);
 					expect(puzzleChannel.parent_id).toBe(channel.id);
 				}
@@ -851,7 +848,7 @@ describe('Sync', () => {
 				(round) => round.name === 'round 1d1'
 			);
 			const associations = [round, ...round.children].map(
-				(node) => node.discordInfo
+				(node) => node.discord
 			);
 			context.puzzlehunt.delete(round);
 			await vi.waitFor(async () => {

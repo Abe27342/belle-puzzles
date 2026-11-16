@@ -78,7 +78,11 @@ function nodeFromRow(row: HuntNodeRow): DocumentNode {
 		...(discord === undefined ? {} : { discord }),
 	};
 	if (row.type === 'round') {
-		return { ...common, type: 'round', parentId: row.parent_id };
+		return {
+			...common,
+			type: 'round',
+			parentId: row.parent_id ?? undefined,
+		};
 	}
 	if (row.parent_id === null) {
 		throw new Error('Stored puzzle has no parent round.');
@@ -190,7 +194,7 @@ async function writeDocumentChanges(
 		type: node.type,
 		name: node.name,
 		url: node.url,
-		parent_id: node.parentId,
+		parent_id: node.parentId ?? null,
 		position: node.position,
 		answer: node.type === 'puzzle' ? node.answer ?? null : null,
 		status: node.type === 'puzzle' ? node.status ?? null : null,

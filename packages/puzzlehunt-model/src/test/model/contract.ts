@@ -177,9 +177,11 @@ export function puzzlehuntModelContract(
 				expect(model.getRound(round.id)).toMatchObject({
 					name: 'Root',
 					url: 'url',
-					parentId: null,
+					parentId: undefined,
 				});
-				expect((await reload()).getRound(round.id).parentId).toBeNull();
+				expect(
+					(await reload()).getRound(round.id).parentId
+				).toBeUndefined();
 			});
 
 			it('adds a nested round to its parent', async () => {

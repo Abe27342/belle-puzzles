@@ -38,8 +38,13 @@ function equalNode(before: DocumentNode, after: DocumentNode): boolean {
 	const { discord: oldDiscord, ...oldProperties } = before;
 	const { discord: newDiscord, ...newProperties } = after;
 	function equalProperties(a: object, b: object): boolean {
-		const left = Object.entries(a);
-		const right = Object.entries(b);
+		// JSON omits optional properties whose values are undefined.
+		const left = Object.entries(a).filter(
+			([, value]) => value !== undefined
+		);
+		const right = Object.entries(b).filter(
+			([, value]) => value !== undefined
+		);
 		return (
 			left.length === right.length &&
 			left.every(([key, value]) =>

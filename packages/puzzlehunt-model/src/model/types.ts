@@ -39,38 +39,51 @@ export interface PuzzlehuntChangeEvent {
 	readonly changes: readonly PuzzlehuntNodeChange[];
 }
 
-/** Reads and mutations shared by native Fluid handles and storage-independent views. */
-export interface IPuzzlehunt<
-	TPuzzle extends { readonly id: unknown },
-	TRound extends { readonly id: TPuzzle['id'] },
-	TNode = TPuzzle | TRound
-> {
-	readonly rounds: Iterable<TRound>;
-	readonly puzzles: Iterable<TPuzzle>;
+/**
+ * Reads and mutations over backend-independent, read-only node values.
+ * Returned nodes are snapshots; retrieve them again to observe subsequent edits.
+ * Mutations resolve supplied node IDs against the current model state.
+ */
+export interface IPuzzlehunt {
+	readonly rounds: Iterable<PuzzlehuntRound>;
+	readonly puzzles: Iterable<DocumentPuzzle>;
 	/** Observe changes to the puzzlehunt model. Returns an unsubscribe function. */
 	subscribeChanges(
 		listener: (event: PuzzlehuntChangeEvent) => void
 	): () => void;
-	getRound(id: TPuzzle['id']): TRound;
-	getPuzzle(id: TPuzzle['id']): TPuzzle;
-	addRound(name: string, url: string, parent?: TRound): TRound;
-	addRounds(rounds: { name: string; url: string }[], parent: TRound): void;
-	addPuzzle(name: string, url: string, round: TRound): TPuzzle;
-	addPuzzles(puzzles: { name: string; url: string }[], round: TRound): void;
-	delete(node: TNode): void;
-	changeName(node: TNode, name: string): void;
-	changeUrl(node: TNode, url: string): void;
-	move(node: TNode, parent: TRound): void;
-	solve(id: TPuzzle['id'], answer: string): TPuzzle;
-	unsolve(id: TPuzzle['id']): TPuzzle;
-	updateStatus(puzzle: TPuzzle, status: string): void;
-	clearStatus(puzzle: TPuzzle): void;
-	augmentWithGoogleSheet(puzzle: TPuzzle, sheetId: string): void;
+	getRound(id: string): PuzzlehuntRound;
+	getPuzzle(id: string): DocumentPuzzle;
+	addRound(
+		name: string,
+		url: string,
+		parent?: PuzzlehuntRound
+	): PuzzlehuntRound;
+	addRounds(
+		rounds: { name: string; url: string }[],
+		parent: PuzzlehuntRound
+	): void;
+	addPuzzle(
+		name: string,
+		url: string,
+		round: PuzzlehuntRound
+	): DocumentPuzzle;
+	addPuzzles(
+		puzzles: { name: string; url: string }[],
+		round: PuzzlehuntRound
+	): void;
+	delete(node: DocumentNode): void;
+	changeName(node: DocumentNode, name: string): void;
+	changeUrl(node: DocumentNode, url: string): void;
+	move(node: DocumentNode, parent: PuzzlehuntRound): void;
+	solve(id: string, answer: string): DocumentPuzzle;
+	unsolve(id: string): DocumentPuzzle;
+	updateStatus(puzzle: DocumentPuzzle, status: string): void;
+	clearStatus(puzzle: DocumentPuzzle): void;
+	augmentWithGoogleSheet(puzzle: DocumentPuzzle, sheetId: string): void;
 }
 
 /** Plain views and asynchronous settlement over the common model contract. */
-export interface IPuzzlehuntModel
-	extends IPuzzlehunt<DocumentPuzzle, PuzzlehuntRound, DocumentNode> {
+export interface IPuzzlehuntModel extends IPuzzlehunt {
 	readonly view: PuzzlehuntView;
 	readonly rounds: readonly PuzzlehuntRound[];
 	readonly puzzles: readonly DocumentPuzzle[];
@@ -105,7 +118,7 @@ export function projectPuzzlehuntView(
 			puzzles.push(node);
 		}
 	}
-	for (const node of children.get(null) ?? []) {
+	for (const node of children.get(undefined) ?? []) {
 		if (node.type !== 'round') {
 			throw new Error('A puzzle cannot be a root node.');
 		}

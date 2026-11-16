@@ -150,9 +150,7 @@ export class PuzzlehuntModel implements IPuzzlehuntModel {
 		const id = crypto.randomUUID();
 		this.dispatch({
 			type: 'add',
-			nodes: [
-				{ id, type: 'round', name, url, parentId: parent?.id ?? null },
-			],
+			nodes: [{ id, type: 'round', name, url, parentId: parent?.id }],
 		});
 		return this.getRound(id);
 	}

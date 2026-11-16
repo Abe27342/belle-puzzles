@@ -1,8 +1,7 @@
 import { SharedTree } from '@fluid-experimental/tree';
 import type { IFluidContainer } from '@fluidframework/fluid-static';
-import { HuntCommandError } from '../document.js';
 import type { DocumentNode, DocumentPuzzle } from '../document.js';
-import type { IPuzzlehunt, Puzzle, Round } from '../puzzlehunt.js';
+import type { IPuzzlehunt } from '../puzzlehunt.js';
 import type {
 	IPuzzlehuntModel,
 	PuzzlehuntRound,
@@ -12,8 +11,6 @@ import type {
 
 /** Adapt the existing Fluid model; preserve its existing domain behavior. */
 export class FluidPuzzlehuntModel implements IPuzzlehuntModel {
-	private readonly tree: SharedTree;
-
 	constructor(
 		private readonly hunt: IPuzzlehunt,
 		private readonly container: IFluidContainer
@@ -22,7 +19,6 @@ export class FluidPuzzlehuntModel implements IPuzzlehuntModel {
 		if (!(tree instanceof SharedTree)) {
 			throw new Error('Fluid puzzlehunt container has no SharedTree.');
 		}
-		this.tree = tree;
 	}
 
 	get view(): PuzzlehuntView {
@@ -30,11 +26,11 @@ export class FluidPuzzlehuntModel implements IPuzzlehuntModel {
 	}
 
 	get rounds(): readonly PuzzlehuntRound[] {
-		return this.view.rounds;
+		return Array.from(this.hunt.rounds);
 	}
 
 	get puzzles(): readonly DocumentPuzzle[] {
-		return this.view.puzzles;
+		return Array.from(this.hunt.puzzles);
 	}
 
 	get isPending(): boolean {
@@ -42,19 +38,11 @@ export class FluidPuzzlehuntModel implements IPuzzlehuntModel {
 	}
 
 	getRound(id: string): PuzzlehuntRound {
-		const round = this.rounds.find((node) => node.id === id);
-		if (!round) {
-			throw new HuntCommandError('not-found', 'Round not found.');
-		}
-		return round;
+		return this.hunt.getRound(id);
 	}
 
 	getPuzzle(id: string): DocumentPuzzle {
-		const puzzle = this.puzzles.find((node) => node.id === id);
-		if (!puzzle) {
-			throw new HuntCommandError('not-found', 'Puzzle not found.');
-		}
-		return puzzle;
+		return this.hunt.getPuzzle(id);
 	}
 
 	addRound(
@@ -62,19 +50,14 @@ export class FluidPuzzlehuntModel implements IPuzzlehuntModel {
 		url: string,
 		parent?: PuzzlehuntRound
 	): PuzzlehuntRound {
-		const round = this.hunt.addRound(
-			name,
-			url,
-			parent ? this.nativeRound(parent.id) : undefined
-		);
-		return this.getRound(this.tree.convertToStableNodeId(round.id));
+		return this.hunt.addRound(name, url, parent);
 	}
 
 	addRounds(
 		rounds: { name: string; url: string }[],
 		parent: PuzzlehuntRound
 	): void {
-		this.hunt.addRounds(rounds, this.nativeRound(parent.id));
+		this.hunt.addRounds(rounds, parent);
 	}
 
 	addPuzzle(
@@ -82,57 +65,50 @@ export class FluidPuzzlehuntModel implements IPuzzlehuntModel {
 		url: string,
 		round: PuzzlehuntRound
 	): DocumentPuzzle {
-		const puzzle = this.hunt.addPuzzle(
-			name,
-			url,
-			this.nativeRound(round.id)
-		);
-		return this.getPuzzle(this.tree.convertToStableNodeId(puzzle.id));
+		return this.hunt.addPuzzle(name, url, round);
 	}
 
 	addPuzzles(
 		puzzles: { name: string; url: string }[],
 		round: PuzzlehuntRound
 	): void {
-		this.hunt.addPuzzles(puzzles, this.nativeRound(round.id));
+		this.hunt.addPuzzles(puzzles, round);
 	}
 
 	delete(node: DocumentNode): void {
-		this.hunt.delete(this.nativeNode(node.id));
+		this.hunt.delete(node);
 	}
 
 	changeName(node: DocumentNode, name: string): void {
-		this.hunt.changeName(this.nativeNode(node.id), name);
+		this.hunt.changeName(node, name);
 	}
 
 	changeUrl(node: DocumentNode, url: string): void {
-		this.hunt.changeUrl(this.nativeNode(node.id), url);
+		this.hunt.changeUrl(node, url);
 	}
 
 	move(node: DocumentNode, parent: PuzzlehuntRound): void {
-		this.hunt.move(this.nativeNode(node.id), this.nativeRound(parent.id));
+		this.hunt.move(node, parent);
 	}
 
 	solve(id: string, answer: string): DocumentPuzzle {
-		this.hunt.solve(this.nativePuzzle(id).id, answer);
-		return this.getPuzzle(id);
+		return this.hunt.solve(id, answer);
 	}
 
 	unsolve(id: string): DocumentPuzzle {
-		this.hunt.unsolve(this.nativePuzzle(id).id);
-		return this.getPuzzle(id);
+		return this.hunt.unsolve(id);
 	}
 
 	updateStatus(puzzle: DocumentPuzzle, status: string): void {
-		this.hunt.updateStatus(this.nativePuzzle(puzzle.id), status);
+		this.hunt.updateStatus(puzzle, status);
 	}
 
 	clearStatus(puzzle: DocumentPuzzle): void {
-		this.hunt.clearStatus(this.nativePuzzle(puzzle.id));
+		this.hunt.clearStatus(puzzle);
 	}
 
 	augmentWithGoogleSheet(puzzle: DocumentPuzzle, sheetId: string): void {
-		this.hunt.augmentWithGoogleSheet(this.nativePuzzle(puzzle.id), sheetId);
+		this.hunt.augmentWithGoogleSheet(puzzle, sheetId);
 	}
 
 	subscribe(listener: () => void): () => void {
@@ -188,31 +164,5 @@ export class FluidPuzzlehuntModel implements IPuzzlehuntModel {
 	/** Fluid streams remote edits continuously; only local acknowledgement needs flushing. */
 	refresh(): Promise<void> {
 		return this.flush();
-	}
-
-	private nativeNode(id: string): Puzzle | Round {
-		const node = [...this.hunt.rounds, ...this.hunt.puzzles].find(
-			(node) => this.tree.convertToStableNodeId(node.id) === id
-		);
-		if (!node) {
-			throw new HuntCommandError('not-found', 'Node not found.');
-		}
-		return node;
-	}
-
-	private nativeRound(id: string): Round {
-		const node = this.nativeNode(id);
-		if (node.type !== 'round') {
-			throw new HuntCommandError('invalid-command', 'Expected a round.');
-		}
-		return node;
-	}
-
-	private nativePuzzle(id: string): Puzzle {
-		const node = this.nativeNode(id);
-		if (node.type !== 'puzzle') {
-			throw new HuntCommandError('invalid-command', 'Expected a puzzle.');
-		}
-		return node;
 	}
 }

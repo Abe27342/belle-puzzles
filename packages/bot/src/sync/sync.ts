@@ -60,8 +60,8 @@ const createPuzzleChannel = async (
 	puzzle: Puzzle
 ) => {
 	const { puzzlehunt } = context;
-	const { name, roundId } = puzzle;
-	const parent = puzzlehunt.getRound(roundId);
+	const { name, parentId } = puzzle;
+	const parent = puzzlehunt.getRound(parentId);
 	const role = await guild.roles.create({
 		name,
 		mentionable: false,
@@ -69,7 +69,7 @@ const createPuzzleChannel = async (
 
 	const channel = await guild.channels.create({
 		name,
-		parent: parent.discordInfo.channelId,
+		parent: parent.discord.channelId,
 		permissionOverwrites: getViewPermissions(context, puzzle, role),
 	});
 
@@ -147,11 +147,11 @@ export async function syncRoles(
 	guild: Guild,
 	puzzleObj: Round | Puzzle
 ): Promise<void> {
-	const channel = guild.channels.cache.get(puzzleObj.discordInfo.channelId);
+	const channel = guild.channels.cache.get(puzzleObj.discord.channelId);
 	const permissionOverwrites = getViewPermissions(
 		context,
 		puzzleObj,
-		puzzleObj.discordInfo.roleId
+		puzzleObj.discord.roleId
 	);
 	assert(
 		channel.type === ChannelType.GuildText ||
@@ -203,7 +203,7 @@ export const syncChannel = (
 };
 
 async function syncPuzzleChannel(guild: Guild, puzzle: Puzzle): Promise<void> {
-	const channel = guild.channels.cache.get(puzzle.discordInfo.channelId);
+	const channel = guild.channels.cache.get(puzzle.discord.channelId);
 	assert(
 		channel.type === ChannelType.GuildText,
 		'Expected puzzle to have a text channel.'
@@ -233,14 +233,12 @@ async function syncRoundChannels(
 	guild: Guild,
 	round: Round
 ): Promise<void> {
-	const indexChannel = guild.channels.cache.get(
-		round.discordInfo.indexChannelId
-	);
+	const indexChannel = guild.channels.cache.get(round.discord.indexChannelId);
 	assert(
 		indexChannel.type === ChannelType.GuildText,
 		'Expected round index channel to be a text channel.'
 	);
-	const channel = guild.channels.cache.get(round.discordInfo.channelId);
+	const channel = guild.channels.cache.get(round.discord.channelId);
 	assert(
 		channel.type === ChannelType.GuildCategory,
 		'Expected round to have a category channel.'
@@ -354,11 +352,11 @@ function getViewPermissions(
 ): OverwriteData[] {
 	const { puzzlehunt, allPuzzlesRoleId } = context;
 	const allowRoles = [puzzleObjRole, allPuzzlesRoleId];
-	if (puzzleObj.roundId !== undefined) {
-		const parent = puzzlehunt.getRound(puzzleObj.roundId);
+	if (puzzleObj.parentId !== undefined) {
+		const parent = puzzlehunt.getRound(puzzleObj.parentId);
 		allowRoles.push(
 			...getAncestorRounds(puzzlehunt, parent).map(
-				(round) => round.discordInfo.roleId
+				(round) => round.discord.roleId
 			)
 		);
 	}
@@ -395,12 +393,12 @@ export async function resyncServerFull(
 	// This ensures puzzle channels can be parented under their round's category.
 	await Promise.all(
 		Array.from(puzzlehunt.rounds)
-			.filter((round) => !round.discordInfo)
+			.filter((round) => !round.discord)
 			.map((round) => createDiscordAssociation(context, guild, round))
 	);
 	await Promise.all([
 		...puzzles
-			.filter((obj) => !obj.discordInfo)
+			.filter((obj) => !obj.discord)
 			.map((obj) => createDiscordAssociation(context, guild, obj)),
 		...puzzles
 			.filter((puzzle) => !puzzle.sheetId)
