@@ -75,8 +75,12 @@ to belong to that guild.
 | `GET /guilds/:guildId/hunts/:huntId/changes` | Authorized SSE revision hints, including a current baseline on every connection. |
 
 Commands require `application/json`, have a 1 MiB request limit, and reject
-unknown properties and integration-only commands. No ownership, configuration,
-active-hunt, or replacement-document writes are exposed. Responses are uncached.
+unknown properties and integration-only commands. No ownership, active-hunt, or
+replacement-document writes are exposed. Responses are uncached.
+`update-configuration` accepts the common hunt configuration, including logging
+channel mappings; omitted fields are unchanged. Root-round creation and root
+moves omit `parentId` rather than sending `null`. Trusted integration completion
+remains a separate capability, not a public HTTP command.
 The existing bot's `/guilds/:guildId/puzzlehunt` Fluid-context endpoint is unchanged.
 
 Full snapshots keep `huntId`, `guildId`, `schemaVersion`, and `revision` outside

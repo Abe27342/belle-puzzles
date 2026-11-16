@@ -5,12 +5,16 @@ import {
 	HuntCommandError,
 	snowflake,
 } from '@belle-puzzles/puzzlehunt-model/document';
-import type { HuntSnapshot } from '@belle-puzzles/puzzlehunt-model/document';
+import type {
+	HuntCommand,
+	HuntSnapshot,
+} from '@belle-puzzles/puzzlehunt-model/document';
 import { createPuzzlehuntApp } from '../app.js';
 import { HuntChangesUnavailableError } from '../changes.js';
 import type { HuntChangeFeed } from '../changes.js';
 
 const huntId = '00000000-0000-4000-8000-000000000001';
+const nodeId = '00000000-0000-4000-8000-000000000003';
 const snapshot: HuntSnapshot = {
 	huntId,
 	guildId: snowflake('guild'),
@@ -104,6 +108,109 @@ async function fixture() {
 }
 
 describe('Scoped SSE and synchronization routes (injected store)', () => {
+	it.each<HuntCommand>([
+		{
+			type: 'add',
+			nodes: [{ id: nodeId, type: 'round', name: 'Root', url: '' }],
+		},
+		{ type: 'move', nodeId },
+		{
+			type: 'update-configuration',
+			configuration: {
+				loggingChannelIds: {
+					puzzleAdd: snowflake('add'),
+					puzzleSolve: snowflake('solve'),
+					puzzleStatusUpdate: snowflake('status'),
+				},
+			},
+		},
+	])(
+		'forwards the neutral $type command to the authoritative store',
+		async (command) => {
+			const f = await fixture();
+			const request = {
+				commandId: '00000000-0000-4000-8000-000000000002',
+				command,
+			};
+			const response = await fetch(`${f.url}/commands?since=0`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(request),
+			});
+			expect(response.status).toBe(200);
+			expect(f.store.submit).toHaveBeenCalledExactlyOnceWith(
+				{ huntId, guildId: 'guild' },
+				request
+			);
+			expect(await response.json()).toEqual({
+				receipt: { commandId: request.commandId, committedRevision: 1 },
+				replayed: false,
+				update: { type: 'snapshot', snapshot },
+			});
+		}
+	);
+
+	it.each([
+		{ command: { type: 'move', nodeId, parentId: null } },
+		{
+			command: {
+				type: 'add',
+				nodes: [
+					{
+						id: nodeId,
+						type: 'round',
+						name: 'Root',
+						url: '',
+						parentId: null,
+					},
+				],
+			},
+		},
+		{
+			command: {
+				type: 'update-configuration',
+				configuration: { guildId: 'other' },
+			},
+		},
+		{
+			command: {
+				type: 'set-property',
+				nodeId,
+				property: 'discord',
+				value: null,
+			},
+		},
+		{ command: { type: 'complete-work', durableTaskId: nodeId } },
+		{
+			durableTaskId: nodeId,
+			command: {
+				type: 'set-property',
+				nodeId,
+				property: 'sheetId',
+				value: 'sheet',
+			},
+		},
+	])(
+		'rejects legacy roots, invalid configuration, and worker writes before submission (%#)',
+		async (request) => {
+			const f = await fixture();
+			const response = await fetch(`${f.url}/commands?since=0`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					commandId: '00000000-0000-4000-8000-000000000002',
+					...request,
+				}),
+			});
+			expect(response.status).toBe(400);
+			expect(await response.json()).toMatchObject({
+				error: { code: 'invalid-command' },
+			});
+			expect(f.store.submit).not.toHaveBeenCalled();
+			expect(f.store.readUpdates).not.toHaveBeenCalled();
+		}
+	);
+
 	it('never reports a post-commit state read failure as a definitive command rejection', async () => {
 		const f = await fixture();
 		f.store.readUpdates.mockRejectedValueOnce(
