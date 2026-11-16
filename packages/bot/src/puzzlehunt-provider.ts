@@ -41,13 +41,13 @@ class PuzzlehuntProvider implements IPuzzlehuntProvider {
 				// Another interaction may have attempted to load the same file. If this happened,
 				// just use the existing file (session/id/puzzlehunt should all be set reasonably accurately
 				// if this has happened) and dispose the one we just loaded to avoid memory leak.
-				await session.close();
+				session.close();
 				return this.getPuzzlehunt(id, onInitialLoad);
 			}
 			try {
 				onInitialLoad?.(session.puzzlehunt);
 			} catch (error) {
-				await session.close();
+				session.close();
 				throw error;
 			}
 			this.cacheFile(id, session);
@@ -75,9 +75,12 @@ class PuzzlehuntProvider implements IPuzzlehuntProvider {
 			console.log(
 				`Closing file ${id} due to inactivity for ${this.timeout} ms.`
 			);
-			void session.close().catch((error) => {
-				console.error(`Failed to close puzzlehunt ${id}.`, error);
-			});
+			void session.puzzlehunt
+				.flush()
+				.finally(() => session.close())
+				.catch((error) => {
+					console.error(`Failed to save puzzlehunt ${id}.`, error);
+				});
 		}, this.timeout);
 		const entry = {
 			session,

@@ -32,57 +32,56 @@ describe('Fluid session lifecycle', () => {
 	async function create() {
 		const azure = client();
 		const createContainer = vi.spyOn(azure, 'createContainer');
-		const session = await createNewPuzzlehunt(azure, 'lifecycle-guild');
+		const { id, session } = await createNewPuzzlehunt(
+			azure,
+			'lifecycle-guild'
+		);
 		sessions.push(session);
 		await session.puzzlehunt.flush();
 		const { container } = await createContainer.mock.results[0].value;
 		if (!(container instanceof FluidContainer)) {
 			throw new Error('Expected the Azure client Fluid container.');
 		}
-		return { session, container };
+		return { id, session, container };
 	}
 
 	afterEach(async () => {
 		vi.restoreAllMocks();
 		for (const session of sessions.splice(0)) {
 			if (session.state.status === 'open') {
-				await session.close();
+				session.close();
 			}
 		}
 	});
 
 	it.each(['created', 'loaded'] as const)(
-		'saves a %s hunt before closing, and permits loading its edits afterward',
+		'persists a %s hunt with explicit flush before closing',
 		async (kind) => {
 			const initial = await create();
 			const session =
 				kind === 'created'
 					? initial.session
-					: await loadExistingPuzzlehunt(
-							client(),
-							initial.session.id
-					  );
+					: await loadExistingPuzzlehunt(client(), initial.id);
 			if (kind === 'loaded') {
 				sessions.push(session);
 			}
 			const states: string[] = [];
 			session.subscribeLifecycle((state) => states.push(state.status));
 			session.puzzlehunt.addRound('Saved before close', '');
-			const closing = session.close();
-			expect(session.state.status).toBe('closing');
-			expect(session.close()).toBe(closing);
+			await session.puzzlehunt.flush();
+			session.close();
+			expect(session.state.status).toBe('closed');
 			expect(() => session.puzzlehunt.addRound('Too late', '')).toThrow(
-				/closing or closed/
+				/closed/
 			);
-			await closing;
-			expect(states).toEqual(['closing', 'closed']);
-			await session.close();
+			expect(states).toEqual(['closed']);
+			session.close();
 			await expect(session.puzzlehunt.flush()).rejects.toThrow(/closed/);
 			await expect(session.puzzlehunt.refresh()).rejects.toThrow(
 				/closed/
 			);
 
-			const reloaded = await loadExistingPuzzlehunt(client(), session.id);
+			const reloaded = await loadExistingPuzzlehunt(client(), initial.id);
 			sessions.push(reloaded);
 			expect(
 				reloaded.puzzlehunt.rounds.map((round) => round.name)
@@ -118,7 +117,6 @@ describe('Fluid session lifecycle', () => {
 			.mockReturnValue(true);
 		const flushed = vi.fn();
 		const flushing = session.puzzlehunt.flush().then(flushed);
-		const closing = session.close();
 		await Promise.resolve();
 		container.emit('saved');
 		await Promise.resolve();
@@ -126,13 +124,13 @@ describe('Fluid session lifecycle', () => {
 		expect(container.disposed).toBe(false);
 		dirty.mockReturnValue(false);
 		container.emit('saved');
-		await Promise.all([flushing, closing]);
+		await flushing;
 		expect(flushed).toHaveBeenCalledOnce();
+		session.close();
 		expect(container.disposed).toBe(true);
 		expect(ui).toHaveBeenCalled();
 		expect(changes).not.toHaveBeenCalled();
 		expect(lifecycle.mock.calls.map(([state]) => state.status)).toEqual([
-			'closing',
 			'closed',
 		]);
 		expect(removed).not.toHaveBeenCalled();
@@ -151,7 +149,30 @@ describe('Fluid session lifecycle', () => {
 		expect(ui).toHaveBeenCalledTimes(uiCalls);
 		const late = vi.fn();
 		session.subscribeLifecycle(late)();
-		expect(late).toHaveBeenCalledExactlyOnceWith({ status: 'closed' });
+		expect(late).not.toHaveBeenCalled();
+	});
+
+	it('closes immediately without flushing dirty edits and rejects in-flight flushes', async () => {
+		const { session, container } = await create();
+		session.puzzlehunt.addRound('Unsaved', '');
+		vi.spyOn(container, 'isDirty', 'get').mockReturnValue(true);
+		const flushing = session.puzzlehunt.flush();
+		const rejected = expect(flushing).rejects.toThrow(/closed/);
+		const flush = vi.spyOn(session.puzzlehunt, 'flush');
+		const lifecycle = vi.fn(() => {
+			expect(() => session.puzzlehunt.addRound('Too late', '')).toThrow(
+				/closed/
+			);
+		});
+		session.subscribeLifecycle(lifecycle);
+
+		expect(session.close()).toBeUndefined();
+		expect(flush).not.toHaveBeenCalled();
+		expect(container.disposed).toBe(true);
+		expect(session.state).toEqual({ status: 'closed' });
+		session.close();
+		expect(lifecycle).toHaveBeenCalledExactlyOnceWith({ status: 'closed' });
+		await rejected;
 	});
 
 	it('does not notify unsubscribed model listeners', async () => {
@@ -162,7 +183,7 @@ describe('Fluid session lifecycle', () => {
 		session.puzzlehunt.subscribeChanges(changes)();
 		session.puzzlehunt.addRound('Unobserved', '');
 		container.emit('dirty');
-		await session.close();
+		session.close();
 		expect(ui).not.toHaveBeenCalled();
 		expect(changes).not.toHaveBeenCalled();
 	});
@@ -173,7 +194,7 @@ describe('Fluid session lifecycle', () => {
 		'tree error',
 		'checkout error',
 	] as const)(
-		'rejects in-flight flushes and close on %s and notifies once',
+		'rejects in-flight flushes on %s and notifies once',
 		async (failure) => {
 			const errorSubscriptions = vi.spyOn(
 				Puzzlehunt.prototype,
@@ -187,14 +208,12 @@ describe('Fluid session lifecycle', () => {
 			session.subscribeLifecycle(lifecycle);
 			const first = session.puzzlehunt.flush();
 			const second = session.puzzlehunt.flush();
-			const closing = session.close();
 			const error = new Error(`Test ${failure}`);
 			const expected =
 				failure === 'disposal' ? /before acknowledgement/ : error;
 			const rejected = [
 				expect(first).rejects.toThrow(expected),
 				expect(second).rejects.toThrow(expected),
-				expect(closing).rejects.toThrow(expected),
 			];
 			if (failure === 'disposal') {
 				container.dispose();
@@ -219,9 +238,9 @@ describe('Fluid session lifecycle', () => {
 			}
 			await Promise.all(rejected);
 			expect(session.state.status).toBe('failed');
+			session.close();
+			session.close();
 			expect(container.disposed).toBe(true);
-			expect(session.close()).toBe(closing);
-			await expect(session.close()).rejects.toThrow(expected);
 			await expect(session.puzzlehunt.flush()).rejects.toThrow(expected);
 			await expect(session.puzzlehunt.refresh()).rejects.toThrow(
 				expected
@@ -230,14 +249,14 @@ describe('Fluid session lifecycle', () => {
 				expected
 			);
 			expect(lifecycle.mock.calls.map(([state]) => state.status)).toEqual(
-				['closing', 'failed']
+				['failed']
 			);
 			dirty.mockReturnValue(false);
 			const late = vi.fn();
 			session.subscribeLifecycle(late)();
-			expect(late).toHaveBeenCalledExactlyOnceWith(session.state);
+			expect(late).not.toHaveBeenCalled();
 			container.emit('disposed');
-			expect(lifecycle).toHaveBeenCalledTimes(2);
+			expect(lifecycle).toHaveBeenCalledOnce();
 		}
 	);
 
@@ -247,12 +266,12 @@ describe('Fluid session lifecycle', () => {
 		session.subscribeLifecycle(lifecycle);
 		container.dispose();
 		expect(session.state).toEqual({ status: 'closed' });
-		await session.close();
-		await session.close();
+		session.close();
+		session.close();
 		expect(lifecycle).toHaveBeenCalledExactlyOnceWith({ status: 'closed' });
 	});
 
-	it('reports a background error without starting an unobserved close promise', async () => {
+	it('reports a background error and preserves the failure after close', async () => {
 		const { session, container } = await create();
 		const lifecycle = vi.fn();
 		const ui = vi.fn();
@@ -269,7 +288,8 @@ describe('Fluid session lifecycle', () => {
 		expect(container.disposed).toBe(true);
 		expect(lifecycle).toHaveBeenCalledExactlyOnceWith(session.state);
 		expect(ui).toHaveBeenCalledOnce();
-		await expect(session.close()).rejects.toBe(error);
+		session.close();
+		expect(session.state).toEqual({ status: 'failed', error });
 	});
 
 	it.each(['initialization', 'attachment'] as const)(

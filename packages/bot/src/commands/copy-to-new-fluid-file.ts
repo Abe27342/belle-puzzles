@@ -30,12 +30,15 @@ export const copyToNewFluidFile: Command = {
 			return;
 		}
 
-		const session = await createNewPuzzlehuntFromExisting(
+		const { id, session } = await createNewPuzzlehuntFromExisting(
 			makeFluidClient(),
 			context.puzzlehunt
 		);
-		const { id } = session;
-		await session.close();
+		try {
+			await session.puzzlehunt.flush();
+		} finally {
+			session.close();
+		}
 
 		await interaction.editReply(
 			`Existing puzzlehunt data has been copied to a new fluid file with id: ${id}. ` +

@@ -72,14 +72,18 @@ export const Puzzles: React.FC = () => {
 			disposeFn = () => {
 				unsubscribe?.();
 				unsubscribeLifecycle?.();
-				void session.close().catch((error) => {
-					console.error('Failed to close puzzlehunt.', error);
-				});
+				void session.puzzlehunt
+					.flush()
+					.finally(() => session.close())
+					.catch((error) => {
+						console.error('Failed to save puzzlehunt.', error);
+					});
 			};
 			if (isActive) {
 				unsubscribe = session.puzzlehunt.subscribe(forceRerender);
 				setPuzzlehunt(session.puzzlehunt);
-				unsubscribeLifecycle = session.subscribeLifecycle((state) => {
+				const updateLifecycle = () => {
+					const { state } = session;
 					if (
 						state.status === 'closed' ||
 						state.status === 'failed'
@@ -91,9 +95,12 @@ export const Puzzles: React.FC = () => {
 								: 'Puzzlehunt session closed.'
 						);
 					}
-				});
+				};
+				unsubscribeLifecycle =
+					session.subscribeLifecycle(updateLifecycle);
+				updateLifecycle();
 			} else {
-				disposeFn();
+				session.close();
 			}
 		};
 

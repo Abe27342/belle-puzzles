@@ -26,11 +26,17 @@ const schema = {
 
 const nativeHunts = new WeakMap<IPuzzlehunt, Puzzlehunt>();
 
+/** Fluid file identity is creation metadata, not part of the session contract. */
+export interface CreatedFluidPuzzlehunt {
+	readonly id: string;
+	readonly session: IPuzzlehuntSession;
+}
+
 export const createNewPuzzlehunt = async (
 	client: AzureClient,
 	guildId: string,
 	logChannelIds?: LoggingChannelIds
-): Promise<IPuzzlehuntSession> =>
+): Promise<CreatedFluidPuzzlehunt> =>
 	createPuzzlehunt(client, (hunt) => {
 		hunt.setGuildId(guildId);
 		if (logChannelIds) {
@@ -42,7 +48,7 @@ export const createNewPuzzlehunt = async (
 export async function createNewPuzzlehuntFromExisting(
 	client: AzureClient,
 	existingHunt: IPuzzlehunt
-): Promise<IPuzzlehuntSession> {
+): Promise<CreatedFluidPuzzlehunt> {
 	const native = nativeHunts.get(existingHunt) ?? existingHunt;
 	if (!(native instanceof Puzzlehunt)) {
 		throw new Error(
@@ -55,7 +61,7 @@ export async function createNewPuzzlehuntFromExisting(
 async function createPuzzlehunt(
 	client: AzureClient,
 	editBeforeAttach: (puzzlehunt: Puzzlehunt) => void
-): Promise<IPuzzlehuntSession> {
+): Promise<CreatedFluidPuzzlehunt> {
 	const { container } = await client.createContainer(schema);
 	try {
 		// May want to initialize state here.
@@ -76,10 +82,10 @@ async function createPuzzlehunt(
 		} finally {
 			unsubscribeErrors();
 		}
-		const session = new FluidPuzzlehuntSession(hunt, container, id);
+		const session = new FluidPuzzlehuntSession(hunt, container);
 		assertOpen(session);
 		nativeHunts.set(session.puzzlehunt, hunt);
-		return session;
+		return { id, session };
 	} catch (error) {
 		container.dispose();
 		throw error;
@@ -98,7 +104,7 @@ export const loadExistingPuzzlehunt = async (
 		};
 		await waitContainerToCatchUp(loaderContainer);
 		const hunt = new Puzzlehunt(container);
-		const session = new FluidPuzzlehuntSession(hunt, container, id);
+		const session = new FluidPuzzlehuntSession(hunt, container);
 		assertOpen(session);
 		nativeHunts.set(session.puzzlehunt, hunt);
 		return session;

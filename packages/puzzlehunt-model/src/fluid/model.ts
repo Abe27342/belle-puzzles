@@ -36,12 +36,10 @@ export class FluidPuzzlehuntSession
 		reject: (error: Error) => void;
 	}>();
 	private readonly unsubscribeErrors: () => void;
-	private closePromise: Promise<void> | undefined;
 
 	constructor(
 		private readonly hunt: Puzzlehunt,
-		private readonly container: IFluidContainer,
-		readonly id: string
+		private readonly container: IFluidContainer
 	) {
 		const tree = container.initialObjects.hunt;
 		if (!(tree instanceof SharedTree)) {
@@ -72,7 +70,6 @@ export class FluidPuzzlehuntSession
 		listener: (state: PuzzlehuntSessionState) => void
 	): () => void {
 		if (this.state.status === 'closed' || this.state.status === 'failed') {
-			listener(this.state);
 			return () => {};
 		}
 		this.lifecycleListeners.add(listener);
@@ -81,29 +78,14 @@ export class FluidPuzzlehuntSession
 		};
 	}
 
-	close(): Promise<void> {
-		if (this.closePromise !== undefined) {
-			return this.closePromise;
-		}
-		this.closePromise = Promise.resolve().then(async () => {
-			if (this.state.status === 'closed') {
-				return;
-			}
-			try {
-				await this.flush();
-				if (this.state.status === 'failed') {
-					throw this.state.error;
-				}
+	close(): void {
+		try {
+			this.finish({ status: 'closed' });
+		} finally {
+			if (!this.container.disposed) {
 				this.container.dispose();
-			} catch (error) {
-				throw this.fail(error);
 			}
-		});
-		if (this.state.status === 'open') {
-			this.currentState = { status: 'closing' };
-			this.publishLifecycle();
 		}
-		return this.closePromise;
 	}
 
 	private assertWritable(): void {
@@ -111,7 +93,7 @@ export class FluidPuzzlehuntSession
 			throw this.state.error;
 		}
 		if (this.state.status !== 'open') {
-			throw new Error('Puzzlehunt session is closing or closed.');
+			throw new Error('Puzzlehunt session is closed.');
 		}
 	}
 

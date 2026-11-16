@@ -38,14 +38,13 @@ describe('Puzzlehunt', () => {
 			},
 			logger,
 		});
-		const results = await createNewPuzzlehunt(client, guildId);
-		puzzlehunt = results.puzzlehunt;
-		session = results;
+		({ session } = await createNewPuzzlehunt(client, guildId));
+		puzzlehunt = session.puzzlehunt;
 	});
 
 	afterEach(async () => {
 		vi.restoreAllMocks();
-		await session.close();
+		session.close();
 		puzzlehunt = undefined;
 		session = undefined;
 		expect(logger.errorEvents).toEqual([]);

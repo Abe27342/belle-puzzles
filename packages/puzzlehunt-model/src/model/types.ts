@@ -147,32 +147,28 @@ export interface IPuzzlehuntModel extends IPuzzlehunt {
 }
 
 export type PuzzlehuntSessionState =
-	| { readonly status: 'open' | 'closing' | 'closed' }
+	| { readonly status: 'open' | 'closed' }
 	| { readonly status: 'failed'; readonly error: Error };
 
 /** Owns a loaded model and its backend resources, without exposing SDK objects. */
 export interface IPuzzlehuntSession {
-	readonly id: string;
 	readonly puzzlehunt: IPuzzlehuntModel;
 	readonly state: PuzzlehuntSessionState;
 	/**
-	 * Observe lifecycle transitions. A late subscriber is notified immediately if
-	 * already closed or failed. Terminal notifications release all subscriptions,
-	 * including model subscriptions; the returned cleanup is always safe to call.
+	 * Observe future lifecycle transitions; inspect state for the current status.
+	 * Terminal notifications release all subscriptions, including model
+	 * subscriptions; the returned cleanup is always safe to call.
 	 */
 	subscribeLifecycle(
 		listener: (state: PuzzlehuntSessionState) => void
 	): () => void;
 	/**
-	 * Stop accepting mutations, await authoritative acknowledgement, and release
-	 * resources. Repeated calls share the result; an already closed session resolves.
-	 * Failure releases resources, records a terminal error, and rejects. Unexpected
-	 * closure with unacknowledged edits is a failure, not a successful save.
-	 * Callers must await this promise or handle its rejection, even during cleanup.
-	 * Disconnection alone is not terminal; saving may wait for reconnection.
-	 * Model flush/refresh reject after closure or failure.
+	 * Stop accepting mutations and release resources. Does not save pending edits;
+	 * await puzzlehunt.flush() first when persistence is required.
+	 * Repeated calls are safe, including after failure.
+	 * Model flush/refresh reject after closure or failure, including in-flight calls.
 	 */
-	close(): Promise<void>;
+	close(): void;
 }
 
 /** Reuse parent-pointer ordering; child lists are read-only view values. */

@@ -27,8 +27,8 @@ puzzlehuntModelContract(
 			});
 		};
 		const initial = await createNewPuzzlehunt(client(), 'contract-guild');
-		const model = initial.puzzlehunt;
-		const sessions = [initial];
+		const model = initial.session.puzzlehunt;
+		const sessions = [initial.session];
 		const hunts = new Map([
 			['Contract test hunt', { id: initial.id, models: [model] }],
 		]);
@@ -49,14 +49,14 @@ puzzlehuntModelContract(
 				if (hunts.has(huntName)) {
 					throw new Error(`Hunt already exists: ${huntName}`);
 				}
-				const session = await createNewPuzzlehunt(
+				const { id, session } = await createNewPuzzlehunt(
 					client(),
 					'contract-guild'
 				);
 				sessions.push(session);
 				const independent = session.puzzlehunt;
 				hunts.set(huntName, {
-					id: session.id,
+					id,
 					models: [independent],
 				});
 				return independent;
@@ -79,7 +79,7 @@ puzzlehuntModelContract(
 				);
 			},
 			async close() {
-				await Promise.all(sessions.map((session) => session.close()));
+				sessions.forEach((session) => session.close());
 				expect(logger.errorEvents).toEqual([]);
 			},
 		};

@@ -37,7 +37,7 @@ function useSimplePuzzlehuntProvider(): IPuzzlehuntProvider {
 	const sessions: IPuzzlehuntSession[] = [];
 
 	afterEach(async () => {
-		await Promise.all(sessions.map((session) => session.close()));
+		sessions.forEach((session) => session.close());
 		sessions.length = 0;
 	});
 	return {

@@ -36,21 +36,21 @@ describe('Puzzlehunts', () => {
 
 	afterEach(async () => {
 		vi.restoreAllMocks();
-		await Promise.all(sessions.map((session) => session.close()));
+		sessions.forEach((session) => session.close());
 		sessions = [];
 		expect(logger.errorEvents).toEqual([]);
 	});
 
 	describe('can be created', () => {
 		it('without logging info', async () => {
-			const session = await createNewPuzzlehunt(client, guildId);
+			const { session } = await createNewPuzzlehunt(client, guildId);
 			sessions.push(session);
 			const { puzzlehunt } = session;
 			expect(puzzlehunt.loggingChannelIds).toEqual(undefined);
 		});
 
 		it('with logging info', async () => {
-			const session = await createNewPuzzlehunt(client, guildId, {
+			const { session } = await createNewPuzzlehunt(client, guildId, {
 				puzzleAdd: 'add',
 				puzzleSolve: 'solve',
 				puzzleStatusUpdate: 'status',
@@ -66,9 +66,9 @@ describe('Puzzlehunts', () => {
 	});
 
 	it('can be loaded', async () => {
-		const session = await createNewPuzzlehunt(client, guildId);
+		const { id, session } = await createNewPuzzlehunt(client, guildId);
 		sessions.push(session);
-		const { puzzlehunt, id } = session;
+		const { puzzlehunt } = session;
 		const session2 = await loadExistingPuzzlehunt(client, id);
 		sessions.push(session2);
 		const { puzzlehunt: puzzlehunt2 } = session2;
@@ -85,12 +85,12 @@ describe('Puzzlehunts', () => {
 	});
 
 	it('can be copied from an existing hunt', async () => {
-		const session = await createNewPuzzlehunt(client, guildId);
+		const { session } = await createNewPuzzlehunt(client, guildId);
 		sessions.push(session);
 		const { puzzlehunt } = session;
 		const round = puzzlehunt.addRound('round 1', 'url 1');
 		puzzlehunt.addPuzzle('puzzle 2', 'url 2', round);
-		const session2 = await createNewPuzzlehuntFromExisting(
+		const { session: session2 } = await createNewPuzzlehuntFromExisting(
 			client,
 			puzzlehunt
 		);

@@ -138,7 +138,7 @@ export const create: Command = {
 			}),
 		]);
 
-		const session = await createNewPuzzlehunt(
+		const { id, session } = await createNewPuzzlehunt(
 			makeFluidClient(),
 			interaction.guild.id,
 			{
@@ -147,8 +147,11 @@ export const create: Command = {
 				puzzleStatusUpdate: updateChannel.id,
 			}
 		);
-		const { id } = session;
-		await session.close();
+		try {
+			await session.puzzlehunt.flush();
+		} finally {
+			session.close();
+		}
 
 		const context: SerializedPuzzlehuntContext = {
 			name: interaction.options.getString(NAME_ARG),
