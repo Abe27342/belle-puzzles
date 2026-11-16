@@ -881,11 +881,27 @@ class Puzzlehunt implements IPuzzlehunt {
 	}
 
 	public get rounds(): Iterable<Round> {
-		return this.view.rounds;
+		return Array.from(
+			this.getAllDefsMatching(this.checkout.currentView.root, roundDef),
+			(id) => new RoundHandle(this.checkout.currentView, id, this.hunt)
+		);
 	}
 
 	public get puzzles(): Iterable<Puzzle> {
-		return this.view.puzzles;
+		return Array.from(
+			this.getAllDefsMatching(this.checkout.currentView.root, puzzleDef),
+			(id) => new PuzzleHandle(this.checkout.currentView, id, this.hunt)
+		);
+	}
+
+	private *getAllDefsMatching(id: NodeId, def: string): Iterable<NodeId> {
+		const viewNode = this.checkout.currentView.getViewNode(id);
+		if (viewNode.definition === def) {
+			yield viewNode.identifier;
+		}
+		for (const child of viewNode.traits.get(traitLabels.children) ?? []) {
+			yield* this.getAllDefsMatching(child, def);
+		}
 	}
 
 	public copyFrom(other: Puzzlehunt): void {

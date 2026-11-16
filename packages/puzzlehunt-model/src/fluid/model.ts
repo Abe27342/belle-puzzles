@@ -26,11 +26,11 @@ export class FluidPuzzlehuntModel implements IPuzzlehuntModel {
 	}
 
 	get rounds(): readonly PuzzlehuntRound[] {
-		return this.view.rounds;
+		return Array.from(this.hunt.rounds);
 	}
 
 	get puzzles(): readonly DocumentPuzzle[] {
-		return this.view.puzzles;
+		return Array.from(this.hunt.puzzles);
 	}
 
 	get isPending(): boolean {
