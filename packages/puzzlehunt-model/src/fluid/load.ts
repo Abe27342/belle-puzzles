@@ -1,16 +1,15 @@
 import { SharedTree, WriteFormat } from '@fluid-experimental/tree';
 import { SharedMap } from 'fluid-framework';
+import type { AzureClient } from '@fluidframework/azure-client';
+import type { IFluidContainer } from '@fluidframework/fluid-static';
 import { waitContainerToCatchUp } from '@fluidframework/container-loader';
-import { AzureClient } from '@fluidframework/azure-client';
-import { IFluidContainer } from '@fluidframework/fluid-static';
-import type { IPuzzlehunt, LoggingChannelIds } from '../model/types.js';
+import type {
+	IPuzzlehunt,
+	IPuzzlehuntSession,
+	LoggingChannelIds,
+} from '../model/types.js';
 import { Puzzlehunt } from '../puzzlehunt.js';
-
-function assert(condition: boolean, message: string): asserts condition {
-	if (!condition) {
-		throw new Error(`Assertion failed: ${message}`);
-	}
-}
+import { FluidPuzzlehuntSession } from './model.js';
 
 class AFRSharedTree extends SharedTree {
 	public static getFactory() {
@@ -25,20 +24,13 @@ const schema = {
 	},
 };
 
-interface PuzzlehuntLoadResult {
-	puzzlehunt: IPuzzlehunt;
-	id: string;
-	disposer: { dispose: () => void };
-	// TODO: There may be a better thing to expose. But right now, container.close events aren't properly surfaced
-	// to users of this model. This could be a bug source in the future.
-	container: IFluidContainer;
-}
+const nativeHunts = new WeakMap<IPuzzlehunt, Puzzlehunt>();
 
 export const createNewPuzzlehunt = async (
 	client: AzureClient,
 	guildId: string,
 	logChannelIds?: LoggingChannelIds
-): Promise<PuzzlehuntLoadResult> =>
+): Promise<IPuzzlehuntSession> =>
 	createPuzzlehunt(client, (hunt) => {
 		hunt.setGuildId(guildId);
 		if (logChannelIds) {
@@ -46,54 +38,81 @@ export const createNewPuzzlehunt = async (
 		}
 	});
 
+/** Copying deliberately requires the native Fluid implementation. */
 export async function createNewPuzzlehuntFromExisting(
 	client: AzureClient,
 	existingHunt: IPuzzlehunt
-): Promise<PuzzlehuntLoadResult> {
-	assert(
-		existingHunt instanceof Puzzlehunt,
-		'This API relies on internals of the tree-based Puzzlehunt implementation.'
-	);
-	return createPuzzlehunt(client, (hunt) => hunt.copyFrom(existingHunt));
+): Promise<IPuzzlehuntSession> {
+	const native = nativeHunts.get(existingHunt) ?? existingHunt;
+	if (!(native instanceof Puzzlehunt)) {
+		throw new Error(
+			'This API relies on internals of the tree-based Puzzlehunt implementation.'
+		);
+	}
+	return createPuzzlehunt(client, (hunt) => hunt.copyFrom(native));
 }
 
 async function createPuzzlehunt(
 	client: AzureClient,
 	editBeforeAttach: (puzzlehunt: Puzzlehunt) => void
-): Promise<PuzzlehuntLoadResult> {
+): Promise<IPuzzlehuntSession> {
 	const { container } = await client.createContainer(schema);
-	// May want to initialize state here.
-	const puzzlehunt = new Puzzlehunt(container);
-	editBeforeAttach(puzzlehunt);
-	const id = await container.attach();
-	const disposer = {
-		dispose: () => {
-			if (!container.isDirty) {
-				container.dispose();
-			} else {
-				console.log(
-					`Delaying close of puzzlehunt ${id} due to unsaved changes.`
-				);
-				container.once('saved', () => {
-					console.log(`Completed delayed close of puzzlehunt ${id}.`);
-					container.dispose();
-				});
-			}
-		},
-	};
-	return { id, puzzlehunt, disposer, container };
+	try {
+		// May want to initialize state here.
+		const hunt = new Puzzlehunt(container);
+		let unsubscribeErrors = () => {};
+		const failure = new Promise<never>((_, reject) => {
+			unsubscribeErrors = hunt.subscribeErrors(reject);
+		});
+		let id: string;
+		try {
+			id = await Promise.race([
+				failure,
+				Promise.resolve().then(() => {
+					editBeforeAttach(hunt);
+					return container.attach();
+				}),
+			]);
+		} finally {
+			unsubscribeErrors();
+		}
+		const session = new FluidPuzzlehuntSession(hunt, container, id);
+		assertOpen(session);
+		nativeHunts.set(session.puzzlehunt, hunt);
+		return session;
+	} catch (error) {
+		container.dispose();
+		throw error;
+	}
 }
 
 export const loadExistingPuzzlehunt = async (
 	client: AzureClient,
 	id: string
-): Promise<PuzzlehuntLoadResult> => {
+): Promise<IPuzzlehuntSession> => {
 	const { container } = await client.getContainer(id, schema);
-	await waitContainerToCatchUp((container as any).container);
-	return {
-		puzzlehunt: new Puzzlehunt(container),
-		disposer: container,
-		id,
-		container,
-	};
+	try {
+		// Fluid 1.x only exposes catch-up on the underlying loader container.
+		const { container: loaderContainer } = container as IFluidContainer & {
+			readonly container: Parameters<typeof waitContainerToCatchUp>[0];
+		};
+		await waitContainerToCatchUp(loaderContainer);
+		const hunt = new Puzzlehunt(container);
+		const session = new FluidPuzzlehuntSession(hunt, container, id);
+		assertOpen(session);
+		nativeHunts.set(session.puzzlehunt, hunt);
+		return session;
+	} catch (error) {
+		container.dispose();
+		throw error;
+	}
 };
+
+function assertOpen(session: IPuzzlehuntSession): void {
+	if (session.state.status === 'failed') {
+		throw session.state.error;
+	}
+	if (session.state.status !== 'open') {
+		throw new Error('Puzzlehunt closed while loading.');
+	}
+}

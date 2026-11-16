@@ -403,6 +403,8 @@ export class Puzzlehunt implements IPuzzlehunt {
 	private readonly changeListeners = new Set<
 		(event: PuzzlehuntChangeEvent) => void
 	>();
+	private readonly errorListeners = new Set<(error: unknown) => void>();
+	private failure: { error: unknown } | undefined;
 
 	constructor(container: IFluidContainer) {
 		const { hunt, guildInfo } = container.initialObjects as {
@@ -411,10 +413,14 @@ export class Puzzlehunt implements IPuzzlehunt {
 		};
 		this.hunt = hunt;
 		this.checkout = new EagerCheckout(hunt);
-		this.hunt.on('error', (err) => console.log('SharedTree error:', err));
-		this.checkout.on('error', (err) =>
-			console.log('EagerCheckout error:', err)
-		);
+		const reportError = (error: unknown) => {
+			this.failure ??= { error };
+			for (const listener of this.errorListeners) {
+				listener(error);
+			}
+		};
+		this.hunt.on('error', reportError);
+		this.checkout.on('error', reportError);
 		this.checkout.on('viewChange', (before: TreeView, after: TreeView) => {
 			// Raw leaf/structural deltas stay private; domain projection also captures
 			// sibling positions and every member of an added/removed subtree.
@@ -444,6 +450,15 @@ export class Puzzlehunt implements IPuzzlehunt {
 	): () => void {
 		this.changeListeners.add(listener);
 		return () => this.changeListeners.delete(listener);
+	}
+
+	/** Backend failures are forwarded to the owning Fluid session. */
+	public subscribeErrors(listener: (error: unknown) => void): () => void {
+		if (this.failure !== undefined) {
+			throw this.failure.error;
+		}
+		this.errorListeners.add(listener);
+		return () => this.errorListeners.delete(listener);
 	}
 
 	public get view(): PuzzlehuntView {

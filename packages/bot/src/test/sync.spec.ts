@@ -18,8 +18,9 @@ import {
 import { loadPuzzlehunt, runCommand } from './testUtils';
 import {
 	IPuzzlehunt,
-	loadExistingPuzzlehunt,
+	IPuzzlehuntSession,
 } from '@belle-puzzles/puzzlehunt-model';
+import { loadExistingPuzzlehunt } from '@belle-puzzles/puzzlehunt-model/fluid';
 import { makeFluidClient } from '../fluid/client';
 import { getHuntContext } from '../puzzlehunt-context';
 import { BELLE_USER_ID } from '../utils';
@@ -33,22 +34,17 @@ vi.mock('../integrations/google.js');
 // more natural, so we do that here.
 
 function useSimplePuzzlehuntProvider(): IPuzzlehuntProvider {
-	const disposers: { dispose: () => void }[] = [];
+	const sessions: IPuzzlehuntSession[] = [];
 
-	afterEach(() => {
-		for (const disposer of disposers) {
-			disposer.dispose();
-		}
-		disposers.length = 0;
+	afterEach(async () => {
+		await Promise.all(sessions.map((session) => session.close()));
+		sessions.length = 0;
 	});
 	return {
 		getPuzzlehunt: async (id) => {
-			const { puzzlehunt, disposer } = await loadExistingPuzzlehunt(
-				makeFluidClient(),
-				id
-			);
-			disposers.push(disposer);
-			return puzzlehunt;
+			const session = await loadExistingPuzzlehunt(makeFluidClient(), id);
+			sessions.push(session);
+			return session.puzzlehunt;
 		},
 	};
 }

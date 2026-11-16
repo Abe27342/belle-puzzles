@@ -3,8 +3,7 @@ export type {
 	DiscordRoundInfo,
 	IPuzzlehunt,
 	LoggingChannelIds,
-	Puzzle,
-	Round,
-} from '../puzzlehunt.js';
+	PuzzlehuntRound as Round,
+} from '../model/types.js';
+export type { DocumentPuzzle as Puzzle } from '../document.js';
 export * from './load.js';
-export * from './model.js';

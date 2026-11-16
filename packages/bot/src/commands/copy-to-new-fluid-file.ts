@@ -5,7 +5,7 @@ import {
 } from 'discord.js';
 import { Command } from './types';
 import { PuzzlehuntContext } from '../puzzlehunt-context';
-import { createNewPuzzlehuntFromExisting } from '@belle-puzzles/puzzlehunt-model';
+import { createNewPuzzlehuntFromExisting } from '@belle-puzzles/puzzlehunt-model/fluid';
 import { makeFluidClient } from '../fluid/client.js';
 
 export const copyToNewFluidFile: Command = {
@@ -30,16 +30,16 @@ export const copyToNewFluidFile: Command = {
 			return;
 		}
 
-		const { disposer, id } = await createNewPuzzlehuntFromExisting(
+		const session = await createNewPuzzlehuntFromExisting(
 			makeFluidClient(),
 			context.puzzlehunt
 		);
+		const { id } = session;
+		await session.close();
 
 		await interaction.editReply(
 			`Existing puzzlehunt data has been copied to a new fluid file with id: ${id}. ` +
 				'Run /change_backing_fluid_file with this id to switch the discord server to use that file instead.'
 		);
-
-		disposer.dispose();
 	},
 };
