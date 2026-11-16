@@ -1,6 +1,7 @@
 import { beforeEach, afterEach, describe, expect, inject, it, vi } from 'vitest';
 import { AzureClient } from '@fluidframework/azure-client';
 import { InsecureTokenProvider } from '@fluidframework/test-client-utils';
+import { TreeView } from '@fluid-experimental/tree';
 import {
 	createNewPuzzlehunt,
 	IPuzzlehunt,
@@ -54,6 +55,25 @@ describe('Puzzlehunt', () => {
 		expect(Array.from(puzzlehunt.puzzles)).toEqual([]);
 	});
 
+	it.each([1, 50])(
+		'bounds node reads for direct lookups with %i unrelated puzzles',
+		(count) => {
+			const round = puzzlehunt.addRound('Round', '');
+			const puzzle = puzzlehunt.addPuzzle('Puzzle', '', round);
+			puzzlehunt.addPuzzles(
+				Array.from({ length: count }, (_, index) => ({
+					name: `Other ${index}`,
+					url: '',
+				})),
+				round
+			);
+			const reads = vi.spyOn(TreeView.prototype, 'tryGetViewNode');
+			expect(puzzlehunt.getRound(round.id).name).toBe('Round');
+			expect(puzzlehunt.getPuzzle(puzzle.id).name).toBe('Puzzle');
+			expect(reads.mock.calls.length).toBeLessThanOrEqual(6);
+		}
+	);
+
 	it('returns document-shaped snapshots and resolves subsequent edits by stable ID', () => {
 		const root = puzzlehunt.addRound('Root', 'root-url');
 		const first: DocumentPuzzle = puzzlehunt.addPuzzle(
@@ -68,7 +88,7 @@ describe('Puzzlehunt', () => {
 			position: 0,
 			children: [],
 		});
-		expect(first).toEqual({
+		expect(first).toMatchObject({
 			id: expect.any(String),
 			type: 'puzzle',
 			name: 'First',

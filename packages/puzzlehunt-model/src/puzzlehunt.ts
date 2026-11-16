@@ -853,25 +853,31 @@ class Puzzlehunt implements IPuzzlehunt {
 	}
 
 	public getRound(id: string): Round {
-		const stableId = /^-?\d+$/.test(id)
-			? this.hunt.convertToStableNodeId(this.#normalizeId(id))
-			: id;
-		const round = this.view.rounds.find((node) => node.id === stableId);
-		if (!round) {
+		const nodeId = /^-?\d+$/.test(id)
+			? this.#normalizeId(id)
+			: this.hunt.tryConvertToNodeId(id as StableNodeId);
+		const view = this.checkout.currentView;
+		if (
+			nodeId === undefined ||
+			view.tryGetViewNode(nodeId)?.definition !== roundDef
+		) {
 			throw new HuntCommandError('not-found', 'Round not found.');
 		}
-		return round;
+		return new RoundHandle(view, nodeId, this.hunt);
 	}
 
 	public getPuzzle(id: string): Puzzle {
-		const stableId = /^-?\d+$/.test(id)
-			? this.hunt.convertToStableNodeId(this.#normalizeId(id))
-			: id;
-		const puzzle = this.view.puzzles.find((node) => node.id === stableId);
-		if (!puzzle) {
+		const nodeId = /^-?\d+$/.test(id)
+			? this.#normalizeId(id)
+			: this.hunt.tryConvertToNodeId(id as StableNodeId);
+		const view = this.checkout.currentView;
+		if (
+			nodeId === undefined ||
+			view.tryGetViewNode(nodeId)?.definition !== puzzleDef
+		) {
 			throw new HuntCommandError('not-found', 'Puzzle not found.');
 		}
-		return puzzle;
+		return new PuzzleHandle(view, nodeId, this.hunt);
 	}
 
 	public get rounds(): Iterable<Round> {
