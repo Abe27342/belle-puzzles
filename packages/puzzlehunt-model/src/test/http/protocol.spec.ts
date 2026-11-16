@@ -30,7 +30,6 @@ describe('Hunt HTTP protocol', () => {
 					type: 'round',
 					name: 'Root',
 					url: '',
-					parentId: null,
 				},
 			],
 		},
@@ -42,7 +41,22 @@ describe('Hunt HTTP protocol', () => {
 			nodeId,
 			value: 'https://example.test/puzzle',
 		},
-		{ type: 'move', nodeId, parentId: null },
+		{ type: 'move', nodeId },
+		{ type: 'move', nodeId, parentId: huntId },
+		{ type: 'update-configuration', configuration: {} },
+		{
+			type: 'update-configuration',
+			configuration: {
+				googleFolderId: 'folder',
+				indexId: snowflake('index'),
+				allPuzzlesRoleId: snowflake('all'),
+				loggingChannelIds: {
+					puzzleAdd: snowflake('add'),
+					puzzleSolve: snowflake('solve'),
+					puzzleStatusUpdate: snowflake('status'),
+				},
+			},
+		},
 		{ type: 'set-property', property: 'answer', nodeId, value: 'ANSWER' },
 		{ type: 'set-property', property: 'answer', value: null, nodeId },
 		{ type: 'set-property', property: 'status', nodeId, value: null },
@@ -62,12 +76,60 @@ describe('Hunt HTTP protocol', () => {
 		{ commandId, command: null },
 		{ commandId },
 		{ commandId: 'not-a-uuid', command: { type: 'delete', nodeId } },
-		{ commandId, command: { type: 'move', nodeId } },
+		{ commandId, command: { type: 'move', nodeId, parentId: null } },
 		{
 			commandId,
 			command: {
 				type: 'add',
-				nodes: [{ id: nodeId, type: 'round', name: '', url: '' }],
+				nodes: [
+					{
+						id: nodeId,
+						type: 'round',
+						name: '',
+						url: '',
+						parentId: null,
+					},
+				],
+			},
+		},
+		{ commandId, command: { type: 'update-configuration' } },
+		{
+			commandId,
+			command: { type: 'update-configuration', configuration: null },
+		},
+		{
+			commandId,
+			command: {
+				type: 'update-configuration',
+				configuration: { guildId: 'other' },
+			},
+		},
+		{
+			commandId,
+			command: {
+				type: 'update-configuration',
+				configuration: { indexId: 123 },
+			},
+		},
+		{
+			commandId,
+			command: {
+				type: 'update-configuration',
+				configuration: { loggingChannelIds: { puzzleAdd: 'add' } },
+			},
+		},
+		{
+			commandId,
+			command: { type: 'complete-work', durableTaskId: nodeId },
+		},
+		{
+			commandId,
+			durableTaskId: nodeId,
+			command: {
+				type: 'set-property',
+				nodeId,
+				property: 'sheetId',
+				value: 'sheet',
 			},
 		},
 		{
@@ -155,7 +217,7 @@ describe('Hunt HTTP protocol', () => {
 						type: 'round',
 						name: '',
 						url: '',
-						parentId: null,
+						parentId: undefined,
 						discord: null,
 					},
 				],
@@ -189,7 +251,7 @@ describe('Hunt HTTP protocol', () => {
 						type: 'round',
 						name: 'Root',
 						url: '',
-						parentId: null,
+						parentId: undefined,
 						position: 0,
 						discord: {
 							channelId: snowflake('category'),
@@ -217,6 +279,9 @@ describe('Hunt HTTP protocol', () => {
 			},
 		};
 		expect(decodeHuntSnapshot(full, scope)).toEqual(full);
+		expect(
+			decodeHuntSnapshot(JSON.parse(JSON.stringify(full)), scope)
+		).toEqual(full);
 	});
 
 	it.each([
@@ -255,7 +320,7 @@ describe('Hunt HTTP protocol', () => {
 						type: 'round',
 						name: '',
 						url: '',
-						parentId: null,
+						parentId: undefined,
 						position: 0,
 						answer: 'A',
 					},

@@ -40,7 +40,6 @@ const optionalNever: z.ZodOptional<z.ZodNever> = z.never().optional();
 
 const id = z.string().refine(isUuid, 'Expected a lowercase UUID.');
 // Keep nullable fields required even in the legacy non-strict TypeScript build.
-const nullableId: z.ZodType<string | null> = id.nullable();
 const nullableString: z.ZodType<string | null> = z.string().nullable();
 const integer = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 
@@ -49,7 +48,7 @@ const newNode = z.discriminatedUnion('type', [
 	z.strictObject({
 		...newNodeFields,
 		type: z.literal('round'),
-		parentId: nullableId,
+		parentId: id.optional(),
 	}),
 	z.strictObject({
 		...newNodeFields,
@@ -70,13 +69,30 @@ function propertyCommand<Property extends string, Value extends z.ZodType>(
 	});
 }
 
+const configuration = z.object({
+	googleFolderId: optionalString,
+	indexId: snowflake.optional(),
+	allPuzzlesRoleId: snowflake.optional(),
+	loggingChannelIds: z
+		.object({
+			puzzleAdd: snowflake,
+			puzzleSolve: snowflake,
+			puzzleStatusUpdate: snowflake,
+		})
+		.optional(),
+});
+
 const command: z.ZodType<HuntCommand> = z.discriminatedUnion('type', [
 	z.strictObject({ type: z.literal('add'), nodes: z.array(newNode) }),
 	z.strictObject({ type: z.literal('delete'), nodeId: id }),
 	z.strictObject({
 		type: z.literal('move'),
 		nodeId: id,
-		parentId: nullableId,
+		parentId: id.optional(),
+	}),
+	z.strictObject({
+		type: z.literal('update-configuration'),
+		configuration: configuration.strict(),
 	}),
 	z.discriminatedUnion('property', [
 		propertyCommand('name', z.string()),
@@ -93,26 +109,13 @@ export const huntCommandRequestSchema: z.ZodType<HuntCommandRequest> =
 		command,
 	});
 
-const configuration = z.object({
-	googleFolderId: optionalString,
-	indexId: snowflake.optional(),
-	allPuzzlesRoleId: snowflake.optional(),
-	loggingChannelIds: z
-		.object({
-			puzzleAdd: snowflake,
-			puzzleSolve: snowflake,
-			puzzleStatusUpdate: snowflake,
-		})
-		.optional(),
-});
-
 const discordFields = { channelId: snowflake, roleId: snowflake };
 const nodeFields = { ...newNodeFields, position: integer };
 const node = z.discriminatedUnion('type', [
 	z.object({
 		...nodeFields,
 		type: z.literal('round'),
-		parentId: nullableId,
+		parentId: id.optional(),
 		discord: z
 			.object({ ...discordFields, indexChannelId: snowflake })
 			.optional(),

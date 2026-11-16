@@ -21,7 +21,7 @@ const root: DocumentRound = {
 	type: 'round',
 	name: 'Root',
 	url: '',
-	parentId: null,
+	parentId: undefined,
 	position: 0,
 };
 const base: HuntSnapshot = {

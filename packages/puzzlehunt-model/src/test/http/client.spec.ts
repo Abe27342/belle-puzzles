@@ -92,7 +92,7 @@ describe('HTTP hunt document client', () => {
 						type: 'round',
 						name: 'Root',
 						url: '',
-						parentId: null,
+						parentId: undefined,
 					},
 				],
 			},
@@ -109,6 +109,50 @@ describe('HTTP hunt document client', () => {
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(request),
 		});
+	});
+
+	it('persists common logging configuration through HTTP commands', async () => {
+		const { client, fetch } = transport();
+		const initial: HuntSnapshot = {
+			...snapshot,
+			document: {
+				...snapshot.document,
+				configuration: { googleFolderId: 'folder' },
+			},
+		};
+		fetch.mockImplementationOnce(async (_url, init) => {
+			const request = decodeHuntCommandRequest(
+				JSON.parse(String(init?.body))
+			);
+			expect(request.command.type).toBe('update-configuration');
+			return json({
+				snapshot: {
+					...initial,
+					revision: 1,
+					document: applyHuntCommand(
+						initial.document,
+						request.command,
+						1234
+					).document,
+				},
+				receipt: { commandId: request.commandId, committedRevision: 1 },
+				replayed: false,
+			});
+		});
+		const model = new PuzzlehuntModel(client, initial);
+		const ids = {
+			puzzleAdd: 'add-channel',
+			puzzleSolve: 'solve-channel',
+			puzzleStatusUpdate: 'status-channel',
+		};
+		model.setLoggingChannelIds(ids);
+		await model.flush();
+		expect(model.loggingChannelIds).toEqual(ids);
+		expect(model.committedSnapshot.document.configuration).toEqual({
+			googleFolderId: 'folder',
+			loggingChannelIds: ids,
+		});
+		expect(model.pendingChanges).toHaveLength(0);
 	});
 
 	it('rolls back an optimistic edit on an explicit authorization rejection', async () => {
