@@ -2,44 +2,60 @@ import {
 	applyHuntCommand,
 	validateHuntDocument,
 	HuntCommandError,
+	isUuid,
+	snowflake,
 } from '../document.js';
 import type {
 	DocumentNode,
 	DocumentPuzzle,
+	DocumentRound,
 	HuntCommand,
 	HuntCommandRequest,
+	HuntCommandResult,
 	HuntDocument,
 	HuntDocumentClient,
+	HuntIntegrationClient,
+	HuntIntegrationCommand,
 	HuntScope,
 	HuntSnapshot,
 } from '../document.js';
 import { projectPuzzlehuntView } from './types.js';
 import { diffPuzzlehuntViews } from './changes.js';
 import type {
+	DiscordPuzzleInfo,
+	DiscordRoundInfo,
 	IPuzzlehuntModel,
+	LoggingChannelIds,
 	PuzzlehuntRound,
 	PuzzlehuntView,
 	PuzzlehuntChangeEvent,
 } from './types.js';
 
 export interface PendingHuntChange {
-	readonly request: HuntCommandRequest;
+	readonly request: CommandOperation['request'];
 	readonly status: 'pending' | 'uncertain';
 	readonly error?: Error;
 }
 
 export interface HuntModelFailure {
-	readonly request?: HuntCommandRequest;
+	readonly request?: CommandOperation['request'];
 	readonly error: Error;
 }
 
-interface CommandOperation {
-	type: 'command';
-	request: HuntCommandRequest;
+type CommandOperation = {
 	optimisticTime: number;
 	status: 'pending' | 'uncertain';
 	error?: Error;
-}
+} & (
+	| { type: 'command'; request: HuntCommandRequest }
+	| {
+			type: 'integration';
+			request: {
+				readonly commandId: string;
+				readonly command: HuntIntegrationCommand;
+			};
+	  }
+);
 
 type Operation =
 	| CommandOperation
@@ -68,7 +84,9 @@ export class PuzzlehuntModel implements IPuzzlehuntModel {
 
 	constructor(
 		private readonly client: HuntDocumentClient,
-		snapshot: HuntSnapshot
+		snapshot: HuntSnapshot,
+		/** Only supply this capability to trusted integration workers. */
+		private readonly integrations?: HuntIntegrationClient
 	) {
 		this.committed = snapshot;
 		this.scope = { huntId: snapshot.huntId, guildId: snapshot.guildId };
@@ -79,7 +97,8 @@ export class PuzzlehuntModel implements IPuzzlehuntModel {
 
 	static async load(
 		client: HuntDocumentClient,
-		scope: HuntScope
+		scope: HuntScope,
+		integrations?: HuntIntegrationClient
 	): Promise<PuzzlehuntModel> {
 		const snapshot = await client.read(scope);
 		if (
@@ -88,7 +107,7 @@ export class PuzzlehuntModel implements IPuzzlehuntModel {
 		) {
 			throw new Error('Puzzlehunt read returned a different scope.');
 		}
-		return new PuzzlehuntModel(client, snapshot);
+		return new PuzzlehuntModel(client, snapshot, integrations);
 	}
 
 	get committedSnapshot(): HuntSnapshot {
@@ -107,9 +126,30 @@ export class PuzzlehuntModel implements IPuzzlehuntModel {
 		return this.view.puzzles;
 	}
 
+	get guildId(): string {
+		return this.scope.guildId;
+	}
+
+	get loggingChannelIds(): LoggingChannelIds | undefined {
+		return this.projected.configuration.loggingChannelIds;
+	}
+
+	setLoggingChannelIds(ids: LoggingChannelIds): void {
+		this.dispatch({
+			type: 'update-configuration',
+			configuration: {
+				loggingChannelIds: {
+					puzzleAdd: snowflake(ids.puzzleAdd),
+					puzzleSolve: snowflake(ids.puzzleSolve),
+					puzzleStatusUpdate: snowflake(ids.puzzleStatusUpdate),
+				},
+			},
+		});
+	}
+
 	get pendingChanges(): readonly PendingHuntChange[] {
 		return this.operations
-			.filter((op): op is CommandOperation => op.type === 'command')
+			.filter((op): op is CommandOperation => op.type !== 'refresh')
 			.map(({ request, status, error }) => ({ request, status, error }));
 	}
 
@@ -264,13 +304,69 @@ export class PuzzlehuntModel implements IPuzzlehuntModel {
 		});
 	}
 
-	augmentWithGoogleSheet(puzzle: DocumentPuzzle, sheetId: string): void {
-		this.dispatch({
+	augmentWithDiscord(
+		puzzle: DocumentPuzzle,
+		discordInfo: DiscordPuzzleInfo,
+		durableTaskId?: string
+	): void;
+	augmentWithDiscord(
+		round: DocumentRound,
+		discordInfo: DiscordRoundInfo,
+		durableTaskId?: string
+	): void;
+	augmentWithDiscord(
+		node: DocumentNode,
+		discordInfo: DiscordPuzzleInfo | DiscordRoundInfo,
+		durableTaskId?: string
+	): void {
+		const { channel, role } = discordInfo;
+		const indexChannel =
+			'indexChannel' in discordInfo
+				? discordInfo.indexChannel
+				: undefined;
+		this.dispatchIntegration(
+			{
+				type: 'set-property',
+				property: 'discord',
+				nodeId: node.id,
+				value: {
+					channelId: snowflake(
+						typeof channel === 'string' ? channel : channel.id
+					),
+					roleId: snowflake(
+						typeof role === 'string' ? role : role.id
+					),
+					...(indexChannel === undefined
+						? {}
+						: {
+								indexChannelId: snowflake(
+									typeof indexChannel === 'string'
+										? indexChannel
+										: indexChannel.id
+								),
+						  }),
+				},
+			},
+			durableTaskId
+		);
+	}
+
+	augmentWithGoogleSheet(
+		puzzle: DocumentPuzzle,
+		sheetId: string,
+		durableTaskId?: string
+	): void {
+		const command: HuntIntegrationCommand = {
 			type: 'set-property',
 			property: 'sheetId',
 			nodeId: puzzle.id,
 			value: sheetId,
-		});
+		};
+		if (durableTaskId === undefined) {
+			this.dispatch(command);
+		} else {
+			this.dispatchIntegration(command, durableTaskId);
+		}
 	}
 
 	subscribe(listener: () => void): () => void {
@@ -287,27 +383,56 @@ export class PuzzlehuntModel implements IPuzzlehuntModel {
 
 	/** Commands and snapshots supplied to this model must be treated as immutable. */
 	dispatch(command: HuntCommand): string {
-		const optimisticTime = Date.now();
-		this.projected = applyHuntCommand(
-			this.projected,
-			command,
-			optimisticTime
-		).document;
-		const commandId = crypto.randomUUID();
-		this.operations.push({
+		return this.enqueue({
 			type: 'command',
-			request: { commandId, command },
-			optimisticTime,
+			request: { commandId: crypto.randomUUID(), command },
+			optimisticTime: Date.now(),
 			status: 'pending',
 		});
+	}
+
+	private dispatchIntegration(
+		command: HuntIntegrationCommand,
+		durableTaskId: string | undefined
+	): void {
+		if (durableTaskId === undefined || !isUuid(durableTaskId)) {
+			throw new HuntCommandError(
+				'invalid-command',
+				'A durable provisioning task ID is required.'
+			);
+		}
+		if (this.integrations === undefined) {
+			throw new HuntCommandError(
+				'forbidden',
+				'Completing provisioning tasks requires a trusted integration client.'
+			);
+		}
+		this.enqueue({
+			type: 'integration',
+			request: { commandId: durableTaskId, command },
+			optimisticTime: Date.now(),
+			status: 'pending',
+		});
+	}
+
+	private enqueue(operation: CommandOperation): string {
+		// Durable results are authoritative; do not project potentially stale task results.
+		if (operation.type === 'command') {
+			this.projected = applyHuntCommand(
+				this.projected,
+				operation.request.command,
+				operation.optimisticTime
+			).document;
+		}
+		this.operations.push(operation);
 		this.start();
 		this.publish();
-		return commandId;
+		return operation.request.commandId;
 	}
 
 	flush(): Promise<void> {
 		const front = this.operations[0];
-		if (front?.type === 'command' && front.status === 'uncertain') {
+		if (front && front.type !== 'refresh' && front.status === 'uncertain') {
 			return Promise.reject(front.error);
 		}
 		return this.draining ?? this.lastDrain;
@@ -343,7 +468,7 @@ export class PuzzlehuntModel implements IPuzzlehuntModel {
 			await Promise.allSettled([this.draining]);
 		}
 		const front = this.operations[0];
-		if (front?.type === 'command' && front.status === 'uncertain') {
+		if (front && front.type !== 'refresh' && front.status === 'uncertain') {
 			front.status = 'pending';
 			delete front.error;
 		}
@@ -356,7 +481,7 @@ export class PuzzlehuntModel implements IPuzzlehuntModel {
 		if (
 			this.draining ||
 			!front ||
-			(front.type === 'command' && front.status === 'uncertain')
+			(front.type !== 'refresh' && front.status === 'uncertain')
 		) {
 			return;
 		}
@@ -409,10 +534,24 @@ export class PuzzlehuntModel implements IPuzzlehuntModel {
 				}
 			} else {
 				try {
-					const result = await this.client.submit(
-						this.scope,
-						operation.request
-					);
+					let result: HuntCommandResult;
+					if (operation.type === 'integration') {
+						if (this.integrations === undefined) {
+							throw new Error(
+								'Missing trusted integration client.'
+							);
+						}
+						result = await this.integrations.completeWork(
+							this.scope,
+							operation.request.commandId,
+							operation.request.command
+						);
+					} else {
+						result = await this.client.submit(
+							this.scope,
+							operation.request
+						);
+					}
 					if (
 						result.receipt.commandId !==
 							operation.request.commandId ||
@@ -453,7 +592,7 @@ export class PuzzlehuntModel implements IPuzzlehuntModel {
 		let document = this.committed.document;
 		for (let i = 0; i < this.operations.length; i++) {
 			const operation = this.operations[i];
-			if (operation.type === 'refresh') {
+			if (operation.type !== 'command') {
 				continue;
 			}
 			try {
@@ -474,7 +613,7 @@ export class PuzzlehuntModel implements IPuzzlehuntModel {
 	}
 
 	private recordFailure(
-		request: HuntCommandRequest | undefined,
+		request: CommandOperation['request'] | undefined,
 		error: unknown,
 		errors: Error[]
 	): void {

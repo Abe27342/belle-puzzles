@@ -550,10 +550,10 @@ describe('PostgreSQL hunt store', () => {
 			singleConnectionPool((text) => queries.push(text))
 		);
 		const configuration = { googleFolderId: 'folder' };
-		await database.query(
-			'UPDATE hunts SET configuration = $2::jsonb WHERE id = $1',
-			[scope.huntId, JSON.stringify(configuration)]
-		);
+		await submit(99, {
+			type: 'update-configuration',
+			configuration,
+		});
 		await seed();
 		expect(
 			queries.filter((text) =>

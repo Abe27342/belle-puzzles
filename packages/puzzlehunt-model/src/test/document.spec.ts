@@ -5,12 +5,14 @@ import {
 	documentChildren,
 	projectHuntDocument,
 	snowflake,
+	HuntCommandError,
 } from '../document.js';
 import type {
 	DocumentNode,
 	HuntCommand,
 	HuntDocument,
 	HuntSnapshot,
+	HuntUpdateConfigurationCommand,
 } from '../document.js';
 import { projectPuzzlehuntView } from '../model/types.js';
 
@@ -93,6 +95,57 @@ describe('database document commands', () => {
 		const result = apply(document, { type: 'delete', nodeId: puzzleId });
 		expect(result.document.name).toBe(document.name);
 		expect(result.document.configuration).toEqual(document.configuration);
+	});
+
+	it('updates supplied configuration fields without changing nodes or unrelated configuration', () => {
+		const document = {
+			...seed(),
+			configuration: {
+				googleFolderId: 'folder',
+				indexId: snowflake('old-index'),
+			},
+		};
+		const command: HuntUpdateConfigurationCommand = {
+			type: 'update-configuration',
+			configuration: {
+				googleFolderId: undefined,
+				indexId: snowflake('new-index'),
+				allPuzzlesRoleId: snowflake('all-role'),
+				loggingChannelIds: {
+					puzzleAdd: snowflake('add'),
+					puzzleSolve: snowflake('solve'),
+					puzzleStatusUpdate: snowflake('status'),
+				},
+			},
+		};
+		const result = apply(document, command);
+		expect(result.document.configuration).toEqual({
+			...command.configuration,
+			googleFolderId: 'folder',
+		});
+		expect(result.document.nodes).toEqual(document.nodes);
+		expect(result.events).toEqual([]);
+		expect(document.configuration).toEqual({
+			googleFolderId: 'folder',
+			indexId: 'old-index',
+		});
+		expect(apply(document, JSON.parse(JSON.stringify(command)))).toEqual(
+			result
+		);
+	});
+
+	it.each([
+		null,
+		[],
+		{ googleFolderId: 123 },
+		{ indexId: 123 },
+		{ allPuzzlesRoleId: 123 },
+		{ loggingChannelIds: { puzzleAdd: 'add' } },
+	])('rejects invalid configuration updates %#', (configuration) => {
+		const command: HuntCommand = JSON.parse(
+			JSON.stringify({ type: 'update-configuration', configuration })
+		);
+		expect(() => apply(seed(), command)).toThrow(HuntCommandError);
 	});
 
 	it.each([

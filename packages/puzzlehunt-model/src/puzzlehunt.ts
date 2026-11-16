@@ -21,8 +21,11 @@ import {
 import { waitContainerToCatchUp } from '@fluidframework/container-loader';
 import { AzureClient } from '@fluidframework/azure-client';
 import { IFluidContainer } from '@fluidframework/fluid-static';
-import type { IPuzzlehunt as SharedPuzzlehunt } from './model/types.js';
 import type {
+	DiscordPuzzleInfo,
+	DiscordRoundInfo,
+	IPuzzlehunt,
+	LoggingChannelIds,
 	PuzzlehuntChangeEvent,
 	PuzzlehuntView,
 	PuzzlehuntRound,
@@ -36,6 +39,13 @@ import type {
 	DocumentPuzzle,
 	DocumentRound,
 } from './document.js';
+
+export type {
+	DiscordPuzzleInfo,
+	DiscordRoundInfo,
+	IPuzzlehunt,
+	LoggingChannelIds,
+} from './model/types.js';
 
 function assert(condition: boolean, message: string): asserts condition {
 	if (!condition) {
@@ -128,38 +138,6 @@ export const loadExistingPuzzlehunt = async (
 		container,
 	};
 };
-
-export interface DiscordPuzzleInfo {
-	channel: { /* channel ID */ id: string } | string;
-	role: { /* role ID */ id: string } | string;
-}
-
-export interface DiscordRoundInfo extends DiscordPuzzleInfo {
-	indexChannel: { /* channel ID */ id: string } | string;
-}
-
-export interface IPuzzlehunt extends SharedPuzzlehunt {
-	/** Plain stable-ID view, shared with the Fluid model adapter and event consumers. */
-	readonly view: PuzzlehuntView;
-	augmentWithDiscord(
-		puzzle: DocumentPuzzle,
-		discordInfo: DiscordPuzzleInfo
-	): void;
-	augmentWithDiscord(
-		round: DocumentRound,
-		discordInfo: DiscordRoundInfo
-	): void;
-	get guildId(): string;
-	setGuildId(id: string): void;
-	get loggingChannelIds(): LoggingChannelIds | undefined;
-	setLoggingChannelIds(ids: LoggingChannelIds): void;
-}
-
-export interface LoggingChannelIds {
-	puzzleAdd: string;
-	puzzleSolve: string;
-	puzzleStatusUpdate: string;
-}
 
 interface StringNode {
 	type: 'string';
@@ -797,15 +775,18 @@ class Puzzlehunt implements IPuzzlehunt {
 
 	public augmentWithDiscord(
 		puzzle: DocumentPuzzle,
-		discordInfo: DiscordPuzzleInfo
+		discordInfo: DiscordPuzzleInfo,
+		durableTaskId?: string
 	): void;
 	public augmentWithDiscord(
 		round: DocumentRound,
-		discordInfo: DiscordRoundInfo
+		discordInfo: DiscordRoundInfo,
+		durableTaskId?: string
 	): void;
 	public augmentWithDiscord(
 		obj: DocumentNode,
-		discordInfo: DiscordPuzzleInfo | DiscordRoundInfo
+		discordInfo: DiscordPuzzleInfo | DiscordRoundInfo,
+		_durableTaskId?: string
 	): void {
 		const { channel, role, indexChannel } = discordInfo as DiscordRoundInfo;
 		const channelId = typeof channel === 'string' ? channel : channel.id;
@@ -841,7 +822,8 @@ class Puzzlehunt implements IPuzzlehunt {
 
 	public augmentWithGoogleSheet(
 		puzzle: DocumentPuzzle,
-		sheetId: string
+		sheetId: string,
+		_durableTaskId?: string
 	): void {
 		this.getPuzzle(puzzle.id);
 		this.checkout.applyEdit(

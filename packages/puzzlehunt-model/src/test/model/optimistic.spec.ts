@@ -5,12 +5,12 @@ import {
 	snowflake,
 } from '../../document.js';
 import type {
-	HuntCommandRequest,
 	HuntCommandResult,
 	HuntDocumentClient,
 	HuntSnapshot,
 } from '../../document.js';
 import { PuzzlehuntModel } from '../../model/puzzlehunt.js';
+import type { PendingHuntChange } from '../../model/puzzlehunt.js';
 import type { PuzzlehuntChangeEvent } from '../../model/types.js';
 
 const id = (n: number) =>
@@ -63,7 +63,7 @@ function deferred<T>() {
 function transport() {
 	let snapshot = initialSnapshot();
 	const receipts = new Map<string, number>();
-	function commit(request: HuntCommandRequest): HuntCommandResult {
+	function commit(request: PendingHuntChange['request']): HuntCommandResult {
 		let revision = receipts.get(request.commandId);
 		const replayed = revision !== undefined;
 		if (!replayed) {
@@ -108,6 +108,69 @@ function transport() {
 }
 
 describe('Optimistic puzzlehunt model', () => {
+	it('requires a task and trusted capability before projecting provisioning results', () => {
+		const backend = transport();
+		const model = new PuzzlehuntModel(backend.client, backend.snapshot());
+		const puzzle = model.getPuzzle(puzzleId);
+		const association = { channel: 'channel', role: { id: 'role' } };
+		expect(() => model.augmentWithDiscord(puzzle, association)).toThrow(
+			'durable provisioning task ID'
+		);
+		expect(() =>
+			model.augmentWithDiscord(puzzle, association, id(10))
+		).toThrow('trusted integration client');
+		expect(() =>
+			model.augmentWithGoogleSheet(puzzle, 'sheet', id(10))
+		).toThrow('trusted integration client');
+		expect(model.getPuzzle(puzzleId)).toEqual(puzzle);
+		expect(model.isPending).toBe(false);
+		expect(backend.client.submit).not.toHaveBeenCalled();
+	});
+
+	it('rolls back rejected logging configuration without node change events', async () => {
+		const backend = transport();
+		backend.client.submit.mockRejectedValueOnce(
+			new HuntCommandError('forbidden', 'Rejected.')
+		);
+		const model = new PuzzlehuntModel(backend.client, backend.snapshot());
+		const changes = vi.fn();
+		model.subscribeChanges(changes);
+		model.setLoggingChannelIds({
+			puzzleAdd: 'add',
+			puzzleSolve: 'solve',
+			puzzleStatusUpdate: 'status',
+		});
+		expect(model.loggingChannelIds?.puzzleAdd).toBe('add');
+		await expect(model.flush()).rejects.toBeInstanceOf(AggregateError);
+		expect(model.loggingChannelIds).toBeUndefined();
+		expect(changes).not.toHaveBeenCalled();
+	});
+
+	it('preserves newer unrelated configuration when setting logging channels', async () => {
+		const backend = transport();
+		const initial = backend.snapshot();
+		const model = new PuzzlehuntModel(backend.client, initial);
+		backend.replace({
+			...initial,
+			revision: 1,
+			document: {
+				...initial.document,
+				configuration: { googleFolderId: 'new-folder' },
+			},
+		});
+		const ids = {
+			puzzleAdd: 'add',
+			puzzleSolve: 'solve',
+			puzzleStatusUpdate: 'status',
+		};
+		model.setLoggingChannelIds(ids);
+		await model.flush();
+		expect(model.committedSnapshot.document.configuration).toEqual({
+			googleFolderId: 'new-folder',
+			loggingChannelIds: ids,
+		});
+	});
+
 	it('batches every domain node of an authoritative added subtree', async () => {
 		const backend = transport();
 		const initial = backend.snapshot();
