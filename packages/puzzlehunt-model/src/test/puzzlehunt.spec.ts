@@ -2,8 +2,13 @@ import { beforeEach, afterEach, describe, expect, inject, it, vi } from 'vitest'
 import { AzureClient } from '@fluidframework/azure-client';
 import { InsecureTokenProvider } from '@fluidframework/test-client-utils';
 import { TreeView } from '@fluid-experimental/tree';
-import { createNewPuzzlehunt } from '../fluid/load.js';
-import { IPuzzlehunt, Puzzle, Round } from '../puzzlehunt.js';
+import {
+	createNewPuzzlehunt,
+	IPuzzlehunt,
+	Puzzle,
+	Round,
+} from '../fluid/index.js';
+import type { IPuzzlehuntSession } from '../model/types.js';
 import { TestLogger } from './utils.js';
 import type {
 	DocumentNode,
@@ -20,7 +25,7 @@ const user = {
 
 describe('Puzzlehunt', () => {
 	let puzzlehunt: IPuzzlehunt;
-	let disposer: { dispose: () => void };
+	let session: IPuzzlehuntSession;
 	let logger: TestLogger;
 
 	beforeEach(async () => {
@@ -33,16 +38,15 @@ describe('Puzzlehunt', () => {
 			},
 			logger,
 		});
-		const results = await createNewPuzzlehunt(client, guildId);
-		puzzlehunt = results.puzzlehunt;
-		disposer = results.disposer;
+		({ session } = await createNewPuzzlehunt(client, guildId));
+		puzzlehunt = session.puzzlehunt;
 	});
 
 	afterEach(async () => {
 		vi.restoreAllMocks();
-		disposer.dispose();
+		session.close();
 		puzzlehunt = undefined;
-		disposer = undefined;
+		session = undefined;
 		expect(logger.errorEvents).toEqual([]);
 	});
 

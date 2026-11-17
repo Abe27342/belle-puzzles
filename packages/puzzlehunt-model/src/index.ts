@@ -1,18 +1,7 @@
+export * from './model/index.js';
+export type { PuzzlehuntRound as Round } from './model/types.js';
 export type {
-	DiscordPuzzleInfo,
-	DiscordRoundInfo,
-	IPuzzlehunt,
-	LoggingChannelIds,
-	Puzzle,
-	Round,
-} from './puzzlehunt.js';
-export * from './fluid/load.js';
-export type {
-	PuzzlehuntChangeEvent,
-	PuzzlehuntNodeChange,
-	PuzzlehuntView,
-} from './model/types.js';
-export type {
+	DocumentPuzzle as Puzzle,
 	DocumentNode,
 	DocumentPuzzle,
 	DocumentRound,

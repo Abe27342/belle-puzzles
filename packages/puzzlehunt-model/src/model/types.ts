@@ -146,6 +146,31 @@ export interface IPuzzlehuntModel extends IPuzzlehunt {
 	refresh(): Promise<void>;
 }
 
+export type PuzzlehuntSessionState =
+	| { readonly status: 'open' | 'closed' }
+	| { readonly status: 'failed'; readonly error: Error };
+
+/** Owns a loaded model and its backend resources, without exposing SDK objects. */
+export interface IPuzzlehuntSession {
+	readonly puzzlehunt: IPuzzlehuntModel;
+	readonly state: PuzzlehuntSessionState;
+	/**
+	 * Observe future lifecycle transitions; inspect state for the current status.
+	 * Terminal notifications release all subscriptions, including model
+	 * subscriptions; the returned cleanup is always safe to call.
+	 */
+	subscribeLifecycle(
+		listener: (state: PuzzlehuntSessionState) => void
+	): () => void;
+	/**
+	 * Stop accepting mutations and release resources. Does not save pending edits;
+	 * await puzzlehunt.flush() first when persistence is required.
+	 * Repeated calls are safe, including after failure.
+	 * Model flush/refresh reject after closure or failure, including in-flight calls.
+	 */
+	close(): void;
+}
+
 /** Reuse parent-pointer ordering; child lists are read-only view values. */
 export function projectPuzzlehuntView(
 	document: Pick<HuntDocument, 'nodes'>

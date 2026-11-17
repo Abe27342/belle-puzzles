@@ -12,7 +12,7 @@ import {
 	PuzzlehuntContext,
 	SerializedPuzzlehuntContext,
 } from '../puzzlehunt-context';
-import { createNewPuzzlehunt } from '@belle-puzzles/puzzlehunt-model';
+import { createNewPuzzlehunt } from '@belle-puzzles/puzzlehunt-model/fluid';
 import { makeFluidClient } from '../fluid/client.js';
 
 const PUZZLE_ADMIN_CHANNEL = 'belle-bot-admin';
@@ -138,7 +138,7 @@ export const create: Command = {
 			}),
 		]);
 
-		const { id, disposer } = await createNewPuzzlehunt(
+		const { id, session } = await createNewPuzzlehunt(
 			makeFluidClient(),
 			interaction.guild.id,
 			{
@@ -147,6 +147,11 @@ export const create: Command = {
 				puzzleStatusUpdate: updateChannel.id,
 			}
 		);
+		try {
+			await session.puzzlehunt.flush();
+		} finally {
+			session.close();
+		}
 
 		const context: SerializedPuzzlehuntContext = {
 			name: interaction.options.getString(NAME_ARG),
@@ -159,7 +164,6 @@ export const create: Command = {
 		const message = await adminChannel.send(JSON.stringify(context));
 		await message.pin();
 
-		disposer.dispose();
 		await interaction.editReply('Puzzle hunt created!');
 	},
 };

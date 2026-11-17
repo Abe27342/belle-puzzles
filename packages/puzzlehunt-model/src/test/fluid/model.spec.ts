@@ -4,8 +4,7 @@ import { expect, inject, vi } from 'vitest';
 import {
 	createNewPuzzlehunt,
 	loadExistingPuzzlehunt,
-} from '../../fluid/load.js';
-import { FluidPuzzlehuntModel } from '../../fluid/model.js';
+} from '../../fluid/index.js';
 import { comparableView, puzzlehuntModelContract } from '../model/contract.js';
 import { TestLogger } from '../utils.js';
 
@@ -28,11 +27,8 @@ puzzlehuntModelContract(
 			});
 		};
 		const initial = await createNewPuzzlehunt(client(), 'contract-guild');
-		const model = new FluidPuzzlehuntModel(
-			initial.puzzlehunt,
-			initial.container
-		);
-		const sessions = [initial];
+		const model = initial.session.puzzlehunt;
+		const sessions = [initial.session];
 		const hunts = new Map([
 			['Contract test hunt', { id: initial.id, models: [model] }],
 		]);
@@ -45,10 +41,7 @@ puzzlehuntModelContract(
 				}
 				const session = await loadExistingPuzzlehunt(client(), hunt.id);
 				sessions.push(session);
-				const connected = new FluidPuzzlehuntModel(
-					session.puzzlehunt,
-					session.container
-				);
+				const connected = session.puzzlehunt;
 				hunt.models.push(connected);
 				return connected;
 			},
@@ -56,17 +49,14 @@ puzzlehuntModelContract(
 				if (hunts.has(huntName)) {
 					throw new Error(`Hunt already exists: ${huntName}`);
 				}
-				const session = await createNewPuzzlehunt(
+				const { id, session } = await createNewPuzzlehunt(
 					client(),
 					'contract-guild'
 				);
 				sessions.push(session);
-				const independent = new FluidPuzzlehuntModel(
-					session.puzzlehunt,
-					session.container
-				);
+				const independent = session.puzzlehunt;
 				hunts.set(huntName, {
-					id: session.id,
+					id,
 					models: [independent],
 				});
 				return independent;
@@ -89,7 +79,7 @@ puzzlehuntModelContract(
 				);
 			},
 			async close() {
-				sessions.forEach((session) => session.disposer.dispose());
+				sessions.forEach((session) => session.close());
 				expect(logger.errorEvents).toEqual([]);
 			},
 		};
