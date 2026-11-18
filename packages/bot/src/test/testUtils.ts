@@ -4,7 +4,7 @@ import {
 	ChatInputCommandInteraction,
 } from 'discord.js';
 import { ChannelData, MockDiscord } from './mockDiscord.js';
-import { BelleBotClient } from '../client';
+import { BelleBotClient } from '../client.js';
 import * as commandsModule from '../commands/index.js';
 import { IPuzzlehuntProvider } from '../puzzlehunt-provider.js';
 import {

@@ -4,7 +4,7 @@ import type {
 	SlashCommandOptionsOnlyBuilder,
 	SlashCommandSubcommandsOnlyBuilder,
 } from 'discord.js';
-import type { PuzzlehuntContext } from '../puzzlehunt-context';
+import type { PuzzlehuntContext } from '../puzzlehunt-context.js';
 
 export type SlashCommandData =
 	| SlashCommandBuilder

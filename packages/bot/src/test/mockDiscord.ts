@@ -21,7 +21,7 @@ import {
 	TextChannel,
 	OverwriteType,
 } from 'discord.js';
-import { BELLE_USER_ID } from '../utils';
+import { BELLE_USER_ID } from '../utils/index.js';
 
 export interface HasId {
 	id: string;

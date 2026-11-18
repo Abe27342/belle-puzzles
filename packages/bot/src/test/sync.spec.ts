@@ -5,26 +5,26 @@ import {
 	PermissionFlagsBits,
 	PermissionsBitField,
 } from 'discord.js';
-import { BelleBotClient, createClient } from '../client';
+import { BelleBotClient, createClient } from '../client.js';
 import {
 	IPuzzlehuntProvider,
 	createPuzzlehuntProvider,
-} from '../puzzlehunt-provider';
+} from '../puzzlehunt-provider.js';
 import {
 	IServerState,
 	MockDiscord,
 	PermissionOverwriteData,
-} from './mockDiscord';
-import { loadPuzzlehunt, runCommand } from './testUtils';
+} from './mockDiscord.js';
+import { loadPuzzlehunt, runCommand } from './testUtils.js';
 import {
 	IPuzzlehunt,
 	IPuzzlehuntSession,
 } from '@belle-puzzles/puzzlehunt-model';
 import { loadExistingPuzzlehunt } from '@belle-puzzles/puzzlehunt-model/fluid';
-import { makeFluidClient } from '../fluid/client';
-import { getHuntContext } from '../puzzlehunt-context';
-import { BELLE_USER_ID } from '../utils';
-import { makeViewChangeHandler } from '../sync/viewChangeHandler';
+import { makeFluidClient } from '../fluid/client.js';
+import { getHuntContext } from '../puzzlehunt-context.js';
+import { BELLE_USER_ID } from '../utils/index.js';
+import { makeViewChangeHandler } from '../sync/viewChangeHandler.js';
 import { createDiscordAssociation, resyncServerFull } from '../sync/sync.js';
 vi.mock('../integrations/google.js');
 
