@@ -69,7 +69,7 @@ export class HttpHuntDocumentClient implements HuntDocumentClient {
 				'Active hunt response returned a different guild.'
 			);
 		}
-		return this.remember(snapshot);
+		return this.cache(snapshot);
 	}
 
 	async read(scope: HuntScope): Promise<HuntSnapshot> {
@@ -82,7 +82,7 @@ export class HttpHuntDocumentClient implements HuntDocumentClient {
 			);
 			return this.assemble(base, update);
 		}
-		return this.remember(
+		return this.cache(
 			decodeHuntSnapshot(await this.request(path), scope)
 		);
 	}
@@ -113,11 +113,11 @@ export class HttpHuntDocumentClient implements HuntDocumentClient {
 			scope,
 			request.commandId
 		);
-		this.remember(result.snapshot);
+		this.cache(result.snapshot);
 		return result;
 	}
 
-	private remember(snapshot: HuntSnapshot): HuntSnapshot {
+	private cache(snapshot: HuntSnapshot): HuntSnapshot {
 		const key = this.huntPath(snapshot);
 		const previous = this.snapshots.get(key);
 		if (!previous || snapshot.revision >= previous.revision) {
@@ -144,7 +144,7 @@ export class HttpHuntDocumentClient implements HuntDocumentClient {
 					),
 				};
 			}
-			return this.remember(applyHuntStateUpdate(base, update));
+			return this.cache(applyHuntStateUpdate(base, update));
 		} catch (error) {
 			throw new HuntProtocolError(
 				'Could not apply the authoritative hunt update.',
