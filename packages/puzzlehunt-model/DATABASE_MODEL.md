@@ -18,8 +18,9 @@ Implemented:
   `IPuzzlehuntModel` adds plain views and asynchronous settlement over synchronous
   local mutations.
   `PuzzlehuntModel` in the `model` entry point tracks optimistic commands over
-  `HuntDocumentClient`; factories in `fluid` return `IPuzzlehuntSession`, exposing
-  the Fluid-backed model without container/tree handles and saving before close.
+  `HuntDocumentClient`; loading through `fluid` exposes `IPuzzlehuntSession`
+  without container/tree handles. Creation returns separate `{ id, session }`
+  metadata; the session has no ID and releases synchronously without saving.
 - `PostgresPuzzlehuntStore` in the model package's server-only `postgres` entry
   point: scoped reads and serialized transactional
   commands, retry receipts, and durable integration intent.
@@ -228,10 +229,14 @@ read-only `DocumentNode` values. `subscribeChanges` supplies historical
 before/after views and full added/removed/changed node values, including every
 node in added or removed subtrees. These may describe optimistic edits, not durable
 integration delivery. The separate `subscribe` invalidation also reports
-pending/error-only changes. Fluid factories return `IPuzzlehuntSession` with
-the model as `puzzlehunt`; await or handle `close()` to save before release and
-use `subscribeLifecycle` to observe terminal failures. Disconnecting alone is
-not terminal, and closing with unacknowledged edits must not silently lose them.
+pending/error-only changes. Fluid loading returns `IPuzzlehuntSession` with
+the model as `puzzlehunt`; creation returns `{ id, session }` rather than adding
+an ID to the session. `close(): void` synchronously releases without saving.
+When persistence is required, explicitly `await session.puzzlehunt.flush()`
+before `session.close()`; closure/failure rejects in-flight flush/refresh calls.
+`subscribeLifecycle` reports future transitions only, so inspect `session.state`
+for an existing terminal state. Disconnecting alone is not terminal; flushing
+may wait for reconnection.
 
 Authenticated routes in the opt-in application service:
 

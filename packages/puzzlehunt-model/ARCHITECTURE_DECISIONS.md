@@ -42,7 +42,7 @@ Do not add a disconnected-edit protocol or duplicate the domain rules in a UI.
 
 The `model` entry point now exports `IPuzzlehunt`, `IPuzzlehuntModel`, plain
 read-only views, and the optimistic `PuzzlehuntModel`. Familiar methods delegate
-to the existing command reducer. The `fluid` entry point owns Fluid loading and returns
+to the existing command reducer. The `fluid` entry point owns Fluid loading through
 `IPuzzlehuntSession`, whose `puzzlehunt` implements the same `IPuzzlehuntModel`;
 it does not reimplement Fluid persistence. The package root exports the
 storage-neutral model contract, not Fluid SDK objects.
@@ -144,11 +144,15 @@ changes asynchronously. Its `refresh()` flushes local changes because remote
 updates are already streamed. Fixtures wait for actual convergence rather than
 assuming every observer has processed an acknowledged change.
 
-Fluid factories return an `IPuzzlehuntSession` rather than a container/tree handle.
-Observe `subscribeLifecycle` for terminal failures and await or handle `close()`,
-which stops mutations, waits for acknowledgement, and releases backend resources.
-Unexpected closure with pending edits fails rather than reporting a successful
-save. Disconnection alone is not terminal; closing may wait for reconnection.
+Fluid loading returns an `IPuzzlehuntSession` rather than a container/tree handle.
+The session has no ID; creation factories return separate `{ id, session }`
+metadata. `close(): void` synchronously stops mutations and releases backend
+resources without saving pending edits. When persistence is required, explicitly
+`await session.puzzlehunt.flush()` before calling `session.close()`.
+`subscribeLifecycle` reports future transitions only; inspect `session.state`
+for an existing closed/failed state. Unexpected closure with pending edits fails,
+but explicit `close()` is release, not a save operation. Disconnection alone is
+not terminal; an explicit flush may wait for reconnection.
 
 ## 7. Own disposable services in the tests
 
