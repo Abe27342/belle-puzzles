@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { HuntCommandError } from '@belle-puzzles/puzzlehunt-model/document';
-import { createDiscordHuntAuthorizer } from '../auth.js';
+import { createDiscordHuntAuthorizer } from '../app.js';
 
 const json = (value: unknown, status = 200) =>
 	new Response(JSON.stringify(value), {

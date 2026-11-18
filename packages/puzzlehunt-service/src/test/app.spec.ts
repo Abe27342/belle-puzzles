@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import type { Server } from 'node:http';
+import express from 'express';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	HuntCommandError,
@@ -42,7 +43,7 @@ afterEach(async () => {
 	);
 });
 
-async function fixture() {
+async function fixture(mountPath?: string) {
 	const listeners = new Set<{
 		revision: (value: number) => void;
 		disconnected: () => void;
@@ -76,15 +77,20 @@ async function fixture() {
 		async (_authorization: string | undefined, _guild: string) => {}
 	);
 	const onError = vi.fn();
-	const server = createServer(
-		createPuzzlehuntApp({
-			store,
-			changes,
-			authorize,
-			onError,
-			allowedOrigins: ['https://allowed.test'],
-		})
-	);
+	const app = createPuzzlehuntApp({
+		store,
+		changes,
+		authorize,
+		onError,
+		allowedOrigins: ['https://allowed.test'],
+	});
+	const host =
+		mountPath === undefined
+			? app
+			: express()
+					.get('/bot-health', (_req, res) => res.json({ bot: true }))
+					.use(mountPath, app);
+	const server = createServer(host);
 	servers.push(server);
 	await new Promise<void>((resolve) =>
 		server.listen(0, '127.0.0.1', resolve)
@@ -92,7 +98,9 @@ async function fixture() {
 	const address = server.address();
 	if (!address || typeof address === 'string')
 		throw new Error('Expected local port.');
-	const url = `http://127.0.0.1:${address.port}/guilds/guild/hunts/${huntId}`;
+	const url = `http://127.0.0.1:${address.port}${
+		mountPath ?? ''
+	}/guilds/guild/hunts/${huntId}`;
 	const controller = new AbortController();
 	controllers.push(controller);
 	return {
@@ -108,6 +116,97 @@ async function fixture() {
 }
 
 describe('Scoped SSE and synchronization routes (injected store)', () => {
+	it('resolves active hunts before UUID routes and scopes full reads', async () => {
+		const f = await fixture();
+		expect(
+			await (await fetch(f.url.replace(huntId, 'active'))).json()
+		).toEqual(snapshot);
+		expect(f.store.readActive).toHaveBeenCalledExactlyOnceWith('guild');
+		expect(await (await fetch(f.url)).json()).toEqual(snapshot);
+		expect(f.store.read).toHaveBeenCalledExactlyOnceWith({
+			huntId,
+			guildId: 'guild',
+		});
+	});
+
+	it('mounts alongside bot routes on one HTTP server without changing authorization', async () => {
+		const f = await fixture('/documents');
+		const origin = new URL(f.url).origin;
+		expect(await (await fetch(`${origin}/bot-health`)).json()).toEqual({
+			bot: true,
+		});
+		expect(f.authorize).not.toHaveBeenCalled();
+		expect(
+			await (
+				await fetch(f.url, {
+					headers: { Authorization: 'Bearer test' },
+				})
+			).json()
+		).toEqual(snapshot);
+		expect(f.authorize).toHaveBeenCalledExactlyOnceWith(
+			'Bearer test',
+			'guild'
+		);
+		expect(f.store.read).toHaveBeenCalledExactlyOnceWith({
+			huntId,
+			guildId: 'guild',
+		});
+	});
+
+	it.each([
+		['active', 'POST', 'GET, HEAD'],
+		[huntId, 'POST', 'GET, HEAD'],
+		[`${huntId}/changes`, 'POST', 'GET, HEAD'],
+		[`${huntId}/commands`, 'GET', 'POST'],
+	])('retains the allowed methods for %s', async (path, method, allow) => {
+		const f = await fixture();
+		const response = await fetch(f.url.replace(huntId, path), { method });
+		expect(response.status).toBe(405);
+		expect(response.headers.get('allow')).toBe(allow);
+		expect(f.authorize).toHaveBeenCalledOnce();
+		expect(f.store.read).not.toHaveBeenCalled();
+		expect(f.store.readActive).not.toHaveBeenCalled();
+		expect(f.store.submit).not.toHaveBeenCalled();
+		expect(f.changes.subscribe).not.toHaveBeenCalled();
+	});
+
+	it('authorizes commands before parsing invalid JSON', async () => {
+		const f = await fixture();
+		f.authorize.mockRejectedValueOnce(
+			new HuntCommandError('unauthorized', 'Expired.')
+		);
+		const response = await fetch(`${f.url}/commands`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: '{',
+		});
+		expect(response.status).toBe(401);
+		expect(response.headers.get('www-authenticate')).toBe(
+			'Bearer, Service'
+		);
+		expect(f.store.submit).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		['text/plain', 'command', 415],
+		['application/json', '{', 400],
+	] as const)(
+		'rejects invalid %s command bodies',
+		async (contentType, body, status) => {
+			const f = await fixture();
+			const response = await fetch(`${f.url}/commands`, {
+				method: 'POST',
+				headers: { 'Content-Type': contentType },
+				body,
+			});
+			expect(response.status).toBe(status);
+			expect(await response.json()).toMatchObject({
+				error: { code: 'invalid-command' },
+			});
+			expect(f.store.submit).not.toHaveBeenCalled();
+		}
+	);
+
 	it.each<HuntCommand>([
 		{
 			type: 'add',

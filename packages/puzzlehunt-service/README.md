@@ -1,52 +1,105 @@
 # Puzzlehunt application service
 
-This is the opt-in PostgreSQL HTTP host, separate from the Discord gateway bot.
-It uses the existing model commands and transactional store; it does not switch
-the current website/bot from Fluid or execute Discord/Google integration jobs.
+The puzzlehunt application service is an HTTP API for puzzlehunt documents stored
+in PostgreSQL. It provides guild-scoped reads, transactional editing commands,
+and server-sent events (SSE) that notify clients when a hunt's revision changes.
+Discord supplies user identity and guild membership for authorization.
 
 ## Running
 
-Use Node 20.15 or newer. Create an empty local PostgreSQL database and apply
-`packages/puzzlehunt-model/src/postgres/schema.sql` explicitly using `psql` or
-another SQL tool. The service never
-creates, migrates, seeds, or clears databases. Hunt import/provisioning and active
-hunt selection are still separate work.
+Use Node 20.15 or newer, pnpm, and a running PostgreSQL server. The database setup
+commands below use PostgreSQL's `createdb` and `psql` tools.
 
-For a database created from the earlier prototype, explicitly add the
-`hunt_changes` table from the updated schema before restarting. Do not rerun
-the entire creation script against an existing database. Old revisions need no
-backfill: clients receive a full snapshot until retained coverage is sufficient.
-
-From the repository root, after installing dependencies:
+From the repository root, install dependencies, build the service, and create
+your local configuration. If `.env` already exists, merge the example's settings
+into it instead of running `Copy-Item`:
 
 ```powershell
-pnpm --filter @belle-puzzles/puzzlehunt-model build
-pnpm --filter @belle-puzzles/puzzlehunt-service build
-$env:DATABASE_URL = 'postgresql://<user>:<password>@localhost:5432/<database>'
-$env:HOST = '127.0.0.1'
-$env:PUZZLEHUNT_ALLOWED_ORIGINS = 'http://localhost:9000'
-psql $env:DATABASE_URL --single-transaction -v ON_ERROR_STOP=1 -f .\packages\puzzlehunt-model\src\postgres\schema.sql
+pnpm install
+pnpm build:puzzlehunt-service
+Copy-Item packages\puzzlehunt-service\.example.env .env
+```
+
+Edit `.env` to set `DATABASE_URL` to your database's connection URL.
+The service and initializer both load this file; environment variables supplied
+by the host take precedence.
+
+### Set up a new database
+
+Create an empty database, then initialize it for your Discord guild. Replace the
+guild ID and hunt name below with your own:
+
+```powershell
+createdb --host=127.0.0.1 --username=postgres belle_puzzles
+pnpm init:puzzlehunt-service 123456789012345678 "My puzzlehunt"
+```
+
+The initializer uses `DATABASE_URL` from `.env`. It applies
+`packages/puzzlehunt-model/src/postgres/schema.sql`, creates an empty hunt, and
+selects it as the guild's active hunt in one transaction. It prints the new hunt
+ID. Run it once per fresh database; an already initialized database is rejected
+without changing its data.
+
+### Use an existing database
+
+Set `DATABASE_URL` in `.env` to an existing puzzlehunt database, retaining its
+hunts and active-hunt selections. To load a plain SQL backup into a fresh database:
+
+```powershell
+createdb --host=127.0.0.1 --username=postgres belle_puzzles
+psql --host=127.0.0.1 --username=postgres --dbname=belle_puzzles --single-transaction --set=ON_ERROR_STOP=1 --file=backup.sql
+```
+
+Point `.env` at the restored database. Schema and data come from the backup, so
+skip the initializer.
+
+### Start the service
+
+For either database setup:
+
+```powershell
 pnpm start:puzzlehunt-service
 ```
 
-| Environment variable         | Purpose                                                                                                                                                 |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`               | Required PostgreSQL connection URL. Configure verified TLS for remote databases through the connection settings.                                        |
-| `HOST`                       | Listen address; defaults to `0.0.0.0` for container hosting. Use `127.0.0.1` for local-only access.                                                     |
-| `PORT`                       | Defaults to `3001`, separate from the existing bot API. `0` allows a host-assigned local port.                                                          |
-| `PUZZLEHUNT_ALLOWED_ORIGINS` | Comma-separated browser origins. Unset means no browser origins are allowed; non-browser requests are unaffected. No wildcard or cookie authentication. |
-| `PUZZLEHUNT_SERVICE_TOKEN`   | Optional separate trusted-bot credential, at least 32 non-whitespace characters. Keep this server-side; never include it in website configuration.      |
-| `DISCORD_TOKEN`              | Discord bot token, required only when trusted-service access is enabled. Used to verify the bot belongs to the requested guild.                         |
+The example configuration listens on `http://127.0.0.1:3001`. An authenticated
+`GET /guilds/:guildId/hunts/active` retrieves the selected hunt and its ID.
 
-Supply secrets through the hosting environment, not source files. This entry point
-reads the environment directly; it does not automatically load `.env` files.
-Terminate public HTTPS at the container ingress/reverse proxy. The service uses
-a five-connection PostgreSQL pool plus one dedicated, session-affine LISTEN
-connection. Transaction-pooled connections cannot supply LISTEN. It checks
-database/schema availability before listening, and closes change streams before
-draining HTTP requests and closing the database connections on shutdown.
-`GET /liveness` checks the HTTP process, not ongoing database or Discord health.
-Azure provisioning and deployment configuration are not included.
+### Configuration
+
+| Environment variable         | Purpose                                                                                                                                            |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`               | Required PostgreSQL connection URL. Configure verified TLS for remote databases through the connection settings.                                   |
+| `HOST`                       | Listen address; defaults to `0.0.0.0` for container hosting. Use `127.0.0.1` for local-only access.                                                |
+| `PORT`                       | Listen port; defaults to `3001`. `0` allows a host-assigned local port.                                                                            |
+| `PUZZLEHUNT_ALLOWED_ORIGINS` | Comma-separated browser origins. Browser requests must match an allowed origin; authentication uses explicit headers.                              |
+| `PUZZLEHUNT_SERVICE_TOKEN`   | Optional separate trusted-bot credential, at least 32 non-whitespace characters. Keep this server-side; never include it in website configuration. |
+| `DISCORD_TOKEN`              | Discord bot token, required only when trusted-service access is enabled. Used to verify the bot belongs to the requested guild.                    |
+
+Keep local secrets in the root `.env` (ignored by Git); use the hosting environment
+for deployed secrets. Terminate public HTTPS at the container ingress/reverse
+proxy. The service uses a five-connection PostgreSQL pool plus one dedicated,
+session-affine LISTEN connection for revision hints. Use a direct or session-pooled
+connection URL. It checks database/schema availability before listening, and
+closes change streams before draining HTTP requests and closing the database
+connections on shutdown.
+`GET /liveness` checks that the HTTP process is responding.
+
+## Hosting with the Discord bot
+
+The service supports standalone hosting and co-hosting with the Discord bot in
+one container app instance. Separate processes or containers can share that
+instance using distinct listen ports: the bot defaults to `3000` and this service
+to `3001`. If setting `PORT`, scope it to each process/container rather than giving
+both listeners the same value. Ingress or a reverse proxy routes public requests
+to the appropriate listener.
+
+A combined Node host can instead mount `createPuzzlehuntApp` as an Express
+sub-application under a dedicated path on a shared HTTP server. The
+`@belle-puzzles/puzzlehunt-service/app` entry point exports the app factory,
+`createDiscordHuntAuthorizer`, and `PostgresHuntChangeFeed`. The host supplies the
+store, authorizer, change feed, and allowed origins, and owns listening and
+shutdown. This keeps domain and authorization behavior consistent across either
+hosting arrangement.
 
 ## API and authorization
 
@@ -59,29 +112,39 @@ Document requests use one of two explicit authorization schemes:
 -   `Authorization: Service <token>` carries the optional trusted-bot credential,
     separate from the Discord bot token.
     It grants read/write access only to guilds the configured bot can access.
-    It is not a user impersonation or arbitrary cross-guild access mechanism.
+    Keep this credential exclusively in trusted server-side callers.
 
-Authentication precedes document reads, JSON parsing, and commands. The guild in
-the URL is an authorization scope, and the store independently requires the hunt
-to belong to that guild.
+The service calls Discord's `GET /api/v10/users/@me/guilds` with the OAuth bearer
+token on each request, following pagination as needed. Discord identifies the
+user from that credential and returns their guild memberships. Authorization
+relies on Discord's membership records, rather than trusting a guild ID supplied
+by the caller. The policy grants every current guild member read/write access;
+individual Discord channel permissions and roles are not used to narrow that
+access.
 
-| Route                                          | Result                                                                         |
-| ---------------------------------------------- | ------------------------------------------------------------------------------ |
-| `GET /guilds/:guildId/hunts/active`            | Current `HuntSnapshot` selected by `active_hunts`, or 404 if none is selected. |
-| `GET /guilds/:guildId/hunts/:huntId`           | Scoped `HuntSnapshot`.                                                         |
-| `POST /guilds/:guildId/hunts/:huntId/commands` | `HuntCommandRequest` in, committed `HuntCommandResult` out.                    |
-| `GET /guilds/:guildId/hunts/:huntId?since=R` | Revision-relative `HuntStateUpdate`, with explicit full fallback. |
-| `POST /guilds/:guildId/hunts/:huntId/commands?since=R` | `{ receipt, replayed, update: HuntStateUpdate }`; unchanged command body. |
-| `GET /guilds/:guildId/hunts/:huntId/changes` | Authorized SSE revision hints, including a current baseline on every connection. |
+Authentication precedes document reads, JSON parsing, and commands. The store
+independently requires the requested hunt to belong to the authorized guild.
+Requests carry credentials in an explicit `Authorization` header over HTTPS;
+browser clients omit cookies. CORS limits browser origins in addition to, rather
+than instead of, these authorization checks.
+Treat bearer tokens as secrets: possession grants the holder the user's access
+until the token expires or is revoked.
+
+| Route                                                  | Result                                                                           |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| `GET /guilds/:guildId/hunts/active`                    | Current `HuntSnapshot` selected by `active_hunts`, or 404 if none is selected.   |
+| `GET /guilds/:guildId/hunts/:huntId`                   | Scoped `HuntSnapshot`.                                                           |
+| `POST /guilds/:guildId/hunts/:huntId/commands`         | `HuntCommandRequest` in, committed `HuntCommandResult` out.                      |
+| `GET /guilds/:guildId/hunts/:huntId?since=R`           | Revision-relative `HuntStateUpdate`, with explicit full fallback.                |
+| `POST /guilds/:guildId/hunts/:huntId/commands?since=R` | `{ receipt, replayed, update: HuntStateUpdate }`; unchanged command body.        |
+| `GET /guilds/:guildId/hunts/:huntId/changes`           | Authorized SSE revision hints, including a current baseline on every connection. |
 
 Commands require `application/json`, have a 1 MiB request limit, and reject
-unknown properties and integration-only commands. No ownership, active-hunt, or
-replacement-document writes are exposed. Responses are uncached.
+unknown properties and integration-only commands. Responses are uncached.
 `update-configuration` accepts the common hunt configuration, including logging
 channel mappings; omitted fields are unchanged. Root-round creation and root
-moves omit `parentId` rather than sending `null`. Trusted integration completion
-remains a separate capability, not a public HTTP command.
-The existing bot's `/guilds/:guildId/puzzlehunt` Fluid-context endpoint is unchanged.
+moves omit `parentId` rather than sending `null`. Store-backed integration workers
+use a separate completion capability.
 
 Full snapshots keep `huntId`, `guildId`, `schemaVersion`, and `revision` outside
 `document`; `document` contains `name`, `configuration`, and `nodes`. Incremental
@@ -100,10 +163,6 @@ their original command ID, never a new one.
 
 ## HTTP-backed model
 
-**Companion-layer note:** The `watch`/`watchModel` observation helpers and client
-subscription behavior described below arrive in the next draft (layer 6).
-This draft includes the service-side SSE endpoint, not those client helpers.
-
 The browser-safe HTTP adapter supplies the existing optimistic model's transport:
 
 ```ts
@@ -116,14 +175,10 @@ const client = new HttpHuntDocumentClient({
 });
 const snapshot = await client.readActive(guildId);
 const model = new PuzzlehuntModel(client, snapshot);
-const observations = client.watchModel(model, {
-	onError: (error) => console.error('Hunt observations failed.', error),
-});
 
 model.addRound('Round', 'https://example.test/round');
 await model.flush();
-// On page/model disposal:
-observations.close();
+await model.refresh();
 ```
 
 Alternatively use `PuzzlehuntModel.load(client, { guildId, huntId })` when the
@@ -131,8 +186,9 @@ identity is already known. `getToken` may be asynchronous and is called for ever
 request, so the caller can supply a current OAuth token or server-side service
 credential. Bot clients set `authScheme: 'Service'`; the default is `Bearer`.
 Keeping these schemes distinct prevents invalid service keys from being forwarded
-to Discord as OAuth tokens. Requests time out after 30 seconds by default (`timeoutMs` overrides
-this), omit cookies, do not follow redirects, and do not retry automatically.
+to Discord as OAuth tokens. Requests time out after 30 seconds by default
+(`timeoutMs` overrides this), omit cookies, do not follow redirects, and do not
+retry automatically.
 `credentials: 'omit'` excludes ambient browser credentials, not the explicitly
 supplied Authorization header.
 
@@ -142,43 +198,42 @@ recognized rejection envelope with a matching HTTP status becomes
 responses, and 5xx responses remain uncertain; the model keeps the original
 command ID and exposes `retryPending()`.
 
-`watchModel` consumes authenticated SSE hints and coalesces catch-up through the
-existing model queue. Reads and command acknowledgements transfer complete
-affected-node records/deletions, not full documents, while keeping the model's
-snapshot contract unchanged. The store retains 1000 revisions of synchronization
-tracking per hunt; expired/missing history explicitly returns a full snapshot.
+Revision-relative reads and command acknowledgements transfer complete
+affected-node records and deletions. The store retains 1000 revisions of
+synchronization tracking per hunt; expired/missing history explicitly returns a
+full snapshot.
 
-Subscriptions reconnect with fresh credentials on EOF/network/429/5xx failures.
-401 pauses until credentials are renewed and `observations.reconnect()` is called;
-403/404 and malformed known events stop the subscription. `observations.done`
-completes on close or terminal failure. A separate 45-second stream inactivity
-watchdog replaces the REST lifetime timeout; the service sends 15-second heartbeats
-and rotates streams after 180 seconds. Visible-page/focus/online safety refreshes
-recover missed hints. Node bot clients use the same API with periodic safety reads.
-Observations never retry or acknowledge uncertain mutations. Legacy consumer
-cutover remains unimplemented.
+The `/changes` endpoint sends an initial revision followed by revision hints.
+Clients use those hints to request updates, with the durable PostgreSQL state as
+the recovery source. Streams send 15-second heartbeats and rotate after 180
+seconds; reconnecting requests recheck authorization. Membership revocation is
+therefore checked on the next request or stream reconnection. Listener failure or
+transport backpressure closes affected streams so clients can reconnect.
 
 ## Testability
 
-`createPuzzlehuntApp` from `@belle-puzzles/puzzlehunt-service/app` is the same app
-used by the executable. Importing it reads no environment, connects to nothing,
-and does not listen. Its host supplies a store, an authorizer, and optional CORS
-origins/error reporting, and an injectable change feed.
+Run the focused service tests with:
 
-A future local application fixture can construct `PostgresPuzzlehuntStore` with
-its own disposable PostgreSQL pool, inject a test authorizer, bind this app to
-loopback on port `0`, and point the real HTTP client at that port. The host owns
-shutdown and database reset; the application never resets a supplied database.
-The local host can construct `PostgresHuntChangeFeed` using a dedicated `pg.Client`
-for its disposable database and close it before closing the HTTP server/database.
-Tests can therefore exercise the real HTTP/domain/SQL/LISTEN path without Discord or
-Azure. Production startup always installs the Discord authorizer; there is no
-environment-variable authentication bypass.
+```powershell
+pnpm --filter @belle-puzzles/puzzlehunt-service test
+```
 
-Discord authorization itself is an external dependency, so substituting the
-authorizer is necessary for completely local, deterministic application tests.
-There is no other known architectural blocker. Those application tests are
-intentionally deferred at the user's request; focused protocol, HTTP transport,
-authorization, configuration, and injected-store SSE route tests exercise their
-individual boundaries. Model tests independently verify real PostgreSQL
-notification commit ordering and incremental MVCC reads.
+The suites cover initialization, configuration, authorization, synchronization
+routes, and the LISTEN connection lifecycle. `initializePuzzlehuntDatabase` applies
+the schema and seeds an active hunt against a supplied pool, so local test
+fixtures can use the same initialization as the command-line tool.
+
+`createPuzzlehuntApp` is the app used by the executable. Constructing it has no
+environment or network side effects. Tests can supply a disposable store, a local
+test authorizer, and an injectable change feed, then bind it to loopback on port
+`0`. The test host owns database setup and shutdown. Production startup installs
+the Discord authorizer.
+
+## Code organization
+
+`src/app.ts` composes request policy, CORS, the hunt router, and error handling.
+`src/routes/hunts.ts` declares the routes and their named read handlers;
+`src/routes/commands.ts` handles command submission, and
+`src/routes/changes.ts` manages SSE subscriptions. Shared async handling, method
+rejections, and error responses live in `src/middleware.ts`. The PostgreSQL LISTEN
+connection lifecycle is implemented separately in `src/changes.ts`.

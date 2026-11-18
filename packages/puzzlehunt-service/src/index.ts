@@ -1,3 +1,4 @@
+import './register-env.js';
 import { createServer } from 'node:http';
 import { Client, Pool } from 'pg';
 import { PostgresPuzzlehuntStore } from '@belle-puzzles/puzzlehunt-model/postgres';
