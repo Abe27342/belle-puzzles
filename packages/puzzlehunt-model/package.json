@@ -4,30 +4,12 @@
 	"description": "Puzzlehunt model for belle bot and website",
 	"main": "dist/index.js",
 	"exports": {
-		".": {
-			"types": "./dist/index.d.ts",
-			"default": "./dist/index.js"
-		},
-		"./document": {
-			"types": "./dist/document.d.ts",
-			"default": "./dist/document.js"
-		},
-		"./postgres": {
-			"types": "./dist/postgres/index.d.ts",
-			"default": "./dist/postgres/index.js"
-		},
-		"./model": {
-			"types": "./dist/model/index.d.ts",
-			"default": "./dist/model/index.js"
-		},
-		"./http": {
-			"types": "./dist/http/index.d.ts",
-			"default": "./dist/http/index.js"
-		},
-		"./fluid": {
-			"types": "./dist/fluid/index.d.ts",
-			"default": "./dist/fluid/index.js"
-		},
+		".": "./dist/index.js",
+		"./document": "./dist/document.js",
+		"./postgres": "./dist/postgres/index.js",
+		"./model": "./dist/model/index.js",
+		"./http": "./dist/http/index.js",
+		"./fluid": "./dist/fluid/index.js",
 		"./testing/fluid-service": "./src/test/fixtures/fluid-service.ts",
 		"./testing/fluid-endpoint": "./src/test/fixtures/fluid-endpoint.ts",
 		"./postgres/schema.sql": "./src/postgres/schema.sql"
