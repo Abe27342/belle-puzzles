@@ -22,7 +22,9 @@ Copy-Item packages\puzzlehunt-service\.example.env .env
 
 Edit `.env` to set `DATABASE_URL` to your database's connection URL.
 The service and initializer both load this file; environment variables supplied
-by the host take precedence.
+by the host take precedence. Shared website defaults are then loaded from
+`packages/site/.env`, reusing its `VITE_BELLE_BOT_CLIENT_ID` rather than duplicating
+the Discord application ID.
 
 ### Set up a new database
 
@@ -69,6 +71,7 @@ The example configuration listens on `http://127.0.0.1:3001`. An authenticated
 | Environment variable         | Purpose                                                                                                                                            |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `DATABASE_URL`               | Required PostgreSQL connection URL. Configure verified TLS for remote databases through the connection settings.                                   |
+| `VITE_BELLE_BOT_CLIENT_ID`   | Expected Discord OAuth application ID, shared with the website's `packages/site/.env`. Host/root `.env` settings can override the shared default.  |
 | `HOST`                       | Listen address; defaults to `0.0.0.0` for container hosting. Use `127.0.0.1` for local-only access.                                                |
 | `PORT`                       | Listen port; defaults to `3001`. `0` allows a host-assigned local port.                                                                            |
 | `PUZZLEHUNT_ALLOWED_ORIGINS` | Comma-separated browser origins. Browser requests must match an allowed origin; authentication uses explicit headers.                              |
@@ -106,7 +109,7 @@ hosting arrangement.
 Document requests use one of two explicit authorization schemes:
 
 -   `Authorization: Bearer <token>` carries a person's Discord OAuth access token,
-    which must have the existing `guilds` scope.
+    which must be issued for Belle's configured application and have the existing `guilds` scope.
     Any current guild member may read and edit that guild's hunts. Guild membership
     is checked with Discord on each request, including pagination where necessary.
 -   `Authorization: Service <token>` carries the optional trusted-bot credential,
@@ -114,8 +117,11 @@ Document requests use one of two explicit authorization schemes:
     It grants read/write access only to guilds the configured bot can access.
     Keep this credential exclusively in trusted server-side callers.
 
-The service calls Discord's `GET /api/v10/users/@me/guilds` with the OAuth bearer
-token on each request, following pagination as needed. Discord identifies the
+The service first calls Discord's `GET /api/v10/oauth2/@me` with the OAuth bearer
+token and requires its `application.id` to match `VITE_BELLE_BOT_CLIENT_ID`.
+Tokens issued for other applications are rejected before guild or hunt access.
+It then calls `GET /api/v10/users/@me/guilds`, following pagination as needed.
+Both checks run on each bearer-authenticated request. Discord identifies the
 user from that credential and returns their guild memberships. Authorization
 relies on Discord's membership records, rather than trusting a guild ID supplied
 by the caller. The policy grants every current guild member read/write access;

@@ -1,5 +1,6 @@
 export interface PuzzlehuntServiceConfiguration {
 	readonly databaseUrl: string;
+	readonly discordClientId: string;
 	readonly host: string;
 	readonly port: number;
 	readonly allowedOrigins: readonly string[];
@@ -24,6 +25,15 @@ export function readServiceConfiguration(
 		}
 	} catch {
 		throw new Error('DATABASE_URL must be a PostgreSQL connection URL.');
+	}
+	const discordClientId = environment.VITE_BELLE_BOT_CLIENT_ID;
+	if (
+		discordClientId === undefined ||
+		!/^[0-9]{1,20}$/.test(discordClientId)
+	) {
+		throw new Error(
+			'VITE_BELLE_BOT_CLIENT_ID must be a Discord application ID.'
+		);
 	}
 	const portText = environment.PORT ?? '3001';
 	const port = Number(portText);
@@ -76,6 +86,7 @@ export function readServiceConfiguration(
 	}
 	return {
 		databaseUrl,
+		discordClientId,
 		host,
 		port,
 		allowedOrigins,

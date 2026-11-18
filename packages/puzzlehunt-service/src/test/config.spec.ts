@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { readServiceConfiguration } from '../config.js';
 
-const database = { DATABASE_URL: 'postgresql://localhost/belle_test' };
+const database = {
+	DATABASE_URL: 'postgresql://localhost/belle_test',
+	VITE_BELLE_BOT_CLIENT_ID: '456',
+};
 
 describe('Puzzlehunt service configuration', () => {
 	it('defaults to a separate service port without a development authentication bypass', () => {
 		expect(readServiceConfiguration(database)).toMatchObject({
 			host: '0.0.0.0',
 			port: 3001,
+			discordClientId: database.VITE_BELLE_BOT_CLIENT_ID,
 			allowedOrigins: [],
 			serviceToken: undefined,
 		});
@@ -82,4 +86,16 @@ describe('Puzzlehunt service configuration', () => {
 			}).serviceToken
 		).toBe('x'.repeat(32));
 	});
+
+	it.each([undefined, '', 'not-an-application-id'])(
+		'requires the shared Discord OAuth application ID (%s)',
+		(VITE_BELLE_BOT_CLIENT_ID) => {
+			expect(() =>
+				readServiceConfiguration({
+					...database,
+					VITE_BELLE_BOT_CLIENT_ID,
+				})
+			).toThrow('VITE_BELLE_BOT_CLIENT_ID');
+		}
+	);
 });

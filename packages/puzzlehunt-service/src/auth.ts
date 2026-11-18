@@ -3,6 +3,7 @@ import { HuntCommandError } from '@belle-puzzles/puzzlehunt-model/document';
 import type { HuntAuthorizer } from './app.js';
 
 export interface DiscordHuntAuthorizerOptions {
+	readonly discordClientId: string;
 	readonly serviceToken?: string;
 	readonly discordBotToken?: string;
 	readonly fetch?: typeof globalThis.fetch;
@@ -14,10 +15,13 @@ function sameToken(left: string, right: string): boolean {
 	return a.length === b.length && timingSafeEqual(a, b);
 }
 
-/** People prove guild membership through OAuth; a trusted bot is limited to its own guilds. */
+/** People prove guild membership through this application's OAuth; a trusted bot is limited to its own guilds. */
 export function createDiscordHuntAuthorizer(
-	options: DiscordHuntAuthorizerOptions = {}
+	options: DiscordHuntAuthorizerOptions
 ): HuntAuthorizer {
+	if (!/^[0-9]{1,20}$/.test(options.discordClientId)) {
+		throw new Error('A Discord OAuth client ID is required.');
+	}
 	if (options.serviceToken !== undefined && !options.discordBotToken) {
 		throw new Error(
 			'Trusted-service access requires the Discord bot credential.'
@@ -93,6 +97,48 @@ export function createDiscordHuntAuthorizer(
 			throw new HuntCommandError(
 				'unauthorized',
 				'Trusted-bot credentials require Service authorization.'
+			);
+		}
+		const authorizationResponse = await get(
+			'/oauth2/@me',
+			`Bearer ${token}`
+		);
+		if (authorizationResponse.status === 401) {
+			throw new HuntCommandError(
+				'unauthorized',
+				'The Discord token is invalid or expired.'
+			);
+		}
+		if (authorizationResponse.status === 403) {
+			throw new HuntCommandError(
+				'forbidden',
+				'The Discord token cannot access its authorization information.'
+			);
+		}
+		if (authorizationResponse.status !== 200) {
+			throw new Error(
+				`Discord OAuth authorization failed (HTTP ${authorizationResponse.status}).`
+			);
+		}
+		const authorizationInfo: unknown = await authorizationResponse.json();
+		if (
+			typeof authorizationInfo !== 'object' ||
+			authorizationInfo === null ||
+			!('application' in authorizationInfo) ||
+			typeof authorizationInfo.application !== 'object' ||
+			authorizationInfo.application === null ||
+			!('id' in authorizationInfo.application) ||
+			typeof authorizationInfo.application.id !== 'string' ||
+			!/^[0-9]{1,20}$/.test(authorizationInfo.application.id)
+		) {
+			throw new Error(
+				'Discord returned invalid OAuth authorization information.'
+			);
+		}
+		if (authorizationInfo.application.id !== options.discordClientId) {
+			throw new HuntCommandError(
+				'unauthorized',
+				'The Discord token was not issued for this application.'
 			);
 		}
 		let after = '0';
