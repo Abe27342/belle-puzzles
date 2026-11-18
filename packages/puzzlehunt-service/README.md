@@ -161,7 +161,6 @@ not reset or delete previous hunts, their contents, or their integration work.
 List results include every hunt in the authorized guild, ordered by creation time
 then ID, with at most one marked active. A guild with no hunts returns an empty
 list. Open models and SSE streams retain their original hunt identity.
-No hunt deletion or external-resource provisioning endpoint is added.
 
 `update-configuration` accepts the common hunt configuration, including logging
 channel mappings; omitted fields are unchanged. Root-round creation and root
