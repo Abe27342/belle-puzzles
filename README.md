@@ -11,17 +11,6 @@ It uses [pnpm](https://pnpm.io/).
 3. Install repo dependencies: `pnpm i`
 4. Build: `npm run build`
 
-## TypeScript modules
-
-The Node.js packages use `Node16` module and resolution settings: the bot and model
-emit ESM, while the Azure Functions API retains CommonJS. Relative imports in the
-ESM packages must name the emitted `.js` file, including type-only imports.
-The Vite site and its tooling config use `ESNext` modules with `bundler` resolution.
-
-The model's public subpaths resolve through its package `exports` and adjacent
-declarations. TypeScript consumers must use `node16`, `nodenext`, or `bundler`
-resolution; legacy `node` resolution is not supported.
-
 ## Bot Infrastructure
 
 The discord bot is hosted on Azure using a container app. Deployment details can be found in the github workflows folder.
