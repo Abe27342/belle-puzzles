@@ -8,6 +8,7 @@
 		"./document": "./dist/document.js",
 		"./postgres": "./dist/postgres/index.js",
 		"./model": "./dist/model/index.js",
+		"./http": "./dist/http/index.js",
 		"./fluid": "./dist/fluid/index.js",
 		"./testing/fluid-service": "./src/test/fixtures/fluid-service.ts",
 		"./testing/fluid-endpoint": "./src/test/fixtures/fluid-endpoint.ts",
@@ -15,7 +16,11 @@
 	},
 	"typesVersions": {
 		"*": {
-			"fluid": ["dist/fluid/index.d.ts"]
+			"document": ["dist/document.d.ts"],
+			"model": ["dist/model/index.d.ts"],
+			"http": ["dist/http/index.d.ts"],
+			"fluid": ["dist/fluid/index.d.ts"],
+			"postgres": ["dist/postgres/index.d.ts"]
 		}
 	},
 	"type": "module",
