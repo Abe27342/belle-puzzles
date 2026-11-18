@@ -226,7 +226,22 @@ pnpm --filter @belle-puzzles/puzzlehunt-service test
 ```
 
 The suites cover initialization, configuration, authorization, synchronization
-routes, and the LISTEN connection lifecycle. `initializePuzzlehuntDatabase` applies
+routes, the LISTEN connection lifecycle, and the full shared model contract over
+`PuzzlehuntModel` -> `HttpHuntDocumentClient` -> loopback HTTP service -> disposable
+native PostgreSQL. Build the model dependency first, then run just this variant:
+
+```powershell
+pnpm --filter @belle-puzzles/puzzlehunt-service... build
+pnpm --filter @belle-puzzles/puzzlehunt-service test src/test/model.spec.ts
+```
+
+The HTTP contract fixture seeds hunts directly, injects a deterministic local
+authorizer, and synchronizes only the selected hunt by flushing and refreshing
+its models. It does not start Fluid, call Discord, or require SSE observation.
+The host closes its HTTP server, PostgreSQL change listener, and disposable
+database after the suite.
+
+`initializePuzzlehuntDatabase` applies
 the schema and seeds an active hunt against a supplied pool, so local test
 fixtures can use the same initialization as the command-line tool. Both the
 initializer and its CLI entry point live in the package's `scripts/` directory.
