@@ -4,8 +4,8 @@ import {
 	MessageFlags,
 	SlashCommandBuilder,
 } from 'discord.js';
-import { Command } from './types';
-import { PuzzlehuntContext } from '../puzzlehunt-context';
+import { Command } from './types.js';
+import { PuzzlehuntContext } from '../puzzlehunt-context.js';
 import { resyncServerFull } from '../sync/sync.js';
 
 export const syncAll: Command = {

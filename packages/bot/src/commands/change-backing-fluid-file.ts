@@ -4,11 +4,11 @@ import {
 	MessageFlags,
 	SlashCommandBuilder,
 } from 'discord.js';
-import type { Command } from './types';
+import type { Command } from './types.js';
 import type {
 	PuzzlehuntContext,
 	SerializedPuzzlehuntContext,
-} from '../puzzlehunt-context';
+} from '../puzzlehunt-context.js';
 
 const ID_ARG = 'id';
 

@@ -10,8 +10,8 @@ import {
 } from 'discord.js';
 import * as commandsModule from './commands/index.js';
 import * as interactionsModule from './interactions/index.js';
-import type { Command } from './commands/types';
-import type { InteractionHandler } from './interactions/types';
+import type { Command } from './commands/types.js';
+import type { InteractionHandler } from './interactions/types.js';
 import {
 	getHuntContext,
 	type PuzzlehuntContext,

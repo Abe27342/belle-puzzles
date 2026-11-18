@@ -7,11 +7,11 @@ import {
 	PermissionsBitField,
 	SlashCommandBuilder,
 } from 'discord.js';
-import { Command } from './types';
+import { Command } from './types.js';
 import {
 	PuzzlehuntContext,
 	SerializedPuzzlehuntContext,
-} from '../puzzlehunt-context';
+} from '../puzzlehunt-context.js';
 import { createNewPuzzlehunt } from '@belle-puzzles/puzzlehunt-model/fluid';
 import { makeFluidClient } from '../fluid/client.js';
 

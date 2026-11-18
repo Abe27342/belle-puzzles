@@ -14,15 +14,6 @@
 		"./testing/fluid-endpoint": "./src/test/fixtures/fluid-endpoint.ts",
 		"./postgres/schema.sql": "./src/postgres/schema.sql"
 	},
-	"typesVersions": {
-		"*": {
-			"document": ["dist/document.d.ts"],
-			"model": ["dist/model/index.d.ts"],
-			"http": ["dist/http/index.d.ts"],
-			"fluid": ["dist/fluid/index.d.ts"],
-			"postgres": ["dist/postgres/index.d.ts"]
-		}
-	},
 	"type": "module",
 	"engines": {
 		"node": ">=20.15.0"

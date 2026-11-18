@@ -1,11 +1,11 @@
 import { describe, it, beforeEach, afterEach, expect, vi } from 'vitest';
-import { BelleBotClient, createClient } from '../../client';
+import { BelleBotClient, createClient } from '../../client.js';
 import {
 	IPuzzlehuntProvider,
 	createPuzzlehuntProvider,
-} from '../../puzzlehunt-provider';
-import { ChannelData, IServerState, MockDiscord } from '../mockDiscord';
-import { loadPuzzlehunt, runCommand, runCommands } from '../testUtils';
+} from '../../puzzlehunt-provider.js';
+import { ChannelData, IServerState, MockDiscord } from '../mockDiscord.js';
+import { loadPuzzlehunt, runCommand, runCommands } from '../testUtils.js';
 vi.mock('../../integrations/google.js');
 
 describe('update_status', () => {
