@@ -62,6 +62,37 @@ beforeEach(async () => {
 });
 
 describe('Authoritative commands on multiple PostgreSQL connections', () => {
+	it('retains independently created hunts under concurrent active selection', async () => {
+		const original = await database.store.read(scope);
+		const created = await Promise.all(
+			['First new hunt', 'Second new hunt'].map((name) =>
+				database.store.create(scope.guildId, { name })
+			)
+		);
+		expect(new Set(created.map((hunt) => hunt.huntId)).size).toBe(2);
+		const listed = await database.store.list(scope.guildId);
+		expect(listed.hunts).toHaveLength(3);
+		const active = listed.hunts.filter((hunt) => hunt.active);
+		expect(active).toHaveLength(1);
+		expect(created.map((hunt) => hunt.huntId)).toContain(active[0].huntId);
+		for (const hunt of created) {
+			expect(await database.store.read(hunt)).toEqual(hunt);
+		}
+		expect(await database.store.read(scope)).toEqual(original);
+		await Promise.all(
+			created.map((hunt) => database.store.selectActive(hunt))
+		);
+		expect(
+			(await database.store.list(scope.guildId)).hunts.filter(
+				(hunt) => hunt.active
+			)
+		).toHaveLength(1);
+		expect(await database.store.selectActive(scope)).toEqual(original);
+		expect(await database.store.readActive(scope.guildId)).toEqual(
+			original
+		);
+	});
+
 	it('publishes only committed revision hints and reads one consistent incremental state', async () => {
 		const base = await database.store.read(scope);
 		const listener = await database.pool.connect();

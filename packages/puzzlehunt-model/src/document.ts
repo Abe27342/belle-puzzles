@@ -179,6 +179,20 @@ export interface HuntSnapshot extends HuntScope {
 	readonly document: HuntDocument;
 }
 
+export interface HuntCreateRequest {
+	readonly name: string;
+	readonly configuration?: HuntConfiguration;
+}
+
+export interface HuntListing {
+	readonly guildId: Snowflake;
+	readonly hunts: readonly {
+		readonly huntId: string;
+		readonly name: string;
+		readonly active: boolean;
+	}[];
+}
+
 // REGION - Representation of operations that can be performed on a document.
 
 /**
@@ -366,6 +380,16 @@ export interface HuntDocumentClient {
 		scope: HuntScope,
 		request: HuntCommandRequest
 	): Promise<HuntCommandResult>;
+}
+
+/** Guild-level lifecycle operations, separate from an already-open hunt model. */
+export interface HuntCollectionClient {
+	/** Create independent data and atomically select it. Not idempotent; never retry automatically. */
+	create(guildId: string, request: HuntCreateRequest): Promise<HuntSnapshot>;
+	list(guildId: string): Promise<HuntListing>;
+	readActive(guildId: string): Promise<HuntSnapshot>;
+	/** Select an existing hunt in this guild without modifying either hunt's data. */
+	selectActive(scope: HuntScope): Promise<HuntSnapshot>;
 }
 
 /** Trusted worker capability; keep separate from the user-facing document client. */
@@ -645,6 +669,22 @@ export function validateHuntDocument(document: HuntDocument): void {
 	validateDocumentForest(new ChildrenIndex(document));
 }
 
+/** Create an empty document without provisioning external resources. */
+export function createHuntDocument(request: HuntCreateRequest): HuntDocument {
+	requireCommand(
+		typeof request.name === 'string' && request.name.trim().length > 0,
+		'Expected a nonempty hunt name.'
+	);
+	const configuration =
+		request.configuration === undefined ? {} : request.configuration;
+	validateHuntConfiguration(configuration);
+	return {
+		name: request.name,
+		configuration,
+		nodes: {},
+	};
+}
+
 function validateUniqueValues<T>(values: T[], message: string): void {
 	const seen = new Set<T>();
 	for (const value of values) {
@@ -700,6 +740,36 @@ function validateDocumentForest(childrenIndex: ChildrenIndex): void {
 	childrenIndex.validateAncestry();
 }
 
+function validateHuntConfiguration(configuration: HuntConfiguration): void {
+	requireCommand(
+		configuration !== null &&
+			typeof configuration === 'object' &&
+			!Array.isArray(configuration),
+		'Hunt configuration must be an object.'
+	);
+	for (const field of [
+		'googleFolderId',
+		'indexId',
+		'allPuzzlesRoleId',
+	] as const) {
+		requireCommand(
+			configuration[field] === undefined ||
+				typeof configuration[field] === 'string',
+			'Configuration IDs must be strings when present.'
+		);
+	}
+	const ids = configuration.loggingChannelIds;
+	requireCommand(
+		ids === undefined ||
+			(ids !== null &&
+				typeof ids === 'object' &&
+				typeof ids.puzzleAdd === 'string' &&
+				typeof ids.puzzleSolve === 'string' &&
+				typeof ids.puzzleStatusUpdate === 'string'),
+		'Logging channel IDs must be strings.'
+	);
+}
+
 /**
  * Applies a {@link HuntCommand} to the given document, producing a new document state and a list of events.
  *
@@ -725,33 +795,7 @@ export function applyHuntCommand(
 	switch (command.type) {
 		case 'update-configuration': {
 			const configuration = command.configuration;
-			requireCommand(
-				configuration !== null &&
-					typeof configuration === 'object' &&
-					!Array.isArray(configuration),
-				'Hunt configuration must be an object.'
-			);
-			for (const field of [
-				'googleFolderId',
-				'indexId',
-				'allPuzzlesRoleId',
-			] as const) {
-				requireCommand(
-					configuration[field] === undefined ||
-						typeof configuration[field] === 'string',
-					'Configuration IDs must be strings when present.'
-				);
-			}
-			const ids = configuration.loggingChannelIds;
-			requireCommand(
-				ids === undefined ||
-					(ids !== null &&
-						typeof ids === 'object' &&
-						typeof ids.puzzleAdd === 'string' &&
-						typeof ids.puzzleSolve === 'string' &&
-						typeof ids.puzzleStatusUpdate === 'string'),
-				'Logging channel IDs must be strings.'
-			);
+			validateHuntConfiguration(configuration);
 			next.configuration = {
 				...document.configuration,
 				...Object.fromEntries(

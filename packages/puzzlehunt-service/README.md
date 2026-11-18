@@ -41,6 +41,8 @@ The initializer uses `DATABASE_URL` from `.env`. It applies
 selects it as the guild's active hunt in one transaction. It prints the new hunt
 ID. Run it once per fresh database; an already initialized database is rejected
 without changing its data.
+After initialization, create further hunts (including for other authorized
+guilds) through the API below; do not rerun the initializer.
 
 ### Use an existing database
 
@@ -110,7 +112,7 @@ Document requests use one of two explicit authorization schemes:
 
 -   `Authorization: Bearer <token>` carries a person's Discord OAuth access token,
     which must be issued for Belle's configured application and have the existing `guilds` scope.
-    Any current guild member may read and edit that guild's hunts. Guild membership
+    Any current guild member may read, create, select, and edit that guild's hunts. Guild membership
     is checked with Discord on each request, including pagination where necessary.
 -   `Authorization: Service <token>` carries the optional trusted-bot credential,
     separate from the Discord bot token.
@@ -138,7 +140,10 @@ until the token expires or is revoked.
 
 | Route                                                  | Result                                                                           |
 | ------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| `GET /guilds/:guildId/hunts`                           | `{ guildId, hunts: [{ huntId, name, active }] }`, including inactive hunts.        |
+| `POST /guilds/:guildId/hunts`                          | `{ name, configuration? }` in; 201 with a new empty `HuntSnapshot`, selected active. |
 | `GET /guilds/:guildId/hunts/active`                    | Current `HuntSnapshot` selected by `active_hunts`, or 404 if none is selected.   |
+| `PUT /guilds/:guildId/hunts/active`                    | `{ huntId }` in; 200 with the selected `HuntSnapshot`, or 404 outside this guild. |
 | `GET /guilds/:guildId/hunts/:huntId`                   | Scoped `HuntSnapshot`.                                                           |
 | `POST /guilds/:guildId/hunts/:huntId/commands`         | `HuntCommandRequest` in, committed `HuntCommandResult` out.                      |
 | `GET /guilds/:guildId/hunts/:huntId?since=R`           | Revision-relative `HuntStateUpdate`, with explicit full fallback.                |
@@ -147,6 +152,17 @@ until the token expires or is revoked.
 
 Commands require `application/json`, have a 1 MiB request limit, and reject
 unknown properties and integration-only commands. Responses are uncached.
+Creation and active-selection requests use the same content type, size limit,
+and guild authorization, without an additional administrator/role requirement.
+Creation accepts a nonblank name and optional common hunt configuration. It
+persists independent, revision-zero data and selects the new hunt in one atomic
+database statement. Selection changes only the guild's active pointer; it does
+not reset or delete previous hunts, their contents, or their integration work.
+List results include every hunt in the authorized guild, ordered by creation time
+then ID, with at most one marked active. A guild with no hunts returns an empty
+list. Open models and SSE streams retain their original hunt identity.
+No hunt deletion or external-resource provisioning endpoint is added.
+
 `update-configuration` accepts the common hunt configuration, including logging
 channel mappings; omitted fields are unchanged. Root-round creation and root
 moves omit `parentId` rather than sending `null`. Store-backed integration workers
@@ -164,8 +180,11 @@ Explicit 400/404/409 domain rejections and 401/403 authorization failures mean
 the request did not commit. Wrong methods (405), oversized bodies (413), and
 unsupported content (415) are also explicit rejections. Unexpected failures are
 logged server-side and return a generic 500, without database or credential details.
-A failed response does not imply a failed commit: retry uncertain writes with
-their original command ID, never a new one.
+A failed response does not imply a failed commit: retry uncertain document commands
+with their original command ID, never a new one. Creation is not idempotent and
+has no command ID. After an uncertain creation response, list the guild's hunts
+and inspect the active hunt before retrying manually; another create can produce
+another empty hunt. The HTTP client never automatically retries lifecycle writes.
 
 ## HTTP-backed model
 
@@ -188,7 +207,20 @@ await model.refresh();
 ```
 
 Alternatively use `PuzzlehuntModel.load(client, { guildId, huntId })` when the
-identity is already known. `getToken` may be asynchronous and is called for every
+identity is already known. The same client exposes the collection-level API:
+
+```ts
+const created = await client.create(guildId, { name: 'Next hunt' });
+const nextModel = new PuzzlehuntModel(client, created);
+const { hunts } = await client.list(guildId);
+const previous = hunts.find((hunt) => hunt.huntId !== created.huntId);
+if (previous) {
+	await client.selectActive({ guildId, huntId: previous.huntId });
+}
+// nextModel still refers to the newly created hunt, even after selection changes.
+```
+
+`getToken` may be asynchronous and is called for every
 request, so the caller can supply a current OAuth token or server-side service
 credential. Bot clients set `authScheme: 'Service'`; the default is `Bearer`.
 Keeping these schemes distinct prevents invalid service keys from being forwarded

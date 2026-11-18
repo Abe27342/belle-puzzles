@@ -40,6 +40,111 @@ function transport() {
 }
 
 describe('HTTP hunt document client', () => {
+	it('creates, lists, and selects hunts using scoped routes without rebinding open models', async () => {
+		const { client, fetch } = transport();
+		const created: HuntSnapshot = {
+			...snapshot,
+			huntId: '00000000-0000-4000-8000-000000000004',
+			document: {
+				name: 'New hunt',
+				configuration: { googleFolderId: 'folder' },
+				nodes: {},
+			},
+		};
+		const request = {
+			name: created.document.name,
+			configuration: created.document.configuration,
+		};
+		fetch.mockResolvedValueOnce(json(snapshot));
+		const open = await PuzzlehuntModel.load(client, scope);
+		fetch.mockResolvedValueOnce(json(created, 201));
+		expect(await client.create(scope.guildId, request)).toEqual(created);
+		expect(fetch.mock.calls[1]).toMatchObject([
+			'https://api.example.test/api/guilds/guild/hunts',
+			{
+				method: 'POST',
+				headers: {
+					Authorization: 'Bearer user-token',
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify(request),
+			},
+		]);
+		const listing = {
+			guildId: scope.guildId,
+			hunts: [
+				{ huntId: scope.huntId, name: 'Hunt', active: false },
+				{ huntId: created.huntId, name: 'New hunt', active: true },
+			],
+		};
+		fetch.mockResolvedValueOnce(json(listing));
+		expect(await client.list(scope.guildId)).toEqual(listing);
+		expect(fetch.mock.calls[2]).toMatchObject([
+			'https://api.example.test/api/guilds/guild/hunts',
+			{ method: 'GET' },
+		]);
+		fetch.mockResolvedValueOnce(json(snapshot));
+		expect(await client.selectActive(scope)).toEqual(snapshot);
+		expect(fetch.mock.calls[3]).toMatchObject([
+			'https://api.example.test/api/guilds/guild/hunts/active',
+			{ method: 'PUT', body: JSON.stringify({ huntId: scope.huntId }) },
+		]);
+		fetch.mockResolvedValueOnce(
+			json({
+				type: 'snapshot',
+				snapshot,
+			})
+		);
+		await open.refresh();
+		expect(fetch.mock.calls[4][0]).toBe(
+			`https://api.example.test/api/guilds/guild/hunts/${scope.huntId}?since=0`
+		);
+		expect(open.committedSnapshot).toEqual(snapshot);
+	});
+
+	it.each(['create', 'selectActive'] as const)(
+		'does not automatically retry uncertain %s requests',
+		async (operation) => {
+			const { client, fetch } = transport();
+			fetch.mockResolvedValue(
+				json(
+					{
+						error: {
+							code: 'not-found',
+							message: 'Not proof at 500.',
+						},
+					},
+					500
+				)
+			);
+			await expect(
+				operation === 'create'
+					? client.create(scope.guildId, { name: 'New' })
+					: client.selectActive(scope)
+			).rejects.toBeInstanceOf(HuntHttpError);
+			expect(fetch).toHaveBeenCalledOnce();
+		}
+	);
+
+	it('rejects mismatched creation and selection responses as uncertainty', async () => {
+		const { client, fetch } = transport();
+		fetch.mockResolvedValueOnce(
+			json({ ...snapshot, guildId: 'foreign' }, 201)
+		);
+		await expect(
+			client.create(scope.guildId, { name: 'New' })
+		).rejects.toBeInstanceOf(HuntProtocolError);
+		fetch.mockResolvedValueOnce(
+			json({
+				...snapshot,
+				huntId: '00000000-0000-4000-8000-000000000004',
+			})
+		);
+		await expect(client.selectActive(scope)).rejects.toBeInstanceOf(
+			HuntProtocolError
+		);
+	});
+
 	it('uses a distinct authorization scheme for trusted-service credentials', async () => {
 		const fetch = vi.fn<typeof globalThis.fetch>(async () =>
 			json(snapshot)

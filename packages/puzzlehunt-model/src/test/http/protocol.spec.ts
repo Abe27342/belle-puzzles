@@ -4,7 +4,10 @@ import type { HuntCommand, HuntSnapshot } from '../../document.js';
 import {
 	decodeHuntCommandRequest,
 	decodeHuntCommandResult,
+	decodeHuntCreateRequest,
+	decodeHuntListing,
 	decodeHuntRejection,
+	decodeHuntSelectionRequest,
 	decodeHuntSnapshot,
 	HuntProtocolError,
 } from '../../http/protocol.js';
@@ -21,6 +24,66 @@ const snapshot: HuntSnapshot = {
 };
 
 describe('Hunt HTTP protocol', () => {
+	it.each([
+		{ name: 'Hunt' },
+		{
+			name: 'Hunt',
+			configuration: { googleFolderId: 'folder', indexId: 'index' },
+		},
+	])(
+		'decodes creation intent without document identity or state',
+		(request) => {
+			expect(decodeHuntCreateRequest(request)).toEqual(request);
+		}
+	);
+
+	it.each([
+		null,
+		{},
+		{ name: ' \t ' },
+		{ name: 123 },
+		{ name: 'Hunt', huntId },
+		{ name: 'Hunt', guildId: 'other' },
+		{ name: 'Hunt', nodes: {} },
+		{ name: 'Hunt', revision: 1 },
+		{ name: 'Hunt', configuration: null },
+		{ name: 'Hunt', configuration: { ownership: 'other' } },
+		{
+			name: 'Hunt',
+			configuration: { loggingChannelIds: { puzzleAdd: 'add' } },
+		},
+	])('rejects invalid creation intent %#', (request) => {
+		expect(() => decodeHuntCreateRequest(request)).toThrow(
+			HuntCommandError
+		);
+	});
+
+	it.each([null, {}, { huntId: 'invalid' }, { huntId, guildId: 'other' }])(
+		'rejects invalid selection intent %#',
+		(request) => {
+			expect(() => decodeHuntSelectionRequest(request)).toThrow(
+				HuntCommandError
+			);
+		}
+	);
+
+	it('rejects foreign, duplicate, or multiply-active hunt listings', () => {
+		const hunt = { huntId, name: 'Hunt', active: true };
+		for (const listing of [
+			{ guildId: 'other', hunts: [hunt] },
+			{ guildId: scope.guildId, hunts: [hunt, hunt] },
+			{
+				guildId: scope.guildId,
+				hunts: [hunt, { ...hunt, huntId: nodeId }],
+			},
+			{ guildId: scope.guildId, hunts: [{ ...hunt, active: 'yes' }] },
+		]) {
+			expect(() => decodeHuntListing(listing, scope.guildId)).toThrow(
+				HuntProtocolError
+			);
+		}
+	});
+
 	it.each<HuntCommand>([
 		{
 			type: 'add',

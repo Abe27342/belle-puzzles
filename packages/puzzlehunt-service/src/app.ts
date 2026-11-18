@@ -20,7 +20,14 @@ export type HuntAuthorizer = (
 export interface PuzzlehuntAppOptions {
 	readonly store: Pick<
 		PostgresPuzzlehuntStore,
-		'read' | 'readActive' | 'submit' | 'readUpdates' | 'readRevision'
+		| 'read'
+		| 'readActive'
+		| 'submit'
+		| 'readUpdates'
+		| 'readRevision'
+		| 'create'
+		| 'list'
+		| 'selectActive'
 	>;
 	readonly changes: HuntChangeFeed;
 	readonly authorize: HuntAuthorizer;
@@ -56,7 +63,7 @@ export function createPuzzlehuntApp(
 	app.use(
 		cors({
 			origin: [...origins],
-			methods: ['GET', 'POST'],
+			methods: ['GET', 'POST', 'PUT'],
 			allowedHeaders: ['Authorization', 'Content-Type'],
 			exposedHeaders: ['Retry-After'],
 			maxAge: 600,

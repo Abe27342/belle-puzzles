@@ -3,6 +3,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PostgresPuzzlehuntStore } from '../../postgres/store.js';
 import { PostgresHuntIntegrationStore } from '../../postgres/integration-store.js';
+import { PuzzlehuntModel } from '../../model/puzzlehunt.js';
 import type { HuntDatabasePool } from '../../postgres/store.js';
 import type {
 	HuntCommand,
@@ -149,6 +150,168 @@ afterAll(async () => {
 });
 
 describe('PostgreSQL hunt store', () => {
+	it('creates independent hunts, selects them, and preserves open and reopened older models', async () => {
+		await seed();
+		await submit(101, {
+			type: 'update-configuration',
+			configuration: { googleFolderId: 'old-folder' },
+		});
+		await submit(102, {
+			type: 'set-property',
+			nodeId: puzzleId,
+			property: 'answer',
+			value: 'OLD ANSWER',
+		});
+		const previous = await store.read(scope);
+		const open = await PuzzlehuntModel.load(store, scope);
+		const retained = await database.query(
+			'SELECT * FROM command_receipts ORDER BY command_id'
+		);
+		const configuration = {
+			googleFolderId: 'new-folder',
+			indexId: snowflake('new-index'),
+			allPuzzlesRoleId: snowflake('new-role'),
+			loggingChannelIds: {
+				puzzleAdd: snowflake('add'),
+				puzzleSolve: snowflake('solve'),
+				puzzleStatusUpdate: snowflake('status'),
+			},
+		};
+		const created = await store.create(scope.guildId, {
+			name: 'Next hunt',
+			configuration,
+		});
+		expect(created.huntId).not.toBe(scope.huntId);
+		expect(created).toMatchObject({
+			guildId: scope.guildId,
+			revision: 0,
+			document: { name: 'Next hunt', configuration, nodes: {} },
+		});
+		expect(await store.readActive(scope.guildId)).toEqual(created);
+		expect(await store.read(created)).toEqual(created);
+		expect(await store.read(scope)).toEqual(previous);
+		expect(
+			(
+				await database.query(
+					'SELECT * FROM command_receipts ORDER BY command_id'
+				)
+			).rows
+		).toEqual(retained.rows);
+		expect(open.committedSnapshot).toEqual(previous);
+
+		open.addRound('Still belongs to the old hunt', '');
+		await open.flush();
+		expect(await store.read(created)).toEqual(created);
+		const selected = await store.selectActive(scope);
+		expect(selected).toEqual(open.committedSnapshot);
+		expect(await store.readActive(scope.guildId)).toEqual(selected);
+		const reopened = await PuzzlehuntModel.load(store, scope);
+		expect(reopened.committedSnapshot).toEqual(selected);
+		expect(selected.document.nodes[puzzleId]).toMatchObject({
+			answer: 'OLD ANSWER',
+		});
+		expect(selected.document.configuration).toEqual({
+			googleFolderId: 'old-folder',
+		});
+		expect(await store.selectActive(scope)).toEqual(selected);
+		expect(await store.read(created)).toEqual(created);
+	});
+
+	it('lists only the requested guild, including inactive hunts and guilds with no selection', async () => {
+		expect(await store.list(scope.guildId)).toEqual({
+			guildId: scope.guildId,
+			hunts: [{ huntId: scope.huntId, name: 'Hunt', active: false }],
+		});
+		const created = await store.create(scope.guildId, {
+			name: 'Next hunt',
+		});
+		const foreign = await store.create('another-guild', {
+			name: 'Private',
+		});
+		expect(await store.readActive(foreign.guildId)).toEqual(foreign);
+		expect(await store.list(scope.guildId)).toEqual({
+			guildId: scope.guildId,
+			hunts: [
+				{ huntId: scope.huntId, name: 'Hunt', active: false },
+				{ huntId: created.huntId, name: 'Next hunt', active: true },
+			],
+		});
+		await store.selectActive(scope);
+		expect((await store.list(scope.guildId)).hunts).toEqual([
+			{ huntId: scope.huntId, name: 'Hunt', active: true },
+			{ huntId: created.huntId, name: 'Next hunt', active: false },
+		]);
+		expect(await store.list('empty-guild')).toEqual({
+			guildId: 'empty-guild',
+			hunts: [],
+		});
+	});
+
+	it('leaves both guild selections intact after missing, invalid, or cross-guild selection', async () => {
+		const current = await store.selectActive(scope);
+		const foreign = await store.create('another-guild', {
+			name: 'Private',
+		});
+		for (const huntId of [id(999), foreign.huntId]) {
+			await expect(
+				store.selectActive({ ...scope, huntId })
+			).rejects.toMatchObject({
+				code: 'not-found',
+			});
+		}
+		await expect(
+			store.selectActive({ ...scope, huntId: 'invalid' })
+		).rejects.toMatchObject({
+			code: 'invalid-command',
+		});
+		await expect(
+			store.selectActive({
+				...scope,
+				guildId: snowflake('empty-guild'),
+			})
+		).rejects.toMatchObject({ code: 'not-found' });
+		await expect(store.readActive('empty-guild')).rejects.toMatchObject({
+			code: 'not-found',
+		});
+		expect(await store.readActive(scope.guildId)).toEqual(current);
+		expect(await store.readActive(foreign.guildId)).toEqual(foreign);
+	});
+
+	it('rolls back creation and selection together when the active pointer cannot be written', async () => {
+		const other = await store.create(scope.guildId, { name: 'Other' });
+		const current = await store.selectActive(scope);
+		const before = await store.list(scope.guildId);
+		await database.exec(
+			`ALTER TABLE active_hunts ADD CONSTRAINT test_selection_failure CHECK (hunt_id = '${scope.huntId}')`
+		);
+		try {
+			await expect(
+				store.create(scope.guildId, { name: 'Must not persist' })
+			).rejects.toThrow();
+			await expect(store.selectActive(other)).rejects.toThrow();
+			expect(await store.list(scope.guildId)).toEqual(before);
+			expect(await store.readActive(scope.guildId)).toEqual(current);
+		} finally {
+			await database.exec(
+				'ALTER TABLE active_hunts DROP CONSTRAINT test_selection_failure'
+			);
+		}
+	});
+
+	it('rejects invalid creation arguments without changing hunts or the active selection', async () => {
+		const current = await store.selectActive(scope);
+		await expect(
+			store.create(scope.guildId, { name: ' \t ' })
+		).rejects.toMatchObject({
+			code: 'invalid-command',
+		});
+		await expect(store.create('', { name: 'Hunt' })).rejects.toMatchObject({
+			code: 'invalid-command',
+		});
+		expect(await store.readActive(scope.guildId)).toEqual(current);
+		expect((await store.list(scope.guildId)).hunts).toHaveLength(1);
+	});
+
 	it('maps SQL NULL root parents to undefined in snapshots and deltas', async () => {
 		await seed();
 		const { rows } = await database.query(

@@ -5,8 +5,10 @@ import type {
 	HuntCommandRequest,
 	HuntCommandResult,
 	HuntCommandUpdateResult,
+	HuntCreateRequest,
 	HuntDelta,
 	HuntDocument,
+	HuntListing,
 	HuntScope,
 	HuntSnapshot,
 	HuntStateUpdate,
@@ -81,6 +83,34 @@ const configuration = z.object({
 		})
 		.optional(),
 });
+
+export const huntCreateRequestSchema: z.ZodType<HuntCreateRequest> =
+	z.strictObject({
+		name: z
+			.string()
+			.refine(
+				(value) => value.trim().length > 0,
+				'Expected a nonempty hunt name.'
+			),
+		configuration: configuration.strict().optional(),
+	});
+
+export const huntSelectionRequestSchema = z.strictObject({ huntId: id });
+
+export const huntListingSchema: z.ZodType<HuntListing> = z
+	.object({
+		guildId: snowflake,
+		hunts: z.array(
+			z.object({ huntId: id, name: z.string(), active: z.boolean() })
+		),
+	})
+	.refine(
+		(value) =>
+			new Set(value.hunts.map((hunt) => hunt.huntId)).size ===
+				value.hunts.length &&
+			value.hunts.filter((hunt) => hunt.active).length <= 1,
+		'Expected unique hunts and at most one active hunt.'
+	);
 
 const command: z.ZodType<HuntCommand> = z.discriminatedUnion('type', [
 	z.strictObject({ type: z.literal('add'), nodes: z.array(newNode) }),
@@ -261,7 +291,19 @@ function response<Value>(schema: z.ZodType<Value>, value: unknown): Value {
 
 /** Public writes cannot include ownership, replacement state, or worker commands. */
 export function decodeHuntCommandRequest(value: unknown): HuntCommandRequest {
-	const result = huntCommandRequestSchema.safeParse(value);
+	return request(huntCommandRequestSchema, value);
+}
+
+export function decodeHuntCreateRequest(value: unknown): HuntCreateRequest {
+	return request(huntCreateRequestSchema, value);
+}
+
+export function decodeHuntSelectionRequest(value: unknown): { huntId: string } {
+	return request(huntSelectionRequestSchema, value);
+}
+
+function request<Value>(schema: z.ZodType<Value>, value: unknown): Value {
+	const result = schema.safeParse(value);
 	if (!result.success) {
 		throw new HuntCommandError(
 			'invalid-command',
@@ -269,6 +311,17 @@ export function decodeHuntCommandRequest(value: unknown): HuntCommandRequest {
 		);
 	}
 	return result.data;
+}
+
+export function decodeHuntListing(
+	value: unknown,
+	guildId: string
+): HuntListing {
+	const listing = response(huntListingSchema, value);
+	if (listing.guildId !== guildId) {
+		throw new HuntProtocolError('Hunt listing returned a different guild.');
+	}
+	return listing;
 }
 
 export function decodeHuntSnapshot(
