@@ -5,8 +5,8 @@ import {
 	MessageFlags,
 	SlashCommandBuilder,
 } from 'discord.js';
-import { Command } from './types';
-import { PuzzlehuntContext } from '../puzzlehunt-context';
+import { Command } from './types.js';
+import { PuzzlehuntContext } from '../puzzlehunt-context.js';
 import { BELLE_USER_ID } from '../utils/index.js';
 
 export const resetServer: Command = {

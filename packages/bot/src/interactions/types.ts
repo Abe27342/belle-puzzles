@@ -1,5 +1,5 @@
 import { Interaction } from 'discord.js';
-import { PuzzlehuntContext } from '../puzzlehunt-context';
+import { PuzzlehuntContext } from '../puzzlehunt-context.js';
 
 export interface InteractionHandler {
 	name: string;

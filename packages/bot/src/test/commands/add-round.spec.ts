@@ -1,11 +1,11 @@
 import { describe, it, beforeEach, afterEach, expect, vi } from 'vitest';
-import { BelleBotClient, createClient } from '../../client';
+import { BelleBotClient, createClient } from '../../client.js';
 import {
 	IPuzzlehuntProvider,
 	createPuzzlehuntProvider,
-} from '../../puzzlehunt-provider';
-import { HasName, MockDiscord } from '../mockDiscord';
-import { expectParentChild, loadPuzzlehunt, runCommand } from '../testUtils';
+} from '../../puzzlehunt-provider.js';
+import { HasName, MockDiscord } from '../mockDiscord.js';
+import { expectParentChild, loadPuzzlehunt, runCommand } from '../testUtils.js';
 import { ChannelType } from 'discord.js';
 vi.mock('../../integrations/google.js');
 
