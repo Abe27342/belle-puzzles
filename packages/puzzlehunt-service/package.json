@@ -6,13 +6,15 @@
 	"type": "module",
 	"exports": {
 		"./app": {
-			"types": "./dist/app.d.ts",
-			"default": "./dist/app.js"
+			"types": "./dist/src/app.d.ts",
+			"default": "./dist/src/app.js"
 		}
 	},
 	"typesVersions": {
 		"*": {
-			"app": ["dist/app.d.ts"]
+			"app": [
+				"dist/src/app.d.ts"
+			]
 		}
 	},
 	"engines": {
@@ -20,8 +22,8 @@
 	},
 	"scripts": {
 		"build": "tsc",
-		"init": "node dist/init.js",
-		"start": "node dist/index.js",
+		"init": "node dist/scripts/init.js",
+		"start": "node dist/src/index.js",
 		"test": "vitest run"
 	},
 	"dependencies": {

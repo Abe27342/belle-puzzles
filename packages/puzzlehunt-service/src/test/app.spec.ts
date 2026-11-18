@@ -395,6 +395,7 @@ describe('Scoped SSE and synchronization routes (injected store)', () => {
 		});
 		const response = await fetch(`${f.url}/changes`);
 		expect(response.status).toBe(503);
+		expect(response.headers.get('retry-after')).toBe('30');
 		expect(response.headers.get('content-type')).toContain(
 			'application/json'
 		);
@@ -407,7 +408,9 @@ describe('Scoped SSE and synchronization routes (injected store)', () => {
 			f.disconnect();
 			return 1;
 		});
-		expect((await fetch(`${f.url}/changes`)).status).toBe(503);
+		const response = await fetch(`${f.url}/changes`);
+		expect(response.status).toBe(503);
+		expect(response.headers.get('retry-after')).toBe('30');
 		f.store.readRevision.mockRejectedValueOnce(
 			new HuntCommandError('not-found', 'Missing.')
 		);

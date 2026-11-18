@@ -2,7 +2,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PostgresPuzzlehuntStore } from '@belle-puzzles/puzzlehunt-model/postgres';
 import type { HuntDatabasePool } from '@belle-puzzles/puzzlehunt-model/postgres';
-import { initializePuzzlehuntDatabase } from '../initialize.js';
+import { initializePuzzlehuntDatabase } from '../../scripts/initialize.js';
 
 let database: PGlite;
 beforeEach(() => {

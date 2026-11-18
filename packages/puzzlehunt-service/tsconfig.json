@@ -3,8 +3,8 @@
 	"compilerOptions": {
 		"strict": true,
 		"outDir": "./dist",
-		"rootDir": "./src"
+		"rootDir": "."
 	},
-	"include": ["src/**/*.ts"],
+	"include": ["src/**/*.ts", "scripts/**/*.ts"],
 	"exclude": ["src/test"]
 }

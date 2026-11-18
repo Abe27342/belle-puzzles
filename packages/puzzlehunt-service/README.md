@@ -209,6 +209,7 @@ the recovery source. Streams send 15-second heartbeats and rotate after 180
 seconds; reconnecting requests recheck authorization. Membership revocation is
 therefore checked on the next request or stream reconnection. Listener failure or
 transport backpressure closes affected streams so clients can reconnect.
+An unavailable listener returns 503 with `Retry-After: 30`.
 
 ## Testability
 
@@ -221,7 +222,8 @@ pnpm --filter @belle-puzzles/puzzlehunt-service test
 The suites cover initialization, configuration, authorization, synchronization
 routes, and the LISTEN connection lifecycle. `initializePuzzlehuntDatabase` applies
 the schema and seeds an active hunt against a supplied pool, so local test
-fixtures can use the same initialization as the command-line tool.
+fixtures can use the same initialization as the command-line tool. Both the
+initializer and its CLI entry point live in the package's `scripts/` directory.
 
 `createPuzzlehuntApp` is the app used by the executable. Constructing it has no
 environment or network side effects. Tests can supply a disposable store, a local

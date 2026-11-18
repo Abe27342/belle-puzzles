@@ -32,7 +32,7 @@ export function createErrorHandler(
 			return;
 		}
 		if (error instanceof HuntChangesUnavailableError) {
-			res.set('Retry-After', '1')
+			res.set('Retry-After', '30')
 				.status(503)
 				.json({
 					error: { code: 'unavailable', message: error.message },

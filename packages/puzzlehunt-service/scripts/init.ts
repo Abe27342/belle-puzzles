@@ -1,6 +1,6 @@
-import './register-env.js';
+import '../src/register-env.js';
 import { Pool } from 'pg';
-import { readServiceConfiguration } from './config.js';
+import { readServiceConfiguration } from '../src/config.js';
 import { initializePuzzlehuntDatabase } from './initialize.js';
 
 async function main(): Promise<void> {
