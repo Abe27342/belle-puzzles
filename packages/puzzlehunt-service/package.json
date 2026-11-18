@@ -22,6 +22,7 @@
 	},
 	"scripts": {
 		"build": "tsc",
+		"format": "prettier --write src scripts",
 		"init": "node dist/scripts/init.js",
 		"start": "node dist/src/index.js",
 		"test": "vitest run"
