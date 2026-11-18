@@ -12,6 +12,8 @@
 		"./fluid": "./dist/fluid/index.js",
 		"./testing/fluid-service": "./src/test/fixtures/fluid-service.ts",
 		"./testing/fluid-endpoint": "./src/test/fixtures/fluid-endpoint.ts",
+		"./testing/model-contract": "./dist/test/model/contract.js",
+		"./testing/postgres": "./dist/test/fixtures/postgres.js",
 		"./postgres/schema.sql": "./src/postgres/schema.sql"
 	},
 	"type": "module",
