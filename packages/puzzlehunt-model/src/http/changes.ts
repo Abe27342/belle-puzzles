@@ -59,7 +59,13 @@ function abortable<Value>(
 	});
 }
 
-/** SSE line framing is independent of chunk boundaries, including split CRLF and UTF-8. */
+/**
+ * SSE line framing is independent of chunk boundaries, including split CRLF and UTF-8.
+ * Decodes bytes incrementally and buffers partial lines across chunks. Completed
+ * lines populate event fields; a blank line ends the event. Complete `revision`
+ * events are parsed as JSON, validated for the expected hunt, and yielded as numbers.
+ * An event without its terminating blank line is ignored at EOF.
+ */
 export async function* readHuntRevisionStream(
 	body: ReadableStream<Uint8Array>,
 	huntId: string,
@@ -90,6 +96,7 @@ export async function* readHuntRevisionStream(
 				);
 			}
 			for (const char of text) {
+				// Treat CRLF as one line ending, even across chunks.
 				if (skipLF && char === '\n') {
 					skipLF = false;
 					continue;
@@ -106,6 +113,7 @@ export async function* readHuntRevisionStream(
 				}
 				skipLF = char === '\r';
 				if (line === '') {
+					// A blank line completes the event, including all of its data lines.
 					if (event === 'revision' && data !== '') {
 						let value: unknown;
 						try {
