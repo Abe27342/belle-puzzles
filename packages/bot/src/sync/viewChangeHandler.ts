@@ -14,6 +14,16 @@ import {
 	type SyncProvisioning,
 } from './sync.js';
 
+/**
+ * Work calculated from a change event by {@link calculateChangeWork}.
+ *
+ * @remarks
+ * Retains historical nodes for removals and parent/descendant scheduling.
+ * {@link executeChangeWork} resolves current model nodes for channel, embed, and
+ * permission updates. Removal work deletes Discord resources only; Google Sheets
+ * are retained. {@link makeViewChangeHandler} connects calculation and execution
+ * to the Fluid change subscription.
+ */
 export interface PuzzlehuntSyncWork {
 	readonly removedNodes: readonly DocumentNode[];
 	readonly addedRounds: readonly Round[];

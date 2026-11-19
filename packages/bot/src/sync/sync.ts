@@ -69,9 +69,37 @@ export async function createGoogleSheetAssociation(
 	context.puzzlehunt.augmentWithGoogleSheet(puzzle, sheetId);
 }
 
-/** Callbacks must make associations visible in the model before resolving. */
+/**
+ * Provisioning and association persistence for change execution and full reconciliation.
+ *
+ * @remarks
+ * Callbacks must finish persistence and make associations visible in the model before
+ * resolving, so puzzle provisioning can use round associations. The default callbacks
+ * from {@link createSyncProvisioning} retain Fluid's direct augmentation and puzzle-add
+ * logging. Solve/status logging remains in the Fluid commands.
+ *
+ * Durable callers must supply callbacks that complete associations through their trusted
+ * task boundary rather than using the Fluid-facing wrappers.
+ */
 export interface SyncProvisioning {
+	/**
+	 * Provision and associate a node's Discord resources.
+	 *
+	 * @remarks
+	 * {@link provisionDiscordResources} returns association data without writing the model
+	 * or emitting puzzle-add logs. Use {@link DiscordProvisioningOptions} to persist
+	 * confirmed external IDs and reuse them on retries.
+	 */
 	discord(node: Puzzle | Round): Promise<void>;
+	/**
+	 * Provision and associate a puzzle's Google Sheet.
+	 *
+	 * @remarks
+	 * {@link createGoogleSheet} copies the sheet separately from persistence. A durable
+	 * caller must save its returned ID and reuse it rather than copying again on retry,
+	 * then complete the association through its trusted task boundary.
+	 * {@link createGoogleSheetAssociation} is the Fluid-facing wrapper.
+	 */
 	googleSheet(puzzle: Puzzle): Promise<void>;
 }
 
@@ -86,13 +114,20 @@ export function createSyncProvisioning(
 	};
 }
 
+/**
+ * Checkpointing for external Discord resource creation.
+ *
+ * @remarks
+ * Round channels are created concurrently; merge each confirmed field independently
+ * and reuse it on retries. Both channel attempts and their checkpoints settle before a
+ * round provisioning failure is returned. External creation is not exactly-once: a crash
+ * after a Discord request succeeds but before its ID is persisted can still leave an orphan.
+ */
 export interface DiscordProvisioningOptions {
 	/** Previously confirmed resources to reuse, without creating replacements. */
 	readonly existing?: Partial<Record<keyof DiscordRoundInfo, string>>;
 	/**
 	 * Await persistence of each confirmed external ID before proceeding.
-	 * Round channels are created concurrently; merge each field independently.
-	 * A crash between external creation and this callback can still leave an orphan.
 	 */
 	readonly onCreated?: (
 		resource: keyof DiscordRoundInfo,
@@ -503,7 +538,11 @@ function getViewPermissions(
 
 /**
  * Reconcile current model state without requiring historical change events.
- * Existing associations are synchronized, not recreated. Without removal snapshots,
+ *
+ * @remarks
+ * Provisions only missing associations, then refreshes all existing channels, embeds,
+ * and permissions through the model-based helpers. Existing associations are
+ * synchronized, not recreated. Without removal snapshots,
  * this cannot discover orphaned resources belonging to nodes already deleted.
  */
 export async function resyncServerFull(
