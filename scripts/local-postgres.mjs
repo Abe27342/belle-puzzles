@@ -377,6 +377,15 @@ async function killTree(record) {
 	}
 }
 
+/**
+ * Stops a launcher-owned child and reports unsuccessful cleanup.
+ *
+ * @remarks
+ * Node bot/service children receive shutdown over IPC so their existing graceful
+ * handlers run on Windows, where sending SIGTERM would terminate them directly.
+ * Stateless hosts and timed-out children instead have their owned process trees
+ * terminated; the caller must stop dependents before an owned database.
+ */
 export async function stopProcess(record, timeoutMs = 35000) {
 	if (record.cleaned) return;
 	record.stopping = true;
@@ -434,6 +443,16 @@ export async function databaseReady(databaseUrl, inspectDirectory = false) {
 	}
 }
 
+/**
+ * Checks the existing database and returns cleanup for a launcher-owned instance.
+ *
+ * @remarks
+ * A responding instance is never owned. When explicitly configured to start a
+ * stopped cluster, this launches postgres directly and records its process;
+ * cleanup verifies postmaster.pid matches that child before pg_ctl -m fast stop.
+ * Readiness only probes SQL/schema and data-directory identity: initialization,
+ * schema changes, and data-directory deletion are never launch operations.
+ */
 export async function startDatabase(env, records, signal) {
 	const url = new URL(env.DATABASE_URL);
 	const port = Number(url.port || 5432);

@@ -122,9 +122,8 @@ LOCAL_POSTGRES_DATA_DIR='C:\local-data\belle-postgres'
 The directory must already be initialized with the installed PostgreSQL version.
 The database role needs permission to inspect `data_directory` for this option.
 If an instance is already responding, its actual directory must match; it is
-still reused and not owned. Otherwise the launcher starts `postgres` directly
-on the configured loopback address/port and records that process. On shutdown
-it verifies `postmaster.pid` before `pg_ctl -m fast stop`. It never stops a system
+still reused and not owned. Otherwise the launcher starts the configured local
+instance and stops only that instance after its dependents exit. It never stops a system
 service, kills processes by name, or deletes the data directory. Database data,
 hunts, active selections and durable work survive relaunch.
 
@@ -139,7 +138,7 @@ wrong readiness, missing schema/tools/config, and child exits fail explicitly.
 
 Ctrl+C or one VS Code **Stop** triggers reverse-order teardown. Stateless
 SWA/Vite/Functions process trees stop first; bot/worker and service receive
-graceful IPC shutdown (including on Windows), then only an owned database stops.
+graceful shutdown (including on Windows), then only an owned database stops.
 Allow shutdown to finish; forcing the debugger/terminal closed can bypass cleanup.
 Graceful bot/service shutdown has a 35-second bound; a forced cleanup is reported
 as an error and retained-write diagnostics require inspection. Restarting is not
