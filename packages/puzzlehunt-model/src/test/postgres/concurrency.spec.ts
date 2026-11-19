@@ -30,13 +30,12 @@ afterAll(async () => {
 	await database?.close();
 }, 30000);
 beforeEach(async () => {
-	scope = {
-		huntId: crypto.randomUUID(),
-		guildId: snowflake('concurrency-guild'),
-	};
+	await database.reset();
+	scope = await database.store.create(snowflake('concurrency-guild'), {
+		name: 'Contract test hunt',
+	});
 	rootId = crypto.randomUUID();
 	puzzleId = crypto.randomUUID();
-	await database.reset(scope);
 	await database.store.submit(scope, {
 		commandId: crypto.randomUUID(),
 		command: {
