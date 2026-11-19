@@ -1,7 +1,6 @@
-import { ChannelType, DiscordAPIError, type Guild } from 'discord.js';
+import { ChannelType, type Guild } from 'discord.js';
 import { PuzzlehuntModel } from '@belle-puzzles/puzzlehunt-model/model';
 import {
-	HuntCommandError,
 	snowflake,
 	type DocumentNode,
 	type HuntDocumentClient,
@@ -12,8 +11,6 @@ import {
 import {
 	type IntegrationEvent,
 	type IntegrationJob,
-	type IntegrationProgress,
-	type IntegrationProgressTarget,
 	type OwnedHuntIntegrations,
 	type PostgresHuntIntegrationStore,
 } from '@belle-puzzles/puzzlehunt-model/postgres';
@@ -23,7 +20,6 @@ import {
 	removeDiscordAssociation,
 	syncCurrentNode,
 	type PuzzlehuntSyncContext,
-	type SyncMessageDelivery,
 } from './sync.js';
 import {
 	puzzleAddedMessage,
@@ -40,18 +36,14 @@ import {
  * The pool must support session advisory locks, not transaction-mode PgBouncer.
  * Stop the worker before closing the pool.
  *
- * {@link getGuild} must return the authorized guild with role/channel caches populated
- * and a client configured with `rest: { retries: 0 }`. SDK transport retries can duplicate
- * creates/sends after lost responses, so the worker refuses automatic retries. Google
- * copies disable transport retries and use a 30-second request timeout. A separate local
- * client can keep the deployed Fluid client's configuration unchanged.
+ * {@link getGuild} must return the authorized guild with role/channel caches populated.
+ * Google copies use a 30-second request timeout.
  *
  * Batch sizes are 1-1000. Defaults per pass are 10 hunts per guild, 50 jobs, 50 events,
- * and 50 reconciliation nodes per hunt, at 30-second intervals. Known no-effect failures
+ * and 50 reconciliation nodes per hunt, at 30-second intervals. Failed jobs/events
  * use persisted attempts/errors/due times with a 30-second retry base and one-hour cap.
- * Selected Discord 4xx responses are recognized; other errors pause unless
- * {@link isKnownNoEffect} proves that the external service performed no operation.
- * Never classify timeouts or failed checkpoints as safe.
+ * Unknown external outcomes are retried too; unrecorded duplicate resources/messages
+ * are accepted and can be cleaned up manually.
  *
  * {@link createSheet} is injectable for tests. Worker tests use disposable native
  * PostgreSQL and mocked Discord/Google operations, not real services or secrets.
@@ -61,7 +53,7 @@ export interface DurableIntegrationWorkerOptions {
 	/** Must read committed state; never pass a mutable/optimistic model. */
 	readonly documents: HuntDocumentClient;
 	readonly authorizedGuildIds: readonly string[];
-	/** Return a loaded guild from an authorized client configured with rest: { retries: 0 }. */
+	/** Return a loaded guild from the caller's authorized client. */
 	readonly getGuild: (guildId: string) => Guild | Promise<Guild>;
 	readonly onError: (error: Error, scope?: HuntScope) => void;
 	readonly intervalMs?: number;
@@ -72,42 +64,10 @@ export interface DurableIntegrationWorkerOptions {
 	readonly retryBaseMs?: number;
 	readonly retryMaxMs?: number;
 	readonly createSheet?: typeof createGoogleSheet;
-	/**
-	 * Only true when the service definitively rejected a create/send without a side effect.
-	 * Timeouts, lost responses and failed persistence are NOT safe retries.
-	 */
-	readonly isKnownNoEffect?: (error: unknown) => boolean;
 }
-
-class PausedIntegrationError extends Error {}
 
 const asError = (error: unknown): Error =>
 	error instanceof Error ? error : new Error(String(error));
-
-function requireProgress(
-	progress: IntegrationProgress | undefined,
-	workId: string | null
-): void {
-	if (progress === undefined) return;
-	if (
-		progress.blockedError ||
-		progress.pending.length > 0 ||
-		progress.workId !== workId
-	) {
-		throw new PausedIntegrationError(
-			`Manual inspection required in integration_progress: ${
-				progress.blockedError ??
-				(progress.pending.length > 0
-					? `unconfirmed operations ${progress.pending.join(', ')}`
-					: 'resources belong to an earlier work item')
-			}. Confirmed IDs: ${JSON.stringify(progress.confirmed)}`
-		);
-	}
-	if (!progress.due)
-		throw new Error(
-			'Integration operation is waiting for its persisted retry time.'
-		);
-}
 
 /**
  * Explicitly constructed/started by the backend owner; importing this starts no work.
@@ -128,8 +88,8 @@ function requireProgress(
  * and `allPuzzlesRoleId`, plus an available index category and all-puzzles role in that
  * guild, before node provisioning or derived sends. Resource setup is outside this worker.
  *
- * Provisioning reuses {@link provisionDiscordResources} with intent/result/failure
- * checkpoints and {@link createGoogleSheet}. Confirmed associations complete through
+ * Provisioning reuses {@link provisionDiscordResources} with confirmed-ID checkpoints
+ * and {@link createGoogleSheet}. Confirmed associations complete through
  * the trusted store, not general document writes. Periodic {@link syncCurrentNode} calls
  * share full Fluid resync's channel/embed/permission logic, including old/new parent
  * membership, puzzle category movement, ancestor permissions, and repair after a crash
@@ -140,18 +100,15 @@ function requireProgress(
  * Puzzle-add events retain the enqueue-time parent name even if the round is later removed.
  * Events without configured logging are acknowledged without sending. Solve/status logging
  * remains in the Fluid commands; PostgreSQL command wiring must not also send those direct
- * logs. Deletion tombstones proceed independently of blocked log delivery: recorded Discord
+ * logs. Deletion tombstones proceed independently of backed-off log delivery: recorded Discord
  * IDs are deleted idempotently, while Google Sheets are always retained.
  *
- * External effects are not exactly-once. Persisted intent precedes each create/send,
- * including the requested name and destination IDs for manual inspection. Confirmed
- * resource/message IDs are reused, including an embed sent but not yet pinned. Timeouts,
- * lost responses, interrupted intents, and unacknowledged sends pause the node/target or
- * log stream with manual-inspection diagnostics instead of repeating the effect. Later
- * jobs cannot bypass that pause. Stale completions cannot overwrite manual/newer
- * associations; confirmed but rejected results remain recorded. Node deletion retains
- * and blocks progress even if a replacement reuses the ID. There is deliberately no setup
- * ledger, automatic adoption, or general resume CLI.
+ * External effects are not exactly-once. Confirmed resource IDs belong to their job and
+ * are reused on retries. Timeouts, lost responses, and missing checkpoints are retried
+ * with backoff; duplicate resources/messages without a recorded result are acceptable.
+ * Humans can clean them up. Stale completions cannot overwrite manual/newer associations;
+ * rejected results remain recorded on the original job. Deletion cancels its jobs, and a
+ * replacement node's jobs never reuse their results. There is no setup ledger or resume CLI.
  *
  * @example
  * ```ts
@@ -278,14 +235,6 @@ export class DurableIntegrationWorker {
 		);
 	}
 
-	private knownNoEffect(error: unknown): boolean {
-		return (
-			this.options.isKnownNoEffect?.(error) === true ||
-			(error instanceof DiscordAPIError &&
-				[400, 401, 403, 404, 429].includes(error.status))
-		);
-	}
-
 	private context(
 		snapshot: HuntSnapshot,
 		guild: Guild
@@ -336,21 +285,13 @@ export class DurableIntegrationWorker {
 				throw new Error(
 					'Discord guild does not match the authorized scope.'
 				);
-			if (guild.client.rest.options.retries !== 0) {
-				throw new Error(
-					'Durable workers require Discord REST retries: 0; automatic transport retries can duplicate creates/sends.'
-				);
-			}
 			const jobs = await owned.dueJobs(this.jobs);
 			for (const job of jobs) {
 				if (this.stopping) break;
 				await this.processJob(owned, guild, job);
 			}
-			for (
-				let processed = 0;
-				processed < this.events && !this.stopping;
-
-			) {
+			let processed = 0;
+			while (processed < this.events && !this.stopping) {
 				const events = await owned.dueEvents(this.events - processed);
 				if (events.length === 0) break;
 				for (const event of events) {
@@ -362,31 +303,6 @@ export class DurableIntegrationWorker {
 			if (!this.stopping) await this.reconcileNodes(owned, guild);
 		} finally {
 			await owned.release();
-		}
-	}
-
-	private async creationFailed(
-		owned: OwnedHuntIntegrations,
-		nodeId: string,
-		target: IntegrationProgressTarget,
-		resource: string,
-		error: unknown
-	): Promise<void> {
-		if (this.knownNoEffect(error)) {
-			const progress = await owned.progress(nodeId, target);
-			await owned.retryOperation(
-				nodeId,
-				target,
-				resource,
-				asError(error).message,
-				this.retryDelay(progress?.attempts ?? 0)
-			);
-		} else {
-			const message = `Uncertain ${target}/${resource}: ${
-				asError(error).message
-			}. Inspect external resources before retrying.`;
-			await owned.blockProgress(nodeId, target, message);
-			throw new PausedIntegrationError(message, { cause: error });
 		}
 	}
 
@@ -410,151 +326,24 @@ export class DurableIntegrationWorker {
 				job.hadAssociation ||
 				(job.target === 'google' && node.type !== 'puzzle')
 			) {
-				const progress = await owned.progress(job.nodeId, job.target);
-				if (progress && progress.workId === job.id) {
-					await owned.blockProgress(
-						job.nodeId,
-						job.target,
-						'Association already exists or node is gone. Inspect retained external results; no resources were recreated.'
-					);
-				}
 				await this.options.integrations.completeWork(
 					owned.scope,
 					job.id
 				);
 				return;
 			}
-			const context = this.context(snapshot, guild);
-			const progress = await owned.progress(node.id, job.target);
-			requireProgress(progress, job.id);
-			let result: HuntIntegrationCommand;
-			if (job.target === 'discord') {
-				if (!this.ancestorsReady(snapshot, node)) {
-					throw new Error(
-						'Waiting for committed ancestor Discord associations.'
-					);
-				}
-				const current =
-					node.type === 'round'
-						? context.puzzlehunt.getRound(node.id)
-						: context.puzzlehunt.getPuzzle(node.id);
-				const ids = await provisionDiscordResources(
-					context,
-					guild,
-					current,
-					{
-						existing: progress?.confirmed,
-						onCreating: (resource) =>
-							owned.beginOperation(
-								node.id,
-								job.target,
-								resource,
-								job.id,
-								{
-									name: node.name,
-									indexId: context.indexId,
-									parentChannelId:
-										node.type === 'puzzle'
-											? context.puzzlehunt.getRound(
-													node.parentId
-											  ).discord.channelId
-											: undefined,
-								}
-							),
-						onCreated: (resource, id) =>
-							this.checkpoint(
-								owned,
-								node.id,
-								job.target,
-								resource,
-								id
-							),
-						onCreateFailed: (resource, error) =>
-							this.creationFailed(
-								owned,
-								node.id,
-								job.target,
-								resource,
-								error
-							),
-					}
-				);
-				// Raw provisioning returns string IDs; the shared Fluid helper also accepts SDK objects.
-				const id = (value: string | { id: string }) =>
-					snowflake(typeof value === 'string' ? value : value.id);
-				result = {
-					type: 'set-property',
-					nodeId: node.id,
-					property: 'discord',
-					value: {
-						channelId: id(ids.channel),
-						roleId: id(ids.role),
-						...('indexChannel' in ids
-							? { indexChannelId: id(ids.indexChannel) }
-							: {}),
-					},
-				};
-			} else {
-				let sheetId = progress?.confirmed.sheet;
-				if (sheetId === undefined) {
-					await owned.beginOperation(
-						node.id,
-						'google',
-						'sheet',
-						job.id,
-						{
-							name: node.name,
-							googleFolderId: context.googleFolderId,
-						}
-					);
-					try {
-						sheetId = await (
-							this.options.createSheet ?? createGoogleSheet
-						)(node.name, context.googleFolderId, {
-							retry: false,
-							timeout: 30000,
-						});
-					} catch (error) {
-						await this.creationFailed(
-							owned,
-							node.id,
-							'google',
-							'sheet',
-							error
-						);
-						throw error;
-					}
-					await this.checkpoint(
-						owned,
-						node.id,
-						'google',
-						'sheet',
-						sheetId
-					);
-				}
-				result = {
-					type: 'set-property',
-					nodeId: node.id,
-					property: 'sheetId',
-					value: sheetId,
-				};
-			}
-			try {
-				await this.options.integrations.completeWork(
-					owned.scope,
-					job.id,
-					result
-				);
-			} catch (error) {
-				if (error instanceof HuntCommandError) {
-					await owned.blockProgress(
-						node.id,
-						job.target,
-						`Association result rejected: ${error.message}. Inspect confirmed external IDs before resolving.`
-					);
-				}
-				throw error;
-			}
+			const result = await this.provisionJob(
+				owned,
+				guild,
+				job,
+				snapshot,
+				node
+			);
+			await this.options.integrations.completeWork(
+				owned.scope,
+				job.id,
+				result
+			);
 			// Each subsequent job and reconciliation reads a new committed snapshot, not this model.
 		} catch (error) {
 			const message = `${job.target} job ${job.id} (node ${
@@ -564,20 +353,65 @@ export class DurableIntegrationWorker {
 				new Error(message, { cause: error }),
 				owned.scope
 			);
-			const progress = await owned.progress(job.nodeId, job.target);
-			const pause =
-				error instanceof PausedIntegrationError ||
-				!!progress?.blockedError ||
-				(progress?.pending.length ?? 0) > 0;
-			if (pause && !progress?.blockedError)
-				await owned.blockProgress(job.nodeId, job.target, message);
-			await owned.failJob(
-				job.id,
-				message,
-				this.retryDelay(job.attempts),
-				pause
+			await owned.failJob(job.id, message, this.retryDelay(job.attempts));
+		}
+	}
+
+	private async provisionJob(
+		owned: OwnedHuntIntegrations,
+		guild: Guild,
+		job: IntegrationJob,
+		snapshot: HuntSnapshot,
+		node: DocumentNode
+	): Promise<HuntIntegrationCommand> {
+		const context = this.context(snapshot, guild);
+		if (job.target === 'google') {
+			let sheetId = job.confirmed.sheet;
+			if (sheetId === undefined) {
+				sheetId = await (this.options.createSheet ?? createGoogleSheet)(
+					node.name,
+					context.googleFolderId,
+					{ timeout: 30000 }
+				);
+				await owned.confirmResource(job.id, 'sheet', sheetId);
+			}
+			return {
+				type: 'set-property',
+				nodeId: node.id,
+				property: 'sheetId',
+				value: sheetId,
+			};
+		}
+
+		if (!this.ancestorsReady(snapshot, node)) {
+			throw new Error(
+				'Waiting for committed ancestor Discord associations.'
 			);
 		}
+		const current =
+			node.type === 'round'
+				? context.puzzlehunt.getRound(node.id)
+				: context.puzzlehunt.getPuzzle(node.id);
+		const ids = await provisionDiscordResources(context, guild, current, {
+			existing: job.confirmed,
+			onCreated: (resource, id) =>
+				owned.confirmResource(job.id, resource, id),
+		});
+		// Raw provisioning returns string IDs; the shared Fluid helper also accepts SDK objects.
+		const id = (value: string | { id: string }) =>
+			snowflake(typeof value === 'string' ? value : value.id);
+		return {
+			type: 'set-property',
+			nodeId: node.id,
+			property: 'discord',
+			value: {
+				channelId: id(ids.channel),
+				roleId: id(ids.role),
+				...('indexChannel' in ids
+					? { indexChannelId: id(ids.indexChannel) }
+					: {}),
+			},
+		};
 	}
 
 	private async processEvent(
@@ -585,87 +419,28 @@ export class DurableIntegrationWorker {
 		guild: Guild,
 		item: IntegrationEvent
 	): Promise<void> {
-		const { event, configuration, parentName } = item.payload;
-		let sending = false;
-		let confirmed = false;
 		try {
-			if (item.started)
-				throw new PausedIntegrationError(
-					'Unacknowledged log send; inspect the logging channel before retrying.'
-				);
 			await owned.startEvent(item);
+			const { event } = item.payload;
+			let messageId: string | undefined;
 			if (event.type === 'node-deleted') {
 				await removeDiscordAssociation(guild, event.node);
 			} else {
-				let message: string | undefined;
-				let channelId: string | undefined;
-				if (
-					event.type === 'node-added' &&
-					event.node.type === 'puzzle'
-				) {
-					channelId = configuration.loggingChannelIds?.puzzleAdd;
-					// Older queued events may predate the parent-name payload field.
-					const parent =
-						parentName ??
-						(await this.options.documents.read(owned.scope))
-							.document.nodes[event.node.parentId]?.name;
-					if (channelId && parent === undefined)
-						throw new Error(
-							'Puzzle-add event has no recorded or surviving parent name.'
-						);
-					if (parent !== undefined)
-						message = puzzleAddedMessage(parent, event.node.name);
-				} else if (
-					event.type === 'puzzle-solved' &&
-					event.node.answer !== undefined
-				) {
-					channelId = configuration.loggingChannelIds?.puzzleSolve;
-					message = puzzleSolvedMessage(
-						event.node.name,
-						event.node.answer
-					);
-				} else if (event.type === 'puzzle-status-updated') {
-					channelId =
-						configuration.loggingChannelIds?.puzzleStatusUpdate;
-					message = puzzleStatusMessage(
-						event.node.name,
-						event.node.status
-					);
-				}
-				if (message !== undefined && channelId !== undefined) {
-					const channel = guild.channels.cache.get(channelId);
+				const log = await this.eventLog(owned.scope, item.payload);
+				if (log !== undefined) {
+					const channel = guild.channels.cache.get(log.channelId);
 					if (!channel?.isTextBased())
 						throw new Error(
-							`Logging channel ${channelId} is unavailable.`
+							`Logging channel ${log.channelId} is unavailable.`
 						);
-					await owned.beginEventDelivery(item);
-					sending = true;
-					const sent = await channel.send(message);
-					confirmed = true;
-					try {
-						await owned.completeEvent(item, sent.id);
-					} catch (error) {
-						throw new PausedIntegrationError(
-							`Delivery acknowledgement failed for message ${sent.id}.`,
-							{ cause: error }
-						);
-					}
-					return;
+					messageId = (await channel.send(log.content)).id;
 				}
 			}
-			await owned.completeEvent(item);
+			await owned.completeEvent(item, messageId);
 		} catch (error) {
-			const pause =
-				item.started ||
-				error instanceof PausedIntegrationError ||
-				(sending && (confirmed || !this.knownNoEffect(error)));
-			const message =
-				`Event ${item.commandId}/${item.ordinal}: ${
-					asError(error).message
-				}` +
-				(pause
-					? ' Manual delivery inspection required; no automatic resend.'
-					: '');
+			const message = `Event ${item.commandId}/${item.ordinal}: ${
+				asError(error).message
+			}`;
 			this.options.onError(
 				new Error(message, { cause: error }),
 				owned.scope
@@ -673,64 +448,56 @@ export class DurableIntegrationWorker {
 			await owned.failEvent(
 				item,
 				message,
-				this.retryDelay(item.attempts),
-				pause
+				this.retryDelay(item.attempts)
 			);
 		}
 	}
 
-	private delivery(owned: OwnedHuntIntegrations): SyncMessageDelivery {
-		return async (node, channel, content) => {
-			const progress = await owned.progress(node.id, 'embed');
-			requireProgress(progress, null);
-			const existing = progress?.confirmed[channel.id];
-			if (existing !== undefined) {
-				const message = await channel.messages.fetch(existing);
-				await message.edit(content);
-				return message;
+	private async eventLog(
+		scope: HuntScope,
+		{ event, configuration, parentName }: IntegrationEvent['payload']
+	): Promise<{ channelId: string; content: string } | undefined> {
+		const channels = configuration.loggingChannelIds;
+		if (!channels) return undefined;
+		switch (event.type) {
+			case 'node-added': {
+				if (event.node.type !== 'puzzle') return undefined;
+				// Older queued events may predate the parent-name payload field.
+				const parent =
+					parentName ??
+					(await this.options.documents.read(scope)).document.nodes[
+						event.node.parentId
+					]?.name;
+				if (parent === undefined) {
+					throw new Error(
+						'Puzzle-add event has no recorded or surviving parent name.'
+					);
+				}
+				return {
+					channelId: channels.puzzleAdd,
+					content: puzzleAddedMessage(parent, event.node.name),
+				};
 			}
-			await owned.beginOperation(node.id, 'embed', channel.id, null, {
-				name: node.name,
-				channelId: channel.id,
-			});
-			let message;
-			try {
-				message = await channel.send(content);
-			} catch (error) {
-				await this.creationFailed(
-					owned,
-					node.id,
-					'embed',
-					channel.id,
-					error
-				);
-				throw error;
-			}
-			await this.checkpoint(
-				owned,
-				node.id,
-				'embed',
-				channel.id,
-				message.id
-			);
-			return message;
-		};
-	}
-
-	private async checkpoint(
-		owned: OwnedHuntIntegrations,
-		nodeId: string,
-		target: IntegrationProgressTarget,
-		resource: string,
-		id: string
-	): Promise<void> {
-		try {
-			await owned.confirmOperation(nodeId, target, resource, id);
-		} catch (error) {
-			throw new Error(
-				`Checkpoint failed for ${target}/${resource}, confirmed external ID ${id}.`,
-				{ cause: error }
-			);
+			case 'puzzle-solved':
+				return event.node.answer === undefined
+					? undefined
+					: {
+							channelId: channels.puzzleSolve,
+							content: puzzleSolvedMessage(
+								event.node.name,
+								event.node.answer
+							),
+					  };
+			case 'puzzle-status-updated':
+				return {
+					channelId: channels.puzzleStatusUpdate,
+					content: puzzleStatusMessage(
+						event.node.name,
+						event.node.status
+					),
+				};
+			case 'node-deleted':
+				return undefined;
 		}
 	}
 
@@ -754,14 +521,13 @@ export class DurableIntegrationWorker {
 				if (!node?.discord || !this.ancestorsReady(fresh, node))
 					continue;
 				const context = this.context(fresh, guild);
-				requireProgress(await owned.progress(id, 'embed'), null);
+				await owned.assertOwnership();
 				await syncCurrentNode(
 					context,
 					guild,
 					node.type === 'round'
 						? context.puzzlehunt.getRound(id)
-						: context.puzzlehunt.getPuzzle(id),
-					this.delivery(owned)
+						: context.puzzlehunt.getPuzzle(id)
 				);
 			} catch (error) {
 				this.options.onError(

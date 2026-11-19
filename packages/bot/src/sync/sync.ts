@@ -33,13 +33,6 @@ export type PuzzlehuntSyncContext = Pick<
 	'puzzlehunt' | 'googleFolderId' | 'indexId' | 'allPuzzlesRoleId'
 >;
 
-/** Workers can persist embed-send intent and reuse a confirmed, not-yet-pinned message. */
-export type SyncMessageDelivery = (
-	node: Puzzle | Round,
-	channel: TextChannel,
-	content: EmbedContent
-) => Promise<Message>;
-
 async function settleSync(tasks: readonly Promise<unknown>[]): Promise<void> {
 	const settled = await Promise.allSettled(tasks);
 	const failed = settled.find((result) => result.status === 'rejected');
@@ -146,12 +139,6 @@ export function createSyncProvisioning(
 export interface DiscordProvisioningOptions {
 	/** Previously confirmed resources to reuse, without creating replacements. */
 	readonly existing?: Partial<Record<keyof DiscordRoundInfo, string>>;
-	readonly onCreating?: (resource: keyof DiscordRoundInfo) => Promise<void>;
-	/** Called only when the create itself rejects, never for a failed checkpoint. */
-	readonly onCreateFailed?: (
-		resource: keyof DiscordRoundInfo,
-		error: unknown
-	) => Promise<void>;
 	/**
 	 * Await persistence of each confirmed external ID before proceeding.
 	 */
@@ -200,14 +187,7 @@ async function provisionDiscordResource(
 	if (existing !== undefined) {
 		return existing;
 	}
-	await options.onCreating?.(resource);
-	let id: string;
-	try {
-		({ id } = await create());
-	} catch (error) {
-		await options.onCreateFailed?.(resource, error);
-		throw error;
-	}
+	const { id } = await create();
 	await options.onCreated?.(resource, id);
 	return id;
 }
@@ -395,19 +375,17 @@ export async function syncRoles(
 export const syncChannel = (
 	context: PuzzlehuntSyncContext,
 	guild: Guild,
-	puzzleObj: Puzzle | Round,
-	deliverMessage?: SyncMessageDelivery
+	puzzleObj: Puzzle | Round
 ): Promise<void> => {
 	return puzzleObj.type === 'puzzle'
-		? syncPuzzleChannel(context, guild, puzzleObj, deliverMessage)
-		: syncRoundChannels(context, guild, puzzleObj, deliverMessage);
+		? syncPuzzleChannel(context, guild, puzzleObj)
+		: syncRoundChannels(context, guild, puzzleObj);
 };
 
 async function syncPuzzleChannel(
 	context: PuzzlehuntSyncContext,
 	guild: Guild,
-	puzzle: Puzzle,
-	deliverMessage?: SyncMessageDelivery
+	puzzle: Puzzle
 ): Promise<void> {
 	const channel = guild.channels.cache.get(puzzle.discord.channelId);
 	assert(
@@ -428,9 +406,7 @@ async function syncPuzzleChannel(
 	};
 	const updatePuzzleEmbed = updateEmbedFactory(
 		channel,
-		generatePuzzleEmbed(puzzle),
-		deliverMessage &&
-			((channel, content) => deliverMessage(puzzle, channel, content))
+		generatePuzzleEmbed(puzzle)
 	);
 	const updateParent = async () => {
 		const parentId = context.puzzlehunt.getRound(puzzle.parentId).discord
@@ -450,8 +426,7 @@ async function syncPuzzleChannel(
 async function syncRoundChannels(
 	context: PuzzlehuntSyncContext,
 	guild: Guild,
-	round: Round,
-	deliverMessage?: SyncMessageDelivery
+	round: Round
 ): Promise<void> {
 	const indexChannel = guild.channels.cache.get(round.discord.indexChannelId);
 	assert(
@@ -466,9 +441,7 @@ async function syncRoundChannels(
 
 	const updateIndex = updateEmbedFactory(
 		indexChannel,
-		generateRoundEmbed(round, context.puzzlehunt),
-		deliverMessage &&
-			((channel, content) => deliverMessage(round, channel, content))
+		generateRoundEmbed(round, context.puzzlehunt)
 	);
 	const updateCategoryChannelName = async () => {
 		let expectedChannelName = round.name
@@ -496,14 +469,7 @@ async function syncRoundChannels(
 }
 
 const updateEmbedFactory =
-	(
-		channel: TextChannel,
-		embedData: EmbedContent,
-		deliverMessage?: (
-			channel: TextChannel,
-			content: EmbedContent
-		) => Promise<Message>
-	): (() => Promise<void>) =>
+	(channel: TextChannel, embedData: EmbedContent): (() => Promise<void>) =>
 	async () => {
 		await channel.messages.fetchPinned();
 		const message = findEmbed(channel);
@@ -562,9 +528,7 @@ const updateEmbedFactory =
 				await message.edit(embedData);
 			}
 		} else {
-			const message = deliverMessage
-				? await deliverMessage(channel, embedData)
-				: await channel.send(embedData);
+			const message = await channel.send(embedData);
 			await message.pin();
 		}
 	};
@@ -659,11 +623,10 @@ export async function resyncServerFull(
 export async function syncCurrentNode(
 	context: PuzzlehuntSyncContext,
 	guild: Guild,
-	node: Puzzle | Round,
-	deliverMessage?: SyncMessageDelivery
+	node: Puzzle | Round
 ): Promise<void> {
 	await settleSync([
-		syncChannel(context, guild, node, deliverMessage),
+		syncChannel(context, guild, node),
 		syncRoles(context, guild, node),
 	]);
 }

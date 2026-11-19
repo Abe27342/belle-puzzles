@@ -120,13 +120,6 @@ export async function recordPendingIntegrationWork(
 			 AND completed_at IS NULL AND cancelled_at IS NULL`,
 			[committed.huntId, removed]
 		);
-		await connection.query(
-			`UPDATE integration_progress
-			 SET blocked_error = 'Node deleted; inspect retained resource IDs before any further operation.',
-			     updated_at = clock_timestamp()
-			 WHERE hunt_id = $1 AND node_id = ANY($2::uuid[])`,
-			[committed.huntId, removed]
-		);
 	}
 	const nodes = changedIds.flatMap((id) => {
 		const node = committed.document.nodes[id];

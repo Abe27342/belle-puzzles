@@ -50,7 +50,7 @@ afterAll(async () => {
 }, 30000);
 beforeEach(async () => {
 	await database.reset();
-	discord = new MockDiscord({ intents: [], rest: { retries: 0 } });
+	discord = new MockDiscord();
 	integrations = new PostgresHuntIntegrationStore(database.pool);
 	errors = [];
 	workers = [];
@@ -145,9 +145,6 @@ async function makeDue(): Promise<void> {
 	await database.pool.query(
 		"UPDATE integration_events SET available_at = now() - interval '1 second'"
 	);
-	await database.pool.query(
-		"UPDATE integration_progress SET available_at = now() - interval '1 second'"
-	);
 }
 
 function messages(): string[] {
@@ -177,7 +174,7 @@ describe('Durable integration worker', () => {
 		expect(createSheet).toHaveBeenCalledExactlyOnceWith(
 			'Latest puzzle',
 			'folder',
-			{ retry: false, timeout: 30000 }
+			{ timeout: 30000 }
 		);
 		const channel = discord.serverState.findChannelBy(
 			'id',
@@ -252,17 +249,12 @@ describe('Durable integration worker', () => {
 			errors.some((error) => error.message.includes('not configured'))
 		).toBe(true);
 		expect(
-			(await database.pool.query('SELECT * FROM integration_progress'))
-				.rows
+			(
+				await database.pool.query(
+					"SELECT id FROM integration_jobs WHERE confirmed <> '{}'::jsonb"
+				)
+			).rows
 		).toEqual([]);
-	});
-
-	it('refuses SDK-level blind transport retries before creating or sending', async () => {
-		const unsafe = new MockDiscord();
-		await worker({ getGuild: () => unsafe.getGuild() }).reconcile();
-		expect(createSheet).not.toHaveBeenCalled();
-		expect(unsafe.serverState.channels).toEqual([]);
-		expect(errors[0].message).toContain('REST retries: 0');
 	});
 
 	it('excludes a second worker and waits for in-flight work during shutdown', async () => {
@@ -295,18 +287,17 @@ describe('Durable integration worker', () => {
 		).toHaveProperty('sheetId', 'confirmed-sheet');
 	});
 
-	it('backs off known failures, reuses independently confirmed Discord IDs, and retries on a later pass', async () => {
+	it('retries lost Discord create responses and reuses independently confirmed IDs after restart', async () => {
 		const guild = discord.getGuild();
 		const original = guild.channels.create.bind(guild.channels);
-		const rejected = new Error('Rejected before creation');
+		const rejected = new Error('Response lost after creation');
 		vi.spyOn(guild.channels, 'create')
-			.mockImplementationOnce(async () => {
+			.mockImplementationOnce(async (options) => {
+				await original(options);
 				throw rejected;
 			})
 			.mockImplementation(original);
-		const first = worker({
-			isKnownNoEffect: (error) => error === rejected,
-		});
+		const first = worker();
 		await first.reconcile();
 		const { rows: failed } = await database.pool.query(
 			`SELECT attempts, last_error, available_at > now() AS delayed FROM integration_jobs
@@ -316,39 +307,49 @@ describe('Durable integration worker', () => {
 		expect(failed[0]).toMatchObject({
 			attempts: 1,
 			delayed: true,
-			last_error: expect.stringContaining('Rejected'),
+			last_error: expect.stringContaining('Response lost'),
 		});
-		const owner = await own();
-		const progress = (await owner.progress(rootId, 'discord'))!;
-		await owner.release();
-		expect(progress.pending).toEqual([]);
-		expect(progress.confirmed).toHaveProperty('role');
-		expect(progress.confirmed).toHaveProperty('indexChannel');
+		const {
+			rows: [{ confirmed }],
+		} = await database.pool.query<{ confirmed: Record<string, string> }>(
+			"SELECT confirmed FROM integration_jobs WHERE node_id = $1 AND target = 'discord'",
+			[rootId]
+		);
+		expect(confirmed).toHaveProperty('role');
+		expect(confirmed).toHaveProperty('indexChannel');
 		const roles = discord.serverState.roles.length;
 		await first.reconcile();
 		expect(discord.serverState.roles).toHaveLength(roles);
 		await makeDue();
-		await first.reconcile();
+		await worker().reconcile();
 		const root = (await database.store.read(scope)).document.nodes[rootId];
-		expect(root.discord!.roleId).toBe(progress.confirmed.role);
-		expect(root.discord!.indexChannelId).toBe(
-			progress.confirmed.indexChannel
-		);
+		expect(root.discord!.roleId).toBe(confirmed.role);
+		expect(root.discord!.indexChannelId).toBe(confirmed.indexChannel);
 		expect(
 			discord.serverState.roles.filter((role) => role.name === 'Root')
 		).toHaveLength(1);
+		const categories = discord.serverState.channels.filter(
+			(channel) =>
+				channel.type === ChannelType.GuildCategory &&
+				channel.name === 'root'
+		);
+		expect(categories).toHaveLength(2);
+		expect(
+			categories.filter(
+				(channel) => channel.id === root.discord!.channelId
+			)
+		).toHaveLength(1);
 	});
 
-	it('pauses interrupted creates across restart and later jobs for the same node/target', async () => {
-		const owner = await own();
-		const job = (await owner.dueJobs()).find(
-			(value) => value.target === 'google'
-		)!;
-		await owner.beginOperation(puzzleId, 'google', 'sheet', job.id, {
-			name: 'Puzzle',
-			googleFolderId: 'folder',
+	it('retries an unknown sheet creation outcome after restart, without letting later jobs bypass backoff', async () => {
+		const copied: string[] = [];
+		createSheet.mockImplementation(async () => {
+			const id = `sheet-${copied.length + 1}`;
+			copied.push(id);
+			if (copied.length === 1)
+				throw new Error('Response lost after copying');
+			return id;
 		});
-		await owner.release();
 		await worker().reconcile();
 		await submit({
 			type: 'set-property',
@@ -356,26 +357,28 @@ describe('Durable integration worker', () => {
 			property: 'name',
 			value: 'Changed later',
 		});
+		await worker().reconcile();
+		expect(copied).toEqual(['sheet-1']);
 		await makeDue();
 		await worker().reconcile();
-		expect(createSheet).not.toHaveBeenCalled();
-		const { rows } = await database.pool.query(
-			`SELECT paused_at IS NOT NULL AS paused, last_error FROM integration_jobs WHERE id = $1`,
-			[job.id]
+		expect(copied).toEqual(['sheet-1', 'sheet-2']);
+		expect(
+			(await database.store.read(scope)).document.nodes[puzzleId]
+		).toHaveProperty('sheetId', 'sheet-2');
+		expect(createSheet).toHaveBeenLastCalledWith(
+			'Changed later',
+			'folder',
+			{ timeout: 30000 }
 		);
-		expect(rows[0]).toMatchObject({
-			paused: true,
-			last_error: expect.stringContaining('Manual inspection'),
-		});
 	});
 
-	it('retains a pause and reports the external ID if a successful creation cannot be checkpointed', async () => {
-		const checkpoint = OwnedHuntIntegrations.prototype.confirmOperation;
+	it('retries a successful creation whose result could not be checkpointed', async () => {
+		const checkpoint = OwnedHuntIntegrations.prototype.confirmResource;
 		vi.spyOn(
 			OwnedHuntIntegrations.prototype,
-			'confirmOperation'
+			'confirmResource'
 		).mockImplementation(async function (...args) {
-			if (args[1] === 'google')
+			if (args[1] === 'sheet')
 				throw new Error('Checkpoint connection failed');
 			return checkpoint.apply(this, args);
 		});
@@ -383,25 +386,18 @@ describe('Durable integration worker', () => {
 		vi.restoreAllMocks();
 		await makeDue();
 		await worker().reconcile();
-		expect(createSheet).toHaveBeenCalledTimes(1);
+		expect(createSheet).toHaveBeenCalledTimes(2);
 		expect(
 			(await database.store.read(scope)).document.nodes[puzzleId]
-		).not.toHaveProperty('sheetId');
-		const owner = await own();
-		expect(await owner.progress(puzzleId, 'google')).toMatchObject({
-			pending: ['sheet'],
-			intents: { sheet: { name: 'Puzzle', googleFolderId: 'folder' } },
-			blockedError: expect.stringContaining('sheet-1'),
-		});
-		await owner.release();
+		).toHaveProperty('sheetId', 'sheet-2');
 		expect(
 			errors.some((error) =>
-				error.message.includes('confirmed external ID sheet-1')
+				error.message.includes('Checkpoint connection failed')
 			)
 		).toBe(true);
 	});
 
-	it('reuses checkpointed embed messages after a pin failure instead of sending again', async () => {
+	it('retries embed creation after a pin failure, accepting an unpinned duplicate', async () => {
 		const put = vi
 			.mocked(discord.getClient().rest.put)
 			.getMockImplementation()!;
@@ -416,41 +412,44 @@ describe('Durable integration worker', () => {
 		).toBe(true);
 		await worker().reconcile();
 		expect([...discord.serverState.messages.values()].flat()).toHaveLength(
-			messageCount
+			messageCount + 1
 		);
 		expect(errors.map((error) => error.message)).toEqual([
 			expect.stringContaining('Pin unavailable'),
 		]);
-		expect(
-			[...discord.serverState.messages.values()]
-				.flat()
-				.filter((message) => message.embeds?.length)
-				.every((message) => message.pinned)
-		).toBe(true);
-	});
-
-	it('does not duplicate uncheckpointed embed sends on restart', async () => {
-		const checkpoint = OwnedHuntIntegrations.prototype.confirmOperation;
-		vi.spyOn(
-			OwnedHuntIntegrations.prototype,
-			'confirmOperation'
-		).mockImplementation(async function (...args) {
-			if (args[1] === 'embed')
-				throw new Error('Crash before saving message ID');
-			return checkpoint.apply(this, args);
-		});
-		await worker().reconcile();
-		const count = [...discord.serverState.messages.values()].flat().length;
-		vi.restoreAllMocks();
+		const embeds = [...discord.serverState.messages.values()]
+			.flat()
+			.filter((message) => message.embeds?.length);
+		expect(embeds.filter((message) => message.pinned)).toHaveLength(3);
+		expect(embeds.filter((message) => !message.pinned)).toHaveLength(1);
 		await worker().reconcile();
 		expect([...discord.serverState.messages.values()].flat()).toHaveLength(
-			count
+			messageCount + 1
 		);
+	});
+
+	it('reuses a confirmed sheet after completion fails before committing', async () => {
+		const complete = integrations.completeWork.bind(integrations);
+		let reject = true;
+		vi.spyOn(integrations, 'completeWork').mockImplementation(
+			async (scope, workId, result) => {
+				if (reject && result?.property === 'sheetId') {
+					reject = false;
+					throw new Error('Completion unavailable');
+				}
+				return complete(scope, workId, result);
+			}
+		);
+		await worker().reconcile();
 		expect(
-			errors.some((error) =>
-				error.message.includes('unconfirmed operations')
-			)
-		).toBe(true);
+			(await database.store.read(scope)).document.nodes[puzzleId]
+		).not.toHaveProperty('sheetId');
+		await makeDue();
+		await worker().reconcile();
+		expect(createSheet).toHaveBeenCalledTimes(1);
+		expect(
+			(await database.store.read(scope)).document.nodes[puzzleId]
+		).toHaveProperty('sheetId', 'sheet-1');
 	});
 
 	it('periodically discovers commands committed after startup without notification hints', async () => {
@@ -492,15 +491,25 @@ describe('Durable integration worker', () => {
 		expect(
 			(await database.store.read(scope)).document.nodes[puzzleId]
 		).toHaveProperty('sheetId', 'manual-sheet');
-		const owner = await own();
-		expect(await owner.progress(puzzleId, 'google')).toMatchObject({
+		const { rows } = await database.pool.query(
+			"SELECT id, confirmed, last_error FROM integration_jobs WHERE node_id = $1 AND target = 'google' ORDER BY source_revision",
+			[puzzleId]
+		);
+		expect(rows[0]).toMatchObject({
 			confirmed: { sheet: 'created-sheet' },
-			blockedError: expect.stringContaining('rejected'),
+			last_error: expect.stringContaining('association changed'),
 		});
-		await owner.release();
 		await makeDue();
 		await worker().reconcile();
 		expect(createSheet).toHaveBeenCalledTimes(1);
+		expect(
+			(
+				await database.pool.query(
+					'SELECT completed_at IS NOT NULL AS completed FROM integration_jobs WHERE id = $1',
+					[rows[0].id]
+				)
+			).rows
+		).toEqual([{ completed: true }]);
 	});
 
 	it('cannot attach cancelled results to a replacement node and retains their diagnostics', async () => {
@@ -524,14 +533,21 @@ describe('Durable integration worker', () => {
 		await worker().reconcile();
 		expect(
 			(await database.store.read(scope)).document.nodes[puzzleId]
-		).not.toHaveProperty('sheetId');
-		const owner = await own();
-		expect(await owner.progress(puzzleId, 'google')).toMatchObject({
+		).toHaveProperty('sheetId', 'sheet-1');
+		const { rows } = await database.pool.query(
+			"SELECT confirmed, cancelled_at IS NOT NULL AS cancelled, last_error FROM integration_jobs WHERE node_id = $1 AND target = 'google' ORDER BY source_revision",
+			[puzzleId]
+		);
+		expect(rows[0]).toMatchObject({
 			confirmed: { sheet: 'orphan-sheet' },
-			blockedError: expect.stringContaining('rejected'),
+			cancelled: true,
+			last_error: expect.stringContaining('no longer pending'),
 		});
-		await owner.release();
-		expect(createSheet).toHaveBeenCalledTimes(1);
+		expect(rows[1]).toMatchObject({
+			confirmed: { sheet: 'sheet-1' },
+			cancelled: false,
+		});
+		expect(createSheet).toHaveBeenCalledTimes(2);
 	});
 
 	it('delivers distinct historical logs in order, and deletes tombstone IDs without deleting sheets', async () => {
@@ -587,32 +603,63 @@ describe('Durable integration worker', () => {
 		).toEqual([]);
 	});
 
-	it('pauses a log with a lost send response and does not resend after restart', async () => {
-		const snapshot = await database.store.read(scope);
-		const channel = discord
-			.getGuild()
-			.channels.cache.get(
-				snapshot.document.configuration.loggingChannelIds!.puzzleAdd
-			)!;
-		if (!channel.isTextBased()) throw new Error('Expected logging channel');
-		const send = channel.send.bind(channel);
-		vi.spyOn(channel, 'send').mockImplementationOnce(async (content) => {
-			await send(content);
-			throw new Error('Response lost after delivery');
-		});
+	it.each(['send response', 'acknowledgement'] as const)(
+		'retries a log after a lost %s, accepting duplicate delivery',
+		async (failure) => {
+			const snapshot = await database.store.read(scope);
+			const channel = discord
+				.getGuild()
+				.channels.cache.get(
+					snapshot.document.configuration.loggingChannelIds!.puzzleAdd
+				)!;
+			if (!channel.isTextBased())
+				throw new Error('Expected logging channel');
+			if (failure === 'send response') {
+				const send = channel.send.bind(channel);
+				vi.spyOn(channel, 'send').mockImplementationOnce(
+					async (content) => {
+						await send(content);
+						throw new Error('Response lost after delivery');
+					}
+				);
+			} else {
+				const complete = OwnedHuntIntegrations.prototype.completeEvent;
+				let fail = true;
+				vi.spyOn(
+					OwnedHuntIntegrations.prototype,
+					'completeEvent'
+				).mockImplementation(async function (event, messageId) {
+					if (fail && messageId !== undefined) {
+						fail = false;
+						throw new Error('Response lost after delivery');
+					}
+					return complete.call(this, event, messageId);
+				});
+			}
 
-		await worker().reconcile();
-		await makeDue();
-		await worker().reconcile();
-		expect(messages()).toEqual([
-			'New puzzle unlocked in round "Round": "Puzzle".',
-		]);
-		const { rows } = await database.pool.query(
-			`SELECT last_error FROM integration_events WHERE paused_at IS NOT NULL`
-		);
-		expect(rows).toHaveLength(1);
-		expect(rows[0].last_error).toContain('Manual delivery inspection');
-	});
+			await worker().reconcile();
+			expect(messages()).toHaveLength(1);
+			await worker().reconcile();
+			expect(messages()).toHaveLength(1);
+			await makeDue();
+			await worker().reconcile();
+			expect(messages()).toEqual([
+				'New puzzle unlocked in round "Round": "Puzzle".',
+				'New puzzle unlocked in round "Round": "Puzzle".',
+			]);
+			const { rows } = await database.pool.query(
+				`SELECT last_error, attempts, delivered_at IS NOT NULL AS delivered FROM integration_events WHERE attempts > 1`
+			);
+			expect(rows).toHaveLength(1);
+			expect(rows[0]).toMatchObject({
+				last_error: expect.stringContaining(
+					'Response lost after delivery'
+				),
+				attempts: 2,
+				delivered: true,
+			});
+		}
+	);
 
 	it('counts and backs off event attempts even when the logging channel is unavailable before sending', async () => {
 		const snapshot = await database.store.read(scope);
@@ -626,15 +673,14 @@ describe('Durable integration worker', () => {
 		await makeDue();
 		await instance.reconcile();
 		const { rows } = await database.pool.query(
-			`SELECT attempts, last_error, available_at > now() + interval '15 seconds' AS backed_off,
-			 delivery_started_at FROM integration_events WHERE delivered_at IS NULL`
+			`SELECT attempts, last_error, available_at > now() + interval '15 seconds' AS backed_off
+			 FROM integration_events WHERE delivered_at IS NULL`
 		);
 		expect(rows).toEqual([
 			{
 				attempts: 2,
 				last_error: expect.stringContaining('unavailable'),
 				backed_off: true,
-				delivery_started_at: null,
 			},
 		]);
 		guild.channels.cache.set(channelId, channel);

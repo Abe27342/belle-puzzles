@@ -106,29 +106,9 @@ describe('Authoritative commands on multiple PostgreSQL connections', () => {
 			)!;
 			jobId = job.id;
 			await owner.startJob(job.id);
-			await owner.beginOperation(rootId, 'discord', 'channel', job.id, {
-				name: 'Root',
-			});
-			await owner.beginOperation(
-				rootId,
-				'discord',
-				'indexChannel',
-				job.id,
-				{ name: 'Root', indexId: 'index-category' }
-			);
 			await Promise.all([
-				owner.confirmOperation(
-					rootId,
-					'discord',
-					'channel',
-					'category'
-				),
-				owner.confirmOperation(
-					rootId,
-					'discord',
-					'indexChannel',
-					'index'
-				),
+				owner.confirmResource(job.id, 'channel', 'category'),
+				owner.confirmResource(job.id, 'indexChannel', 'index'),
 			]);
 			await owner.failJob(job.id, 'Rate limited', 60000);
 			await database.store.submit(scope, {
@@ -157,35 +137,58 @@ describe('Authoritative commands on multiple PostgreSQL connections', () => {
 		}
 		const resumed = (await integrations.acquire(scope))!;
 		try {
-			expect(await resumed.progress(rootId, 'discord')).toMatchObject({
-				workId: jobId!,
+			await database.pool.query(
+				'UPDATE integration_jobs SET available_at = now() WHERE id = $1',
+				[jobId!]
+			);
+			expect(
+				(await resumed.dueJobs()).find((job) => job.id === jobId!)
+			).toMatchObject({
 				confirmed: { channel: 'category', indexChannel: 'index' },
-				intents: {
-					channel: { name: 'Root' },
-					indexChannel: { name: 'Root', indexId: 'index-category' },
-				},
-				pending: [],
-			});
-			await resumed.beginOperation(rootId, 'discord', 'role', jobId!, {
-				name: 'New name',
 			});
 			await database.store.submit(scope, {
 				commandId: crypto.randomUUID(),
 				command: { type: 'delete', nodeId: rootId },
 			});
-			expect(await resumed.progress(rootId, 'discord')).toMatchObject({
-				pending: ['role'],
-				blockedError: expect.stringContaining('deleted'),
-			});
+			await resumed.confirmResource(jobId!, 'role', 'late-role');
+			await resumed.confirmResource(jobId!, 'role', 'late-role');
 			await expect(
-				resumed.beginOperation(
-					rootId,
-					'discord',
-					'role',
-					crypto.randomUUID(),
-					{ name: 'Replacement' }
-				)
-			).rejects.toThrow('blocked');
+				resumed.confirmResource(jobId!, 'role', 'different-role')
+			).rejects.toThrow('different result');
+			expect(
+				(
+					await database.pool.query(
+						'SELECT confirmed, cancelled_at IS NOT NULL AS cancelled FROM integration_jobs WHERE id = $1',
+						[jobId!]
+					)
+				).rows
+			).toEqual([
+				{
+					confirmed: {
+						channel: 'category',
+						indexChannel: 'index',
+						role: 'late-role',
+					},
+					cancelled: true,
+				},
+			]);
+			await database.store.submit(scope, {
+				commandId: crypto.randomUUID(),
+				command: {
+					type: 'add',
+					nodes: [
+						{
+							id: rootId,
+							type: 'round',
+							name: 'Replacement',
+							url: '',
+						},
+					],
+				},
+			});
+			expect(await resumed.dueJobs()).toEqual([
+				expect.objectContaining({ nodeId: rootId, confirmed: {} }),
+			]);
 		} finally {
 			await resumed.release();
 		}
@@ -198,16 +201,7 @@ describe('Authoritative commands on multiple PostgreSQL connections', () => {
 			const job = (await owner.dueJobs()).find(
 				(job) => job.target === 'google'
 			)!;
-			await owner.beginOperation(puzzleId, 'google', 'sheet', job.id, {
-				name: 'Puzzle',
-				googleFolderId: 'folder',
-			});
-			await owner.confirmOperation(
-				puzzleId,
-				'google',
-				'sheet',
-				'created-sheet'
-			);
+			await owner.confirmResource(job.id, 'sheet', 'created-sheet');
 			await database.store.submit(scope, {
 				commandId: crypto.randomUUID(),
 				command: {
@@ -228,7 +222,9 @@ describe('Authoritative commands on multiple PostgreSQL connections', () => {
 			expect(
 				(await database.store.read(scope)).document.nodes[puzzleId]
 			).toMatchObject({ sheetId: 'manual-sheet' });
-			expect(await owner.progress(puzzleId, 'google')).toMatchObject({
+			expect(
+				(await owner.dueJobs()).find((value) => value.id === job.id)
+			).toMatchObject({
 				confirmed: { sheet: 'created-sheet' },
 			});
 			await integrations.completeWork(scope, job.id);
@@ -237,14 +233,13 @@ describe('Authoritative commands on multiple PostgreSQL connections', () => {
 		}
 	});
 
-	it('holds later log events behind retry/uncertainty without blocking deletion tombstones', async () => {
+	it('holds later log events behind retry without blocking deletion tombstones', async () => {
 		const integrations = new PostgresHuntIntegrationStore(database.pool);
 		const owner = (await integrations.acquire(scope))!;
 		try {
 			const [first] = await owner.dueEvents();
 			await owner.startEvent(first);
-			await owner.beginEventDelivery(first);
-			await owner.failEvent(first, 'Response lost', 60000, true);
+			await owner.failEvent(first, 'Response lost', 60000);
 			await database.store.submit(scope, {
 				commandId: crypto.randomUUID(),
 				command: { type: 'delete', nodeId: rootId },
@@ -259,12 +254,19 @@ describe('Authoritative commands on multiple PostgreSQL connections', () => {
 			for (const event of events) await owner.completeEvent(event);
 			expect(await owner.dueEvents()).toEqual([]);
 			const { rows } = await database.pool.query(
-				`SELECT attempts, last_error, delivery_started_at IS NOT NULL AS started
+				`SELECT attempts, last_error
 				 FROM integration_events WHERE command_id = $1 AND ordinal = $2`,
 				[first.commandId, first.ordinal]
 			);
 			expect(rows).toEqual([
-				{ attempts: 1, last_error: 'Response lost', started: true },
+				{ attempts: 1, last_error: 'Response lost' },
+			]);
+			await database.pool.query(
+				'UPDATE integration_events SET available_at = now() WHERE command_id = $1 AND ordinal = $2',
+				[first.commandId, first.ordinal]
+			);
+			expect(await owner.dueEvents()).toEqual([
+				{ ...first, attempts: 1 },
 			]);
 		} finally {
 			await owner.release();

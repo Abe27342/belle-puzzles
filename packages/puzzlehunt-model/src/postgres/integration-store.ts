@@ -18,48 +18,20 @@ export type IntegrationJob = {
 	target: HuntIntegrationTarget;
 	attempts: number;
 	hadAssociation: boolean;
+	/** Partial external results retained across retries and cancellation of this job. */
+	confirmed: Record<string, string>;
 };
 
 export type IntegrationEvent = {
 	commandId: string;
 	ordinal: number;
 	attempts: number;
-	started: boolean;
 	payload: {
 		event: HuntDocumentEvent;
 		configuration: HuntConfiguration;
 		/** Captured at enqueue time, including if the round is subsequently deleted. */
 		parentName?: string;
 	};
-};
-
-export type IntegrationProgressTarget = HuntIntegrationTarget | 'embed';
-export type IntegrationOperationIntent = {
-	readonly name: string;
-	readonly parentChannelId?: string;
-	readonly indexId?: string;
-	readonly googleFolderId?: string;
-	readonly channelId?: string;
-};
-/**
- * Persisted node-operation checkpoints, not hunt setup/resume tracking.
- *
- * @remarks
- * `integration_progress` retains independently merged confirmed IDs, actual requested
- * names/destination IDs, unconfirmed intents and blocking diagnostics across job
- * completion, node deletion, and process restart. Only clear an intent with
- * {@link OwnedHuntIntegrations.retryOperation} when the service definitively did not
- * perform the operation. Unresolved intents and blocked targets require manual inspection;
- * a new task must not automatically adopt or recreate those resources.
- */
-export type IntegrationProgress = {
-	workId: string | null;
-	confirmed: Record<string, string>;
-	intents: Record<string, IntegrationOperationIntent>;
-	pending: string[];
-	blockedError: string | null;
-	attempts: number;
-	due: boolean;
 };
 
 function boundedLimit(limit: number): number {
@@ -80,7 +52,7 @@ function boundedLimit(limit: number): number {
  * handles have been released. Session advisory locks require a direct/session-pooled
  * connection.
  *
- * Requires an initialized schema containing the integration columns/table from the
+ * Requires an initialized schema containing the integration columns from the
  * opt-in `schema.sql`. This store does not provide schema-only initialization or a
  * migration runner.
  */
@@ -167,22 +139,23 @@ export class PostgresHuntIntegrationStore implements HuntIntegrationClient {
  *
  * @remarks
  * Always await {@link release} in `finally`. The handle observes connection loss and
- * cannot be used after release. Job/event attempts, due times, errors, send intent and
+ * cannot be used after release. Job/event attempts, due times, errors, confirmed IDs and
  * delivery acknowledgements are persisted. Scans are limited to 1-1000 entries per call.
  *
  * Process {@link dueJobs} using {@link startJob}, then the store's
  * {@link PostgresHuntIntegrationStore.completeWork} or {@link failJob}. Jobs are selected
- * parent-first before applying the batch bound; older pending/backed-off/paused jobs
+ * parent-first before applying the batch bound; older pending/backed-off jobs
  * gate newer jobs for the same node/target.
  *
- * Process {@link dueEvents} using {@link startEvent}, persist send intent with
- * {@link beginEventDelivery}, then acknowledge with {@link completeEvent} or record
- * failure with {@link failEvent}. Logs retain their distinct order; deletion tombstones
- * can run independently of paused logs.
+ * Process {@link dueEvents} using {@link startEvent}, then acknowledge with
+ * {@link completeEvent} or record failure with {@link failEvent}.
+ * Logs retain their distinct order; deletion tombstones
+ * can run independently of backed-off logs.
  *
- * Node-operation progress uses {@link progress}, {@link beginOperation},
- * {@link confirmOperation}, {@link retryOperation}, and {@link blockProgress}; see
- * {@link IntegrationProgress} for retention and uncertainty-handling requirements.
+ * {@link confirmResource} merges partial results on the job itself, including if it
+ * was cancelled during an external call. New jobs never inherit those results.
+ * Operations with no persisted result are retried, even when their outcome is unknown;
+ * duplicate external resources/messages are accepted and can be cleaned up manually.
  */
 export class OwnedHuntIntegrations {
 	private released = false;
@@ -208,6 +181,11 @@ export class OwnedHuntIntegrations {
 		return this.connection.query<Row>(text, [this.scope.huntId, ...values]);
 	}
 
+	/** Check the ownership connection before derived work with no job/event bookkeeping. */
+	public async assertOwnership(): Promise<void> {
+		await this.query('SELECT $1::uuid');
+	}
+
 	public async release(): Promise<void> {
 		if (this.released) return;
 		this.released = true;
@@ -227,7 +205,7 @@ export class OwnedHuntIntegrations {
 		}
 	}
 
-	/** An older pending/backed-off/paused job gates later jobs for the same target. */
+	/** An older pending/backed-off job gates later jobs for the same target. */
 	public async dueJobs(limit = 50): Promise<IntegrationJob[]> {
 		const { rows } = await this.query<IntegrationJob>(
 			`WITH RECURSIVE tree AS (
@@ -236,12 +214,12 @@ export class OwnedHuntIntegrations {
 				SELECT n.id, tree.depth + 1 FROM hunt_nodes n JOIN tree ON n.parent_id = tree.id
 				WHERE n.hunt_id = $1
 			 )
-			 SELECT j.id, j.node_id AS "nodeId", j.target, j.attempts,
+			 SELECT j.id, j.node_id AS "nodeId", j.target, j.attempts, j.confirmed,
 			 (j.payload->'node'->(CASE WHEN j.target = 'discord' THEN 'discord' ELSE 'sheetId' END))
 			 IS NOT NULL AS "hadAssociation"
 			 FROM integration_jobs j LEFT JOIN tree ON tree.id = j.node_id WHERE j.hunt_id = $1
 			 AND j.completed_at IS NULL AND j.cancelled_at IS NULL
-			 AND j.paused_at IS NULL AND j.available_at <= clock_timestamp()
+			 AND j.available_at <= clock_timestamp()
 			 AND NOT EXISTS (
 				SELECT 1 FROM integration_jobs older
 				WHERE older.hunt_id = j.hunt_id AND older.node_id = j.node_id AND older.target = j.target
@@ -257,7 +235,7 @@ export class OwnedHuntIntegrations {
 		const { rows } = await this.query(
 			`UPDATE integration_jobs SET attempts = attempts + 1
 			 WHERE hunt_id = $1 AND id = $2 AND completed_at IS NULL AND cancelled_at IS NULL
-			 AND paused_at IS NULL AND available_at <= clock_timestamp() RETURNING id`,
+			 AND available_at <= clock_timestamp() RETURNING id`,
 			[id]
 		);
 		return rows.length === 1;
@@ -266,25 +244,22 @@ export class OwnedHuntIntegrations {
 	public async failJob(
 		id: string,
 		error: string,
-		delayMs: number,
-		pause = false
+		delayMs: number
 	): Promise<void> {
 		await this.query(
 			`UPDATE integration_jobs SET last_error = $3,
-			 available_at = clock_timestamp() + $4::double precision * interval '1 millisecond',
-			 paused_at = CASE WHEN $5 THEN clock_timestamp() ELSE paused_at END
+			 available_at = clock_timestamp() + $4::double precision * interval '1 millisecond'
 			 WHERE hunt_id = $1 AND id = $2`,
-			[id, error, delayMs, pause]
+			[id, error, delayMs]
 		);
 	}
 
 	/** Only the oldest undelivered log is eligible; tombstone cleanup is independent. */
 	public async dueEvents(limit = 50): Promise<IntegrationEvent[]> {
 		const { rows } = await this.query<IntegrationEvent>(
-			`SELECT e.command_id AS "commandId", e.ordinal, e.attempts,
-			 e.delivery_started_at IS NOT NULL AS started, e.payload
+			`SELECT e.command_id AS "commandId", e.ordinal, e.attempts, e.payload
 			 FROM integration_events e WHERE e.hunt_id = $1 AND e.delivered_at IS NULL
-			 AND e.paused_at IS NULL AND e.available_at <= clock_timestamp()
+			 AND e.available_at <= clock_timestamp()
 			 AND (e.payload->'event'->>'type' = 'node-deleted' OR NOT EXISTS (
 				SELECT 1 FROM integration_events older
 				WHERE older.hunt_id = e.hunt_id AND older.delivered_at IS NULL
@@ -300,24 +275,10 @@ export class OwnedHuntIntegrations {
 		const { rows } = await this.query(
 			`UPDATE integration_events SET attempts = attempts + 1
 			 WHERE hunt_id = $1 AND command_id = $2 AND ordinal = $3 AND delivered_at IS NULL
-			 AND paused_at IS NULL AND delivery_started_at IS NULL RETURNING ordinal`,
+			 AND available_at <= clock_timestamp() RETURNING ordinal`,
 			[event.commandId, event.ordinal]
 		);
-		if (rows.length !== 1)
-			throw new Error(
-				'Event already started; inspect delivery before retrying.'
-			);
-	}
-
-	public async beginEventDelivery(event: IntegrationEvent): Promise<void> {
-		const { rows } = await this.query(
-			`UPDATE integration_events SET delivery_started_at = clock_timestamp()
-			 WHERE hunt_id = $1 AND command_id = $2 AND ordinal = $3 AND delivered_at IS NULL
-			 AND paused_at IS NULL AND delivery_started_at IS NULL RETURNING ordinal`,
-			[event.commandId, event.ordinal]
-		);
-		if (rows.length !== 1)
-			throw new Error('Event delivery already started or paused.');
+		if (rows.length !== 1) throw new Error('Event is no longer due.');
 	}
 
 	public async completeEvent(
@@ -334,109 +295,33 @@ export class OwnedHuntIntegrations {
 	public async failEvent(
 		event: IntegrationEvent,
 		error: string,
-		delayMs: number,
-		pause = false
+		delayMs: number
 	): Promise<void> {
 		await this.query(
 			`UPDATE integration_events SET last_error = $4,
-			 available_at = clock_timestamp() + $5::double precision * interval '1 millisecond',
-			 paused_at = CASE WHEN $6 THEN clock_timestamp() ELSE paused_at END,
-			 delivery_started_at = CASE WHEN $6 THEN delivery_started_at ELSE NULL END
+			 available_at = clock_timestamp() + $5::double precision * interval '1 millisecond'
 			 WHERE hunt_id = $1 AND command_id = $2 AND ordinal = $3`,
-			[event.commandId, event.ordinal, error, delayMs, pause]
+			[event.commandId, event.ordinal, error, delayMs]
 		);
 	}
 
-	public async progress(
-		nodeId: string,
-		target: IntegrationProgressTarget
-	): Promise<IntegrationProgress | undefined> {
-		const { rows } = await this.query<IntegrationProgress>(
-			`SELECT work_id AS "workId", confirmed, intents, pending, blocked_error AS "blockedError",
-			 attempts, available_at <= clock_timestamp() AS due
-			 FROM integration_progress WHERE hunt_id = $1 AND node_id = $2 AND target = $3`,
-			[nodeId, target]
-		);
-		return rows[0];
-	}
-
-	/** Persist intent before a create/send. Parallel siblings append distinct pending fields. */
-	public async beginOperation(
-		nodeId: string,
-		target: IntegrationProgressTarget,
-		resource: string,
-		workId: string | null,
-		intent: IntegrationOperationIntent
-	): Promise<void> {
-		const { rows } = await this.query(
-			`INSERT INTO integration_progress (hunt_id, node_id, target, work_id, pending, attempts, intents)
-			 SELECT $1, $2, $3, $5, ARRAY[$4]::text[], 1, jsonb_build_object($4::text, $6::jsonb)
-			 WHERE EXISTS (SELECT 1 FROM hunt_nodes WHERE hunt_id = $1 AND id = $2)
-			 AND ($3 = 'embed' OR EXISTS (
-				SELECT 1 FROM integration_jobs WHERE hunt_id = $1 AND id = $5
-				AND node_id = $2 AND target = $3 AND completed_at IS NULL AND cancelled_at IS NULL
-			 ))
-			 ON CONFLICT (hunt_id, node_id, target) DO UPDATE
-			 SET pending = array_append(integration_progress.pending, $4), updated_at = clock_timestamp(),
-			     attempts = integration_progress.attempts + 1,
-			     intents = integration_progress.intents || jsonb_build_object($4::text, $6::jsonb)
-			 WHERE integration_progress.blocked_error IS NULL
-			 AND integration_progress.work_id IS NOT DISTINCT FROM $5::uuid
-			 AND NOT ($4 = ANY(integration_progress.pending))
-			 AND NOT (integration_progress.confirmed ? $4)
-			 RETURNING node_id`,
-			[nodeId, target, resource, workId, JSON.stringify(intent)]
-		);
-		if (rows.length !== 1)
-			throw new Error(
-				'Operation already recorded or blocked; inspect integration_progress.'
-			);
-	}
-
-	public async confirmOperation(
-		nodeId: string,
-		target: IntegrationProgressTarget,
+	/** Merge independent confirmed IDs; keep cancelled-job results for inspection, not adoption. */
+	public async confirmResource(
+		workId: string,
 		resource: string,
 		id: string
 	): Promise<void> {
 		if (!id) throw new Error('External operation returned no resource ID.');
 		const { rows } = await this.query(
-			`UPDATE integration_progress SET
-			 confirmed = confirmed || jsonb_build_object($4::text, $5::text),
-			 pending = array_remove(pending, $4), updated_at = clock_timestamp()
-			 WHERE hunt_id = $1 AND node_id = $2 AND target = $3
-			 AND ($4 = ANY(pending) OR confirmed->>$4 = $5) RETURNING node_id`,
-			[nodeId, target, resource, id]
+			`UPDATE integration_jobs SET
+			 confirmed = confirmed || jsonb_build_object($3::text, $4::text)
+			 WHERE hunt_id = $1 AND id = $2
+			 AND (NOT (confirmed ? $3) OR confirmed->>$3 = $4) RETURNING id`,
+			[workId, resource, id]
 		);
 		if (rows.length !== 1)
-			throw new Error('Operation confirmation has no matching intent.');
-	}
-
-	/** Clear intent only when the external service definitively did not perform the operation. */
-	public async retryOperation(
-		nodeId: string,
-		target: IntegrationProgressTarget,
-		resource: string,
-		error: string,
-		delayMs: number
-	): Promise<void> {
-		await this.query(
-			`UPDATE integration_progress SET pending = array_remove(pending, $4), updated_at = clock_timestamp(),
-			 last_error = $5, available_at = clock_timestamp() + $6::double precision * interval '1 millisecond'
-			 WHERE hunt_id = $1 AND node_id = $2 AND target = $3`,
-			[nodeId, target, resource, error, delayMs]
-		);
-	}
-
-	public async blockProgress(
-		nodeId: string,
-		target: IntegrationProgressTarget,
-		error: string
-	): Promise<void> {
-		await this.query(
-			`UPDATE integration_progress SET blocked_error = $4, updated_at = clock_timestamp()
-			 WHERE hunt_id = $1 AND node_id = $2 AND target = $3`,
-			[nodeId, target, error]
-		);
+			throw new Error(
+				`Cannot checkpoint ${resource} ${id}: job is missing or has a different result.`
+			);
 	}
 }

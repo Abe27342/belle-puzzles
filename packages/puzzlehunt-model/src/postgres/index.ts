@@ -4,11 +4,5 @@ export {
 	PostgresHuntIntegrationStore,
 	OwnedHuntIntegrations,
 } from './integration-store.js';
-export type {
-	IntegrationJob,
-	IntegrationEvent,
-	IntegrationProgress,
-	IntegrationProgressTarget,
-	IntegrationOperationIntent,
-} from './integration-store.js';
+export type { IntegrationJob, IntegrationEvent } from './integration-store.js';
 export type { HuntIntegrationTarget } from './integrations.js';

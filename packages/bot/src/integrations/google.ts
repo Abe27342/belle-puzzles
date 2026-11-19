@@ -4,7 +4,7 @@ import { google, type sheets_v4 } from 'googleapis';
 export const createGoogleSheet = async (
 	name: string,
 	googleFolderId: string,
-	options?: { readonly retry: boolean; readonly timeout?: number }
+	options?: { readonly timeout: number }
 ) => {
 	const auth = new google.auth.GoogleAuth({
 		credentials: JSON.parse(process.env.GOOGLE_API_KEY),
