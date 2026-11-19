@@ -2,6 +2,7 @@ import * as React from 'react';
 import { v4 as uuid } from 'uuid';
 import { Card, TextField, Button, Dialog } from '../../../fast';
 import { IPuzzlehunt, Puzzle, Round } from '@belle-puzzles/puzzlehunt-model';
+import { useMutationSubmission } from './useMutationSubmission';
 
 export interface AddModalProps {
 	puzzleObj: Round | Puzzle;
@@ -22,10 +23,12 @@ export const AddModal: React.FC<AddModalProps> = ({
 	createType,
 	close,
 }) => {
-	const parent =
+	const submission = useMutationSubmission(close);
+	const [parent] = React.useState(() =>
 		puzzleObj.type === 'round'
 			? puzzleObj
-			: puzzlehunt.getRound(puzzleObj.parentId);
+			: puzzlehunt.getRound(puzzleObj.parentId)
+	);
 
 	const [puzzleData, setPuzzleData] = React.useState<PuzzleFormData[]>([
 		{ key: uuid() },
@@ -70,6 +73,7 @@ export const AddModal: React.FC<AddModalProps> = ({
 						return (
 							<>
 								<TextField
+									disabled={submission.disabled}
 									autofocus={index === puzzleData.length}
 									required={true}
 									key={`add-puzzle-name-${key}`}
@@ -98,6 +102,7 @@ export const AddModal: React.FC<AddModalProps> = ({
 									placeholder="name"
 								/>
 								<TextField
+									disabled={submission.disabled}
 									required={true}
 									key={`add-puzzle-url-${key}`}
 									type={'url'}
@@ -127,6 +132,7 @@ export const AddModal: React.FC<AddModalProps> = ({
 								/>
 								{puzzleData.length > 1 && (
 									<Button
+										disabled={submission.disabled}
 										key={`delete-${key}`}
 										style={{ gridColumn: 3, width: '30px' }}
 										onClick={() => {
@@ -148,6 +154,7 @@ export const AddModal: React.FC<AddModalProps> = ({
 						);
 					})}
 					<Button
+						disabled={submission.disabled}
 						key={'add-more-puzzles'}
 						style={{ gridColumn: 3, width: '30px' }}
 						onClick={() => {
@@ -163,6 +170,7 @@ export const AddModal: React.FC<AddModalProps> = ({
 							gridRow: Math.max(5, puzzleData.length + 3),
 						}}
 						onClick={close}
+						disabled={submission.dismissDisabled}
 					>
 						Cancel
 					</Button>
@@ -185,17 +193,23 @@ export const AddModal: React.FC<AddModalProps> = ({
 								validatedData.push({ name, url });
 							}
 
-							if (createType === 'puzzle') {
-								puzzlehunt.addPuzzles(validatedData, parent);
-							} else {
-								puzzlehunt.addRounds(validatedData, parent);
-							}
-							close();
+							submission.submit(() => {
+								if (createType === 'puzzle') {
+									puzzlehunt.addPuzzles(
+										validatedData,
+										parent
+									);
+								} else {
+									puzzlehunt.addRounds(validatedData, parent);
+								}
+							});
 						}}
+						disabled={submission.disabled}
 					>
 						Add {`${createType}${puzzleData.length > 1 ? 's' : ''}`}
 					</Button>
 					{errorText && <p style={{ gridColumn: 3 }}>{errorText}</p>}
+					{submission.status}
 				</div>
 			</Card>
 		</Dialog>
