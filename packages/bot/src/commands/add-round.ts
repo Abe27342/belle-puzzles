@@ -57,12 +57,6 @@ export const addRound: Command = {
 		);
 
 		await settleHuntContext(context);
-		await interaction.editReply(
-			`Round "${name}" added.${
-				context.backend === 'postgres'
-					? ' Saved; Discord provisioning may still be pending.'
-					: ''
-			}`
-		);
+		await interaction.editReply(`Round "${name}" added.`);
 	},
 };

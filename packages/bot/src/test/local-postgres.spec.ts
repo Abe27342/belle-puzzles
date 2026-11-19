@@ -213,8 +213,12 @@ describe('HTTP-backed local bot', () => {
 			name: 'Initializer seed',
 		});
 		const interaction = await runCommand(createCommand, client, discord);
+		expect(interaction.editReply).toHaveBeenNthCalledWith(
+			1,
+			'Creating puzzle hunt...'
+		);
 		expect(interaction.editReply).toHaveBeenLastCalledWith(
-			'Puzzle hunt created! PostgreSQL document and configuration saved.'
+			'Puzzle hunt created!'
 		);
 		const snapshot = await active();
 		expect(snapshot.huntId).not.toBe(seed.huntId);
@@ -377,12 +381,14 @@ describe('HTTP-backed local bot', () => {
 		const creating = runCommand(createCommand, client, discord);
 		await vi.waitFor(() => expect(committed).toHaveBeenCalledOnce());
 		const interaction = interactions.mock.results[0].value;
-		expect(interaction.editReply).not.toHaveBeenCalled();
+		expect(interaction.editReply).toHaveBeenCalledExactlyOnceWith(
+			'Creating puzzle hunt...'
+		);
 		expect([...discord.serverState.messages.values()].flat()).toEqual([]);
 		release();
 		await creating;
-		expect(interaction.editReply).toHaveBeenCalledWith(
-			expect.stringContaining('configuration saved')
+		expect(interaction.editReply).toHaveBeenLastCalledWith(
+			'Puzzle hunt created!'
 		);
 	});
 
@@ -414,9 +420,7 @@ describe('HTTP-backed local bot', () => {
 		release();
 		await adding;
 		expect(interaction.editReply).toHaveBeenCalledWith(
-			expect.stringContaining(
-				'Saved; Discord provisioning may still be pending.'
-			)
+			'Round "Pending" added.'
 		);
 	});
 
@@ -424,10 +428,13 @@ describe('HTTP-backed local bot', () => {
 		await runCommand(createCommand, client, discord);
 		const hunt = await model();
 		const channelsBefore = discord.serverState.channels.length;
-		await runCommand(
+		const roundReply = await runCommand(
 			'/add_round name: First url: https://example.test',
 			client,
 			discord
+		);
+		expect(roundReply.editReply).toHaveBeenLastCalledWith(
+			'Round "First" added.'
 		);
 		expect(Object.values((await active()).document.nodes)).toMatchObject([
 			{ name: 'First' },
@@ -436,11 +443,14 @@ describe('HTTP-backed local bot', () => {
 		expect(hunt.rounds[0].discord).toBeUndefined();
 		await backend.worker.reconcile();
 		token = 'rotated-server-token';
-		await runCommand(
+		const puzzleReply = await runCommand(
 			'/add_puzzle name: Puzzle url: https://example.test',
 			client,
 			discord,
 			channelData((await model()).rounds[0].discord.indexChannelId)
+		);
+		expect(puzzleReply.editReply).toHaveBeenLastCalledWith(
+			'Puzzle "Puzzle" added.'
 		);
 		expect(Object.values((await active()).document.nodes)).toHaveLength(2);
 		expect(hunt.puzzles[0].discord).toBeUndefined();
@@ -549,10 +559,13 @@ describe('HTTP-backed local bot', () => {
 		const reconcile = vi.spyOn(backend.worker, 'reconcile');
 		const reply = await runCommand('/sync_all', client, discord);
 		expect(reconcile).toHaveBeenCalledOnce();
-		expect(reply.editReply).toHaveBeenLastCalledWith(
-			expect.stringContaining('bounded durable-worker')
+		expect(reply.editReply).toHaveBeenNthCalledWith(
+			1,
+			'Re-syncing all discord state to reflect the puzzle hunt. This may take a while...'
 		);
-		await runCommand('/resync_all', client, discord);
+		expect(reply.editReply).toHaveBeenLastCalledWith('Complete!');
+		const resyncReply = await runCommand('/resync_all', client, discord);
+		expect(resyncReply.editReply).toHaveBeenLastCalledWith('Complete!');
 		expect(reconcile).toHaveBeenCalledTimes(2);
 	});
 

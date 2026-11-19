@@ -78,7 +78,9 @@ export const create: Command = {
 		_: PuzzlehuntContext,
 		interaction: ChatInputCommandInteraction<CacheType>
 	) {
-		if (!interaction.deferred) {
+		if (interaction.deferred) {
+			await interaction.editReply('Creating puzzle hunt...');
+		} else {
 			await interaction.reply({
 				content: 'Creating puzzle hunt...',
 				flags: MessageFlags.Ephemeral,
@@ -268,9 +270,7 @@ export const create: Command = {
 				};
 				const message = await adminChannel.send(JSON.stringify(marker));
 				await message.pin();
-				await interaction.editReply(
-					'Puzzle hunt created! PostgreSQL document and configuration saved.'
-				);
+				await interaction.editReply('Puzzle hunt created!');
 				return;
 			}
 

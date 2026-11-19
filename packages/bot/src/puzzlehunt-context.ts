@@ -36,6 +36,8 @@ export interface FluidPuzzlehuntContext extends SerializedPuzzlehuntContext {
  * Never attach the Fluid view-change handler to this optimistic model. The durable
  * worker owns external provisioning and event logs through shared reconciliation.
  * Mutating replies await authoritative settlement, not external resource readiness.
+ * Ordinary command replies use the same wording as Fluid, without backend-specific
+ * provisioning caveats.
  * PostgreSQL solve clears status and records its durable log; direct solve/status
  * logs and redundant clear-status mutations remain exclusive to the Fluid path.
  */

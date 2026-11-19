@@ -35,6 +35,9 @@ export const syncAll: Command = {
 		if (!interaction.deferred) {
 			await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		}
+		await interaction.editReply(
+			'Re-syncing all discord state to reflect the puzzle hunt. This may take a while...'
+		);
 		if (context.backend === 'postgres') {
 			const client = interaction.client as BelleBotClient;
 			if (
@@ -47,21 +50,15 @@ export const syncAll: Command = {
 				);
 			}
 			await client.localPostgres.worker.reconcile();
-			await interaction.editReply(
-				'A bounded durable-worker reconciliation pass completed. Pending or paused work may remain; inspect worker diagnostics.'
-			);
-			return;
-		}
-		await interaction.editReply(
-			'Re-syncing all discord state to reflect the Fluid file. This may take a while...'
-		);
-		try {
-			await resyncServerFull(context, interaction.guild);
-		} catch (err) {
-			await interaction.editReply(
-				'Something went wrong while resyncing.'
-			);
-			return;
+		} else {
+			try {
+				await resyncServerFull(context, interaction.guild);
+			} catch (err) {
+				await interaction.editReply(
+					'Something went wrong while resyncing.'
+				);
+				return;
+			}
 		}
 		await interaction.editReply('Complete!');
 	},

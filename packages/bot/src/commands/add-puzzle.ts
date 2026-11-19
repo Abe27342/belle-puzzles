@@ -65,12 +65,6 @@ export const addPuzzle: Command = {
 		);
 
 		await settleHuntContext(context);
-		await interaction.editReply(
-			`Puzzle "${name}" added.${
-				context.backend === 'postgres'
-					? ' Saved; Discord/Sheets provisioning may still be pending.'
-					: ''
-			}`
-		);
+		await interaction.editReply(`Puzzle "${name}" added.`);
 	},
 };
