@@ -199,7 +199,7 @@ const client = new HttpHuntDocumentClient({
 });
 const snapshot = await client.readActive(guildId);
 const model = new PuzzlehuntModel(client, snapshot);
-const observations = client.watchModel(model, {
+const observations = client.syncModel(model, {
 	onError: (error) => console.error('Hunt observations failed.', error),
 });
 
@@ -239,10 +239,10 @@ recognized rejection envelope with a matching HTTP status becomes
 responses, and 5xx responses remain uncertain; the model keeps the original
 command ID and exposes `retryPending()`.
 
-`watchModel` consumes authenticated SSE revision hints and coalesces catch-up
-through the existing model refresh queue. Observations never acknowledge or
-automatically retry uncertain commands. Subscriptions remain bound to the opened
-hunt when creation or active selection changes the guild's active hunt.
+`syncModel` keeps the supplied model synchronized by consuming authenticated SSE
+revision hints and coalescing catch-up through its refresh queue. Observations never
+acknowledge or automatically retry uncertain commands. Subscriptions remain bound
+to the opened hunt when creation or active selection changes the guild's active hunt.
 
 Revision-relative reads and command acknowledgements transfer complete
 affected-node records and deletions. The store retains 1000 revisions of

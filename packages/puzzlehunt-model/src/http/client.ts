@@ -24,12 +24,12 @@ import {
 import {
 	HuntWatchCredentialError,
 	watchHuntChanges,
-	watchPuzzlehuntModel,
+	syncPuzzlehuntModel,
 } from './changes.js';
 import type {
 	HuntChangeSubscription,
 	HuntChangeWatchOptions,
-	HuntModelWatchOptions,
+	HuntModelSyncOptions,
 } from './changes.js';
 import type { PuzzlehuntModel } from '../model/puzzlehunt.js';
 export { HuntHttpError } from './protocol.js';
@@ -176,7 +176,8 @@ export class HttpHuntDocumentClient
 		return result;
 	}
 
-	watch(
+	/** Opens the authenticated revision-hint stream without refreshing a model. */
+	#watch(
 		scope: HuntScope,
 		options: HuntChangeWatchOptions
 	): HuntChangeSubscription {
@@ -207,11 +208,24 @@ export class HttpHuntDocumentClient
 		);
 	}
 
-	watchModel(
+	/**
+	 * Starts continuous synchronization of the supplied model with its opened hunt.
+	 * Revision hints and recovery checks request queued refreshes; they never
+	 * acknowledge or automatically retry commands.
+	 *
+	 * The returned subscription controls synchronization lifetime, not initial
+	 * catch-up completion. Closing it removes observation/recovery hooks without
+	 * flushing or disposing the model, or cancelling an already-running refresh.
+	 */
+	syncModel(
 		model: PuzzlehuntModel,
-		options: HuntModelWatchOptions
+		options: HuntModelSyncOptions
 	): HuntChangeSubscription {
-		return watchPuzzlehuntModel(this, model, options);
+		return syncPuzzlehuntModel(
+			(scope, watchOptions) => this.#watch(scope, watchOptions),
+			model,
+			options
+		);
 	}
 
 	private cache(snapshot: HuntSnapshot): HuntSnapshot {

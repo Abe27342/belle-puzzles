@@ -6,7 +6,7 @@ import {
 	HuntWatchCredentialError,
 	readHuntRevisionStream,
 	watchHuntChanges,
-	watchPuzzlehuntModel,
+	syncPuzzlehuntModel,
 } from '../../http/changes.js';
 import type { HuntChangeWatchOptions } from '../../http/changes.js';
 import { HuntProtocolError } from '../../http/protocol.js';
@@ -105,6 +105,7 @@ describe('Hunt SSE client', () => {
 		const fetch = vi
 			.fn<typeof globalThis.fetch>()
 			.mockResolvedValueOnce(first.response)
+			.mockResolvedValueOnce(Response.json({ ...base, revision: 1 }))
 			.mockResolvedValueOnce(second.response);
 		const token = vi.fn(() => 'first');
 		const client = new HttpHuntDocumentClient({
@@ -113,23 +114,23 @@ describe('Hunt SSE client', () => {
 			fetch,
 			timeoutMs: 5,
 		});
-		const onRevision = vi.fn();
+		const model = new PuzzlehuntModel(client, base);
 		const onError = vi.fn();
-		const subscription = client.watch(scope, { onRevision, onError });
+		const subscription = client.syncModel(model, { onError });
 		await vi.advanceTimersByTimeAsync(0);
 		first.controller.enqueue(encoder.encode(event(1)));
 		await vi.advanceTimersByTimeAsync(40000);
-		expect(onRevision).toHaveBeenCalledWith(1);
-		expect(fetch).toHaveBeenCalledOnce();
+		expect(model.committedSnapshot.revision).toBe(1);
+		expect(fetch).toHaveBeenCalledTimes(2);
 		token.mockReturnValue('second');
 		first.controller.close();
 		await vi.advanceTimersByTimeAsync(1000);
-		expect(fetch).toHaveBeenCalledTimes(2);
-		expect(fetch.mock.calls[1][1]?.headers).toMatchObject({
+		expect(fetch).toHaveBeenCalledTimes(3);
+		expect(fetch.mock.calls[2][1]?.headers).toMatchObject({
 			Authorization: 'Bearer second',
 			Accept: 'text/event-stream',
 		});
-		expect(fetch.mock.calls[1][1]?.headers).not.toHaveProperty(
+		expect(fetch.mock.calls[2][1]?.headers).not.toHaveProperty(
 			'Last-Event-ID'
 		);
 		subscription.close();
@@ -191,7 +192,7 @@ describe('Hunt SSE client', () => {
 			await client.readActive(scope.guildId)
 		);
 		const onError = vi.fn();
-		const subscription = client.watchModel(model, { onError });
+		const subscription = client.syncModel(model, { onError });
 		try {
 			await vi.advanceTimersByTimeAsync(0);
 			await client.selectActive(selected);
@@ -319,11 +320,13 @@ describe('Hunt SSE client', () => {
 			fetch,
 		});
 		const onError = vi.fn();
-		const subscription = client.watch(scope, {
-			onRevision: vi.fn(),
-			onError,
-			signal: signal.signal,
-		});
+		const subscription = client.syncModel(
+			new PuzzlehuntModel(client, base),
+			{
+				onError,
+				signal: signal.signal,
+			}
+		);
 		try {
 			await vi.advanceTimersByTimeAsync(120000);
 			expect(token).toHaveBeenCalledOnce();
@@ -380,10 +383,10 @@ describe('Hunt SSE client', () => {
 			getToken: () => new Promise<string>(() => {}),
 			fetch: vi.fn(),
 		});
-		const subscription = client.watch(scope, {
-			onRevision: vi.fn(),
-			onError: vi.fn(),
-		});
+		const subscription = client.syncModel(
+			new PuzzlehuntModel(client, base),
+			{ onError: vi.fn() }
+		);
 		subscription.close();
 		await subscription.done;
 	});
@@ -502,7 +505,7 @@ describe('Hunt SSE client', () => {
 				return { done, close: finish, reconnect: vi.fn() };
 			},
 		};
-		const subscription = watchPuzzlehuntModel(source, model, {
+		const subscription = syncPuzzlehuntModel(source.watch, model, {
 			onError: vi.fn(),
 		});
 		model.addRound('Pending', '');

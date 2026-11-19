@@ -6,6 +6,7 @@ import {
 	HuntProtocolError,
 } from './protocol.js';
 
+/** Lifetime controls shared by revision observation and model synchronization. */
 export interface HuntChangeSubscription {
 	/** Completes on close or a terminal scope/protocol failure. */
 	readonly done: Promise<void>;
@@ -20,7 +21,7 @@ export interface HuntChangeWatchOptions {
 	readonly signal?: AbortSignal;
 }
 
-export interface HuntModelWatchOptions {
+export interface HuntModelSyncOptions {
 	readonly onError: (error: unknown) => void;
 	readonly signal?: AbortSignal;
 }
@@ -153,7 +154,19 @@ export async function* readHuntRevisionStream(
 	}
 }
 
-/** Fetch streaming supports Authorization headers; stream hints never retry commands. */
+/**
+ * Observes a hunt's server revision without reading or updating a model.
+ * Calls onRevision with hints that authoritative state may need to be read, not
+ * acknowledgements of commands. Owns stream parsing, inactivity detection and
+ * reconnection; credential failures pause until reconnect, and terminal failures stop.
+ * Fetch streaming supports Authorization headers; stream hints never retry commands.
+ *
+ * @param scope - Fixed guild and hunt identity to observe.
+ * @param request - Opens an authenticated SSE response on each connection attempt,
+ * supplying current credentials and honoring the provided abort signal.
+ * @param options - Revision/error callbacks and optional cancellation.
+ * @returns Lifetime controls for the stream and its reconnect loop, not model state.
+ */
 export function watchHuntChanges(
 	scope: HuntScope,
 	request: (signal: AbortSignal) => Promise<Response>,
@@ -332,16 +345,27 @@ function runRetryLoop(
 	return { done, close, reconnect };
 }
 
-/** At most one catch-up is queued, even while the model is paused on an uncertain write. */
-export function watchPuzzlehuntModel(
-	client: {
-		watch(
-			scope: HuntScope,
-			options: HuntChangeWatchOptions
-		): HuntChangeSubscription;
-	},
+/**
+ * Starts continuous server-to-model synchronization for an existing model.
+ * Uses one revision-hint subscription to request catch-up through the model's refresh
+ * queue. Hints never acknowledge or automatically retry commands; catch-up waits
+ * while an uncertain write blocks the model. At most one catch-up is queued.
+ * Focus, connectivity, visibility and periodic recovery also request refreshes.
+ *
+ * @param watch - Opens the revision-hint subscription for the model's fixed hunt.
+ * @param model - Existing model to refresh; active-hunt selection does not retarget it.
+ * @param options - Error reporting and optional cancellation.
+ * @returns Controls for synchronization lifetime, not initial catch-up completion.
+ * Closing removes the stream, model subscription and recovery hooks without flushing
+ * or disposing the model, or cancelling an already-running refresh.
+ */
+export function syncPuzzlehuntModel(
+	watch: (
+		scope: HuntScope,
+		options: HuntChangeWatchOptions
+	) => HuntChangeSubscription,
 	model: PuzzlehuntModel,
-	options: HuntModelWatchOptions
+	options: HuntModelSyncOptions
 ): HuntChangeSubscription {
 	let target = model.committedSnapshot.revision;
 	let refreshing = false;
@@ -369,7 +393,7 @@ export function watchPuzzlehuntModel(
 		);
 	};
 	const unsubscribe = model.subscribe(() => catchUp());
-	const stream = client.watch(model.committedSnapshot, {
+	const stream = watch(model.committedSnapshot, {
 		signal: options.signal,
 		onRevision: (revision) => {
 			authorized = true;
