@@ -85,8 +85,14 @@ afterAll(async () => {
 puzzlehuntModelContract(
 	'HTTP model against a loopback service and disposable PostgreSQL',
 	async () => {
-		const scope = { huntId: crypto.randomUUID(), guildId };
-		await database.reset(scope);
+		await database.reset();
+		const client = new HttpHuntDocumentClient({
+			baseUrl,
+			getToken: () => token,
+		});
+		const scope = await client.create(guildId, {
+			name: 'Contract test hunt',
+		});
 		function loadModel(huntScope: typeof scope) {
 			return PuzzlehuntModel.load(
 				new HttpHuntDocumentClient({
@@ -115,19 +121,9 @@ puzzlehuntModelContract(
 				if (hunts.has(huntName)) {
 					throw new Error(`Hunt already exists: ${huntName}`);
 				}
-				const independentScope = {
-					...scope,
-					huntId: crypto.randomUUID(),
-				};
-				await database.pool.query(
-					`INSERT INTO hunts (id, guild_id, name, schema_version)
-					 VALUES ($1, $2, $3, 1)`,
-					[
-						independentScope.huntId,
-						independentScope.guildId,
-						huntName,
-					]
-				);
+				const independentScope = await client.create(guildId, {
+					name: huntName,
+				});
 				const independent = await loadModel(independentScope);
 				hunts.set(huntName, {
 					scope: independentScope,

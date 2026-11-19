@@ -16,11 +16,10 @@ afterAll(async () => {
 puzzlehuntModelContract(
 	'PostgreSQL model against a disposable local database',
 	async () => {
-		const scope = {
-			huntId: crypto.randomUUID(),
-			guildId: snowflake('contract-guild'),
-		};
-		await database.reset(scope);
+		await database.reset();
+		const scope = await database.store.create(snowflake('contract-guild'), {
+			name: 'Contract test hunt',
+		});
 		const model = await PuzzlehuntModel.load(database.store, scope);
 		const hunts = new Map([
 			['Contract test hunt', { scope, models: [model] }],
@@ -43,18 +42,9 @@ puzzlehuntModelContract(
 				if (hunts.has(huntName)) {
 					throw new Error(`Hunt already exists: ${huntName}`);
 				}
-				const independentScope = {
-					...scope,
-					huntId: crypto.randomUUID(),
-				};
-				await database.pool.query(
-					`INSERT INTO hunts (id, guild_id, name, schema_version)
-					 VALUES ($1, $2, $3, 1)`,
-					[
-						independentScope.huntId,
-						independentScope.guildId,
-						huntName,
-					]
+				const independentScope = await database.store.create(
+					scope.guildId,
+					{ name: huntName }
 				);
 				const independent = await PuzzlehuntModel.load(
 					database.store,
@@ -92,11 +82,11 @@ puzzlehuntModelContract(
 
 describe('PostgreSQL model provisioning results', () => {
 	async function fixture() {
-		const scope = {
-			huntId: crypto.randomUUID(),
-			guildId: snowflake('integration-guild'),
-		};
-		await database.reset(scope);
+		await database.reset();
+		const scope = await database.store.create(
+			snowflake('integration-guild'),
+			{ name: 'Contract test hunt' }
+		);
 		const integrations = new PostgresHuntIntegrationStore(database.pool);
 		const model = await PuzzlehuntModel.load(
 			database.store,
