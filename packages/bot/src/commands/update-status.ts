@@ -6,6 +6,7 @@ import {
 } from 'discord.js';
 import { PuzzlehuntContext } from '../puzzlehunt-context.js';
 import { Command } from './types.js';
+import { puzzleStatusMessage } from '../sync/logs.js';
 
 const STATUS_ARG = 'status';
 
@@ -52,11 +53,7 @@ export const updateStatus: Command = {
 			const channel =
 				interaction.guild.channels.cache.get(puzzleStatusUpdate);
 			if (channel?.isTextBased()) {
-				await channel.send(
-					!!status
-						? `Status updated for ${puzzle.name}: "${status}".`
-						: `Status cleared for ${puzzle.name}.`
-				);
+				await channel.send(puzzleStatusMessage(puzzle.name, status));
 			}
 		}
 
