@@ -8,9 +8,7 @@ import type { LocalPostgresBackend } from '../local-postgres.js';
 afterEach(() => vi.restoreAllMocks());
 
 function fixture(local = true) {
-	const discord = new MockDiscord(
-		local ? { intents: [], rest: { retries: 0 } } : undefined
-	);
+	const discord = new MockDiscord();
 	const order: string[] = [];
 	const worker = {
 		start: vi.fn(async () => {
@@ -141,41 +139,41 @@ describe('Bot backend lifecycle', () => {
 		await client.shutdown();
 	});
 
-	it('rejects unauthorized guilds or transport retries at runtime', () => {
-		const discord = new MockDiscord();
-		const backend: LocalPostgresBackend = {
-			guildIds: [discord.getGuild().id],
-			documents: new HttpHuntDocumentClient({
-				baseUrl: 'http://127.0.0.1:3001',
-				getToken: () => 'unused',
-			}),
-			worker: {
-				start: async () => {},
-				stop: async () => {},
-				reconcile: async () => {},
-			},
-			close: async () => {},
-		};
-		expect(() =>
-			createClient({
-				token: 'mock',
-				baseClient: discord.getClient(),
-				puzzlehuntProvider: { getPuzzlehunt: vi.fn() },
-				localPostgres: backend,
-				allowList: [...backend.guildIds],
-			})
-		).toThrow('retries: 0');
-		const safeDiscord = new MockDiscord({
-			intents: [],
-			rest: { retries: 0 },
-		});
-		expect(() =>
-			createClient({
-				token: 'mock',
-				baseClient: safeDiscord.getClient(),
-				puzzlehuntProvider: { getPuzzlehunt: vi.fn() },
-				localPostgres: backend,
-			})
-		).toThrow('explicit guild authorization');
-	});
+	it.each(['missing allow list', 'unlisted guild', 'blocked guild'])(
+		'rejects unauthorized local guilds at runtime: %s',
+		(reason) => {
+			const discord = new MockDiscord();
+			const backend: LocalPostgresBackend = {
+				guildIds: [discord.getGuild().id],
+				documents: new HttpHuntDocumentClient({
+					baseUrl: 'http://127.0.0.1:3001',
+					getToken: () => 'unused',
+				}),
+				worker: {
+					start: async () => {},
+					stop: async () => {},
+					reconcile: async () => {},
+				},
+				close: async () => {},
+			};
+			expect(() =>
+				createClient({
+					token: 'mock',
+					baseClient: discord.getClient(),
+					puzzlehuntProvider: { getPuzzlehunt: vi.fn() },
+					localPostgres: backend,
+					allowList:
+						reason === 'missing allow list'
+							? undefined
+							: reason === 'unlisted guild'
+							? ['other-guild']
+							: [...backend.guildIds],
+					blockList:
+						reason === 'blocked guild'
+							? [...backend.guildIds]
+							: undefined,
+				})
+			).toThrow('explicit guild authorization');
+		}
+	);
 });

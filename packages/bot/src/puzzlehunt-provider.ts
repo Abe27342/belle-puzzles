@@ -22,8 +22,8 @@ import type {
  * Uncertain HTTP writes retain their original command IDs and block later
  * mutations on that model. They are never automatically evicted or reconstructed
  * as new commands. Explicit `retryPostgresPending` retries those retained IDs,
- * including for inactive cached hunts, but cannot resume setup or paused external
- * integrations. The cache is process-local, not a persisted command queue.
+ * including for inactive cached hunts, but cannot resume setup or control external
+ * worker retries. The cache is process-local, not a persisted command queue.
  *
  * Closing stops new loads, flushes models, and releases owned Fluid sessions.
  * Settlement failures are surfaced, including retained IDs for uncertain writes;

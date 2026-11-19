@@ -147,19 +147,15 @@ export function createClient({
 	onError: onErrorArg,
 }: ClientOptions): BelleBotClient {
 	const client = (baseClient ??
-		new Client({
-			intents: [GatewayIntentBits.Guilds],
-			...(localPostgres ? { rest: { retries: 0 } } : {}),
-		})) as BelleBotClient;
+		new Client({ intents: [GatewayIntentBits.Guilds] })) as BelleBotClient;
 	if (
 		localPostgres &&
-		(client.rest.options.retries !== 0 ||
-			localPostgres.guildIds.some(
-				(id) => !allowList?.includes(id) || blockList?.includes(id)
-			))
+		localPostgres.guildIds.some(
+			(id) => !allowList?.includes(id) || blockList?.includes(id)
+		)
 	) {
 		throw new Error(
-			'Local PostgreSQL requires explicit guild authorization and Discord rest retries: 0.'
+			'Local PostgreSQL requires explicit guild authorization.'
 		);
 	}
 	const onError = onErrorArg ?? surfaceError;

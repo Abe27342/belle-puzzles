@@ -73,7 +73,7 @@ afterAll(async () => {
 }, 30000);
 beforeEach(async () => {
 	await database.reset();
-	discord = new MockDiscord({ intents: [], rest: { retries: 0 } });
+	discord = new MockDiscord();
 	errors = [];
 	requests = [];
 	token = 'first-server-token';

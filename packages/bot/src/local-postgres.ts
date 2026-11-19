@@ -22,8 +22,11 @@ import type { DurableIntegrationWorker } from './sync/durableWorker.js';
  *
  * The bot starts the worker once on `clientReady`, independently of model-cache
  * or website access. Its guild loader fetches matching guild role/channel caches;
- * authorized inactive hunts are scanned as well as active ones. The opted-in
- * Discord client requires REST retries disabled; Fluid defaults remain unchanged.
+ * authorized inactive hunts are scanned as well as active ones. Both backends
+ * retain Discord SDK retry defaults. Worker external-operation failures, including
+ * unknown outcomes, retry with persisted backoff; unrecorded duplicate resources
+ * or messages may result. HTTP model mutation uncertainty remains separate and
+ * requires explicit retry of retained command IDs through the provider.
  *
  * The five-connection pool requires session-affine advisory locks. Stop and settle
  * the worker before closing the pool. The service owns schema initialization;

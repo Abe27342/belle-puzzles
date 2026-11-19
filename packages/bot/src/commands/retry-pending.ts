@@ -56,7 +56,7 @@ export const retryPending: Command = {
 			huntId,
 		});
 		await interaction.editReply(
-			'Retained writes settled and the model refreshed. This does not resume hunt setup or paused external integrations.'
+			'Retained writes settled and the model refreshed. This does not resume hunt setup or retry external integrations.'
 		);
 	},
 };

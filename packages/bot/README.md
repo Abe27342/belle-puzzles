@@ -66,14 +66,16 @@ or creating a replacement.
 A successful edit means the hunt document was saved; Discord channels, Sheets,
 and logs may still be pending. `/resync_all`, or the existing `/sync_all`, requests
 a reconciliation pass from the admin channel. Check bot diagnostics if work
-remains pending or paused. Unconfigured seeds do not provision resources and
-report a missing-configuration diagnostic.
+remains pending or repeatedly fails. External resource operations retry
+automatically; a lost response may leave duplicate resources or messages requiring
+manual cleanup. Unconfigured seeds do not provision resources and report a
+missing-configuration diagnostic.
 
 If a write's outcome is uncertain, do not repeat the original mutation. Follow the
 error's `/retry_pending hunt_id:<exact-uuid>` instruction from the unique
 `belle-bot-admin` channel while the same bot process is running. This does **not**
-resume hunt setup or paused external integrations. After a process exit, inspect
-authoritative state and recorded error/command IDs before taking further action.
+resume hunt setup or control external integration retries. After a process exit,
+inspect authoritative state and recorded error/command IDs before taking further action.
 
 Fluid copy/change-backing-file commands reject PostgreSQL. `/reset_server` rejects
 opted-in guilds and existing PostgreSQL backend pins even when the backend is disabled.
