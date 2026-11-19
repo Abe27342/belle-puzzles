@@ -96,6 +96,11 @@ seed and create the requested hunt; it does not adopt/delete the seed. Partial,
 configured, nonempty, or multiple prior hunts require manual inspection, not a
 blind rerun. There is no setup-progress tracker, schema-only initializer, or resume.
 
+Existing databases must be compatible with the current
+`packages/puzzlehunt-model/src/postgres/schema.sql` before launch. If startup reports
+a schema mismatch, inspect the existing database and preserve its data; do not
+rerun the initializer. Neither startup nor the initializer migrates older schemas.
+
 Register slash commands **explicitly in the test guild**, never on launch:
 
 ```powershell
@@ -141,8 +146,11 @@ SWA/Vite/Functions process trees stop first; bot/worker and service receive
 graceful shutdown (including on Windows), then only an owned database stops.
 Allow shutdown to finish; forcing the debugger/terminal closed can bypass cleanup.
 Graceful bot/service shutdown has a 35-second bound; a forced cleanup is reported
-as an error and retained-write diagnostics require inspection. Restarting is not
-automatic recovery of uncertain external effects.
+as an error and retained-write diagnostics require inspection. The worker retries
+failed Discord/Google operations, including uncertain outcomes; duplicate resources
+or messages may need manual cleanup. This does not retry uncertain HTTP model
+writes or hunt setup: keep pending command IDs and use the explicit retry action
+for model writes, and inspect partial setup before taking further action.
 
 ### Acceptance smoke flow
 

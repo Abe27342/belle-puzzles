@@ -433,7 +433,7 @@ export async function databaseReady(databaseUrl, inspectDirectory = false) {
 		await client.connect();
 		// Read-only probes. Launch must never install or modify the schema.
 		await client.query(
-			'SELECT 1 FROM hunts, active_hunts, hunt_nodes, hunt_changes, command_receipts, integration_jobs, integration_events, integration_progress LIMIT 0'
+			'SELECT integration_jobs.confirmed FROM hunts, active_hunts, hunt_nodes, hunt_changes, command_receipts, integration_jobs, integration_events LIMIT 0'
 		);
 		return inspectDirectory
 			? (await client.query('SHOW data_directory')).rows[0].data_directory
@@ -452,6 +452,8 @@ export async function databaseReady(databaseUrl, inspectDirectory = false) {
  * cleanup verifies postmaster.pid matches that child before pg_ctl -m fast stop.
  * Readiness only probes SQL/schema and data-directory identity: initialization,
  * schema changes, and data-directory deletion are never launch operations.
+ * The schema probe requires job-local confirmed results; a legacy schema without
+ * integration_jobs.confirmed is incompatible even if all current tables exist.
  */
 export async function startDatabase(env, records, signal) {
 	const url = new URL(env.DATABASE_URL);
@@ -567,7 +569,7 @@ export async function startDatabase(env, records, signal) {
 		} catch {
 			if (signal?.aborted) throw signal.reason;
 			throw new Error(
-				'PostgreSQL authentication/database/schema check failed. Verify DATABASE_URL; create the database and run the existing initializer once for a fresh database. Never reinitialize existing data.'
+				'PostgreSQL authentication/database/schema check failed. Verify DATABASE_URL and the current schema, including integration_jobs.confirmed. Run the existing initializer once for a fresh database only. Inspect incompatible existing databases explicitly; launch never migrates or reinitializes their data.'
 			);
 		}
 		if (data) {

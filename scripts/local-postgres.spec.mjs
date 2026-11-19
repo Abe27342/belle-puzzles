@@ -48,8 +48,8 @@ async function availablePort() {
 	await new Promise((resolve) => server.close(resolve));
 	return port;
 }
-async function query(sql) {
-	const client = new Client({ connectionString: env.DATABASE_URL });
+async function query(sql, databaseUrl = env.DATABASE_URL) {
+	const client = new Client({ connectionString: databaseUrl });
 	await client.connect();
 	try {
 		return await client.query(sql);
@@ -210,30 +210,56 @@ it('owns only a newly started native cluster and retains data across two launche
 	}
 }, 60000);
 
-it('cleans up an owned database after a schema readiness failure, without changing its data', async () => {
-	const stop = await startDatabase(env, records);
-	await query('CREATE DATABASE missing_schema');
-	await stop();
-	await expect(
-		startDatabase(
-			{
-				...env,
-				DATABASE_URL: env.DATABASE_URL.replace(
-					/postgres$/,
-					'missing_schema'
+it.each(['missing_schema', 'missing_confirmed'])(
+	'cleans up an owned database with %s, without changing its data',
+	async (database) => {
+		const stop = await startDatabase(env, records);
+		cleanups.push(stop);
+		await query(`CREATE DATABASE ${database}`);
+		const databaseUrl = env.DATABASE_URL.replace(/postgres$/, database);
+		if (database === 'missing_confirmed') {
+			await query(
+				await readFile(
+					require.resolve(
+						'@belle-puzzles/puzzlehunt-model/postgres/schema.sql'
+					),
+					'utf8'
 				),
-			},
-			records
-		)
-	).rejects.toThrow('schema check failed');
-	expect(
-		await portOpen('127.0.0.1', Number(new URL(env.DATABASE_URL).port))
-	).toBe(false);
-	cleanups.push(await startDatabase(env, records));
-	expect((await query('SELECT name FROM hunts')).rows[0].name).toBe(
-		'Persistent fixture'
-	);
-}, 30000);
+				databaseUrl
+			);
+			await query(
+				'ALTER TABLE integration_jobs DROP COLUMN confirmed',
+				databaseUrl
+			);
+		}
+		await stop();
+		await expect(
+			startDatabase(
+				{
+					...env,
+					DATABASE_URL: databaseUrl,
+				},
+				records
+			)
+		).rejects.toThrow('schema check failed');
+		expect(
+			await portOpen('127.0.0.1', Number(new URL(env.DATABASE_URL).port))
+		).toBe(false);
+		cleanups.push(await startDatabase(env, records));
+		if (database === 'missing_confirmed') {
+			await expect(
+				query(
+					'SELECT confirmed FROM integration_jobs LIMIT 0',
+					databaseUrl
+				)
+			).rejects.toMatchObject({ code: '42703' });
+		}
+		expect((await query('SELECT name FROM hunts')).rows[0].name).toBe(
+			'Persistent fixture'
+		);
+	},
+	30000
+);
 
 it('cleans up cancellation arriving before a newly started database is ready', async () => {
 	await expect(
