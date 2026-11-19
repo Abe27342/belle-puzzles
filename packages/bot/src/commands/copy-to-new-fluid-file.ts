@@ -4,7 +4,7 @@ import {
 	SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from './types.js';
-import { PuzzlehuntContext } from '../puzzlehunt-context.js';
+import { PuzzlehuntContext, HuntContextError } from '../puzzlehunt-context.js';
 import { createNewPuzzlehuntFromExisting } from '@belle-puzzles/puzzlehunt-model/fluid';
 import { makeFluidClient } from '../fluid/client.js';
 
@@ -19,6 +19,12 @@ export const copyToNewFluidFile: Command = {
 		context: PuzzlehuntContext,
 		interaction: ChatInputCommandInteraction<CacheType>
 	) {
+		if (context.backend === 'postgres') {
+			throw new HuntContextError(
+				409,
+				'PostgreSQL hunts cannot be copied to Fluid with this command.'
+			);
+		}
 		await interaction.editReply({
 			content: 'Creating new fluid file using the existing hunt data...',
 		});

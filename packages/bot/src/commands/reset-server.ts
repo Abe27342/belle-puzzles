@@ -6,8 +6,10 @@ import {
 	SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from './types.js';
-import { PuzzlehuntContext } from '../puzzlehunt-context.js';
-import { BELLE_USER_ID } from '../utils/index.js';
+import { PuzzlehuntContext, HuntContextError } from '../puzzlehunt-context.js';
+import { BELLE_USER_ID, getHuntContextMessage } from '../utils/index.js';
+import { parsePuzzlehuntPin } from '@belle-puzzles/puzzlehunt-model/http';
+import type { BelleBotClient } from '../client.js';
 
 export const resetServer: Command = {
 	requiresSerializedContext: false,
@@ -21,6 +23,31 @@ export const resetServer: Command = {
 		_: PuzzlehuntContext,
 		interaction: ChatInputCommandInteraction<CacheType>
 	) {
+		const client = interaction.client as BelleBotClient;
+		if (client.localPostgres?.guildIds.includes(interaction.guildId)) {
+			throw new HuntContextError(
+				409,
+				'/reset_server is disabled in local PostgreSQL guilds to preserve durable resource associations.'
+			);
+		}
+		const pin = await getHuntContextMessage(interaction.guild);
+		if (pin && 'backend' in parsePuzzlehuntPin(JSON.parse(pin.content))) {
+			throw new HuntContextError(
+				409,
+				'/reset_server cannot delete resources belonging to a PostgreSQL backend pin, even when PostgreSQL is disabled.'
+			);
+		}
+		if (
+			!pin &&
+			interaction.guild.channels.cache.some(
+				(channel) => channel.name === 'belle-bot-admin'
+			)
+		) {
+			throw new HuntContextError(
+				409,
+				'Cannot reset a server with an incomplete or ambiguous admin pin.'
+			);
+		}
 		if (interaction.channel.name !== 'general') {
 			await interaction.reply({
 				content: 'Please run this command from the general channel.',

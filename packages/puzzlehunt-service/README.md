@@ -91,6 +91,13 @@ connections on shutdown.
 
 ## Hosting with the Discord bot
 
+For the opt-in **local PostgreSQL bot** path, see
+[the bot configuration and command usage](../bot/README.md#local-postgresql-bot-opt-in).
+Use the same loopback database, trusted service token, and Discord application ID
+in both server processes. The existing initializer still creates an empty seed;
+explicit bot `/create` may retain that untouched seed and select a new configured
+hunt. This is not a production cutover or a setup-resume workflow.
+
 The service supports standalone hosting and co-hosting with the Discord bot in
 one container app instance. Separate processes or containers can share that
 instance using distinct listen ports: the bot defaults to `3000` and this service

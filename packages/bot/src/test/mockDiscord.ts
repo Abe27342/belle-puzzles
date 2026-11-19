@@ -203,9 +203,18 @@ export class MockDiscord {
 
 		// TODO: typing
 		const mockReply = async (): Promise<any> => true;
-		interaction.deferReply = vi.fn(mockReply);
-		interaction.reply = vi.fn(mockReply);
-		interaction.editReply = vi.fn(mockReply);
+		interaction.deferReply = vi.fn(async () => {
+			interaction.deferred = true;
+			return mockReply();
+		});
+		interaction.reply = vi.fn(async () => {
+			interaction.replied = true;
+			return mockReply();
+		});
+		interaction.editReply = vi.fn(async () => {
+			interaction.replied = true;
+			return mockReply();
+		});
 		interaction.guildId = this.guild.id;
 		interaction.isCommand = vi.fn(() => true);
 		return interaction;

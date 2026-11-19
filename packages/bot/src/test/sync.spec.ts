@@ -78,8 +78,24 @@ describe('Resource provisioning', () => {
 		);
 		const guild = discord.getGuild();
 		const context = await getHuntContext(client, guild);
-		return { context, guild, serverState: discord.serverState };
+		return {
+			context,
+			guild,
+			serverState: discord.serverState,
+			client,
+			discord,
+		};
 	}
+
+	it('uses backend-neutral progress and completion replies for Fluid resync', async () => {
+		const { client, discord } = await createContext();
+		const interaction = await runCommand('/sync_all', client, discord);
+		expect(interaction.editReply).toHaveBeenNthCalledWith(
+			1,
+			'Re-syncing all discord state to reflect the puzzle hunt. This may take a while...'
+		);
+		expect(interaction.editReply).toHaveBeenLastCalledWith('Complete!');
+	});
 
 	it('calculates removal, parent, and descendant work without performing it', async () => {
 		const { context, guild, serverState } = await createContext();
