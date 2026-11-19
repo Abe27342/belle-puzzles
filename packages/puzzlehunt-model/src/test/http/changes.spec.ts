@@ -160,6 +160,56 @@ describe('Hunt SSE client', () => {
 		await subscription.done;
 	});
 
+	it('keeps observations and catch-up scoped to the opened hunt after active selection changes', async () => {
+		vi.useFakeTimers();
+		const stream = live();
+		const selected: HuntSnapshot = {
+			...base,
+			huntId: '00000000-0000-4000-8000-000000000002',
+		};
+		const updated: HuntSnapshot = {
+			...base,
+			revision: 1,
+			document: { ...base.document, name: 'Updated original hunt' },
+		};
+		const fetch = vi
+			.fn<typeof globalThis.fetch>()
+			.mockResolvedValueOnce(Response.json(base))
+			.mockResolvedValueOnce(stream.response)
+			.mockResolvedValueOnce(Response.json(selected))
+			.mockResolvedValueOnce(
+				Response.json({ type: 'snapshot', snapshot: updated })
+			);
+		const client = new HttpHuntDocumentClient({
+			baseUrl: 'https://api.example.test/api/',
+			getToken: () => 'token',
+			fetch,
+		});
+		const model = new PuzzlehuntModel(
+			client,
+			await client.readActive(scope.guildId)
+		);
+		const onError = vi.fn();
+		const subscription = client.watchModel(model, { onError });
+		try {
+			await vi.advanceTimersByTimeAsync(0);
+			await client.selectActive(selected);
+			stream.controller.enqueue(encoder.encode(event(1)));
+			await vi.advanceTimersByTimeAsync(0);
+			expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+				'https://api.example.test/api/guilds/guild/hunts/active',
+				`https://api.example.test/api/guilds/guild/hunts/${scope.huntId}/changes`,
+				'https://api.example.test/api/guilds/guild/hunts/active',
+				`https://api.example.test/api/guilds/guild/hunts/${scope.huntId}?since=0`,
+			]);
+			expect(model.committedSnapshot).toEqual(updated);
+			expect(onError).not.toHaveBeenCalled();
+		} finally {
+			subscription.close();
+			await subscription.done;
+		}
+	});
+
 	it('honors Retry-After rather than retrying a throttled stream too early', async () => {
 		vi.useFakeTimers();
 		const request = vi

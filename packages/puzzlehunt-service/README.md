@@ -199,10 +199,14 @@ const client = new HttpHuntDocumentClient({
 });
 const snapshot = await client.readActive(guildId);
 const model = new PuzzlehuntModel(client, snapshot);
+const observations = client.watchModel(model, {
+	onError: (error) => console.error('Hunt observations failed.', error),
+});
 
 model.addRound('Round', 'https://example.test/round');
 await model.flush();
-await model.refresh();
+// On page/model disposal:
+observations.close();
 ```
 
 Alternatively use `PuzzlehuntModel.load(client, { guildId, huntId })` when the
@@ -235,6 +239,11 @@ recognized rejection envelope with a matching HTTP status becomes
 responses, and 5xx responses remain uncertain; the model keeps the original
 command ID and exposes `retryPending()`.
 
+`watchModel` consumes authenticated SSE revision hints and coalesces catch-up
+through the existing model refresh queue. Observations never acknowledge or
+automatically retry uncertain commands. Subscriptions remain bound to the opened
+hunt when creation or active selection changes the guild's active hunt.
+
 Revision-relative reads and command acknowledgements transfer complete
 affected-node records and deletions. The store retains 1000 revisions of
 synchronization tracking per hunt; expired/missing history explicitly returns a
@@ -247,6 +256,16 @@ seconds; reconnecting requests recheck authorization. Membership revocation is
 therefore checked on the next request or stream reconnection. Listener failure or
 transport backpressure closes affected streams so clients can reconnect.
 An unavailable listener returns 503 with `Retry-After: 30`.
+
+Client subscriptions reconnect with fresh credentials on EOF, network errors,
+429, and 5xx responses, using bounded backoff and jitter and honoring `Retry-After`.
+A 401 pauses until credentials are renewed and `observations.reconnect()` is
+called; 403/404 and malformed known events stop the subscription.
+`observations.done` completes on close or terminal failure. A separate 45-second
+stream inactivity watchdog replaces the REST lifetime timeout. Visible-page,
+focus, online, and periodic safety refreshes recover missed hints; Node clients
+use the same API with periodic safety reads. Close observations when disposing
+the page or model; closing a subscription does not flush pending model changes.
 
 ## Testability
 
