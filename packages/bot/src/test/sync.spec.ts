@@ -19,13 +19,25 @@ import { loadPuzzlehunt, runCommand } from './testUtils.js';
 import {
 	IPuzzlehunt,
 	IPuzzlehuntSession,
+	Puzzle,
+	Round,
 } from '@belle-puzzles/puzzlehunt-model';
 import { loadExistingPuzzlehunt } from '@belle-puzzles/puzzlehunt-model/fluid';
 import { makeFluidClient } from '../fluid/client.js';
 import { getHuntContext } from '../puzzlehunt-context.js';
 import { BELLE_USER_ID } from '../utils/index.js';
-import { makeViewChangeHandler } from '../sync/viewChangeHandler.js';
-import { createDiscordAssociation, resyncServerFull } from '../sync/sync.js';
+import {
+	calculateChangeWork,
+	executeChangeWork,
+	makeViewChangeHandler,
+} from '../sync/viewChangeHandler.js';
+import {
+	createDiscordAssociation,
+	provisionDiscordResources,
+	resyncServerFull,
+	type DiscordProvisioningOptions,
+} from '../sync/sync.js';
+import { createGoogleSheet } from '../integrations/google.js';
 vi.mock('../integrations/google.js');
 
 // This file tests various aspects of the bot's synchronization of the discord server with the fluid file.
@@ -68,6 +80,295 @@ describe('Resource provisioning', () => {
 		const context = await getHuntContext(client, guild);
 		return { context, guild, serverState: discord.serverState };
 	}
+
+	it('calculates removal, parent, and descendant work without performing it', async () => {
+		const { context, guild, serverState } = await createContext();
+		const { puzzlehunt } = context;
+		const first = puzzlehunt.addRound('First', '');
+		const second = puzzlehunt.addRound('Second', '');
+		await resyncServerFull(context, guild);
+		const moved = puzzlehunt.addRound('Moved', '', first);
+		const descendant = puzzlehunt.addPuzzle('Descendant', '', moved);
+		const removed = puzzlehunt.addPuzzle('Removed', '', first);
+		await resyncServerFull(context, guild);
+		const before = puzzlehunt.view;
+		puzzlehunt.move(moved, second);
+		puzzlehunt.delete(removed);
+		const after = puzzlehunt.view;
+		const removedSnapshot = before.puzzles.find(
+			(node) => node.id === removed.id
+		);
+		const channelsBefore = [...serverState.channels];
+
+		const work = calculateChangeWork({
+			before,
+			after,
+			changes: [
+				{
+					type: 'node-changed',
+					before: before.rounds.find((node) => node.id === moved.id),
+					after: after.rounds.find((node) => node.id === moved.id),
+				},
+				{ type: 'node-removed', node: removedSnapshot },
+			],
+		});
+
+		expect(work.removedNodes).toEqual([removedSnapshot]);
+		expect(work.channelsToSync.map((node) => node.id)).toEqual([
+			moved.id,
+			first.id,
+			second.id,
+		]);
+		expect(work.rolesToSync.map((node) => node.id)).toEqual([
+			moved.id,
+			descendant.id,
+		]);
+		expect(work.addedRounds).toEqual([]);
+		expect(work.addedPuzzles).toEqual([]);
+		expect(serverState.channels).toEqual(channelsBefore);
+		expect(puzzlehunt.view).toEqual(after);
+
+		await executeChangeWork(context, guild, work);
+		expect(
+			serverState.channels.some(
+				(channel) => channel.id === removedSnapshot.discord.channelId
+			)
+		).toBe(false);
+		expect(
+			serverState.roles.some(
+				(role) => role.id === removedSnapshot.discord.roleId
+			)
+		).toBe(false);
+	});
+
+	it.each(['change batch', 'full resync'] as const)(
+		'allows caller-owned association persistence during %s',
+		async (operation) => {
+			const { context, guild, serverState } = await createContext();
+			const { puzzlehunt } = context;
+			const before = puzzlehunt.view;
+			const round = puzzlehunt.addRound('Round', '');
+			const puzzle = puzzlehunt.addPuzzle('Puzzle', '', round);
+			const after = puzzlehunt.view;
+			const persisted: string[] = [];
+			const provisioning = {
+				discord: vi.fn(async (node: Puzzle | Round) => {
+					if (node.type === 'round') {
+						const result = await provisionDiscordResources(
+							context,
+							guild,
+							node
+						);
+						expect(
+							puzzlehunt.getRound(node.id).discord
+						).toBeUndefined();
+						await Promise.resolve();
+						puzzlehunt.augmentWithDiscord(node, result);
+					} else {
+						expect(persisted).toContain(round.id);
+						const result = await provisionDiscordResources(
+							context,
+							guild,
+							node
+						);
+						expect(
+							puzzlehunt.getPuzzle(node.id).discord
+						).toBeUndefined();
+						puzzlehunt.augmentWithDiscord(node, result);
+					}
+					persisted.push(node.id);
+				}),
+				googleSheet: vi.fn(async (node: Puzzle) => {
+					const sheetId = await createGoogleSheet(
+						node.name,
+						context.googleFolderId
+					);
+					expect(
+						puzzlehunt.getPuzzle(node.id).sheetId
+					).toBeUndefined();
+					puzzlehunt.augmentWithGoogleSheet(node, sheetId);
+				}),
+			};
+
+			if (operation === 'change batch') {
+				await executeChangeWork(
+					context,
+					guild,
+					calculateChangeWork({
+						before,
+						after,
+						changes: [...after.rounds, ...after.puzzles].map(
+							(node) => ({ type: 'node-added', node })
+						),
+					}),
+					provisioning
+				);
+			} else {
+				await resyncServerFull(context, guild, provisioning);
+			}
+
+			expect(provisioning.discord).toHaveBeenCalledTimes(2);
+			expect(provisioning.googleSheet).toHaveBeenCalledExactlyOnceWith(
+				expect.objectContaining({ id: puzzle.id })
+			);
+			const currentPuzzle = puzzlehunt.getPuzzle(puzzle.id);
+			const currentRound = puzzlehunt.getRound(round.id);
+			expect(
+				serverState.findChannelBy('id', currentPuzzle.discord.channelId)
+					.parent_id
+			).toBe(currentRound.discord.channelId);
+			expect(currentPuzzle.sheetId).toBe('mock-google-sheet-id');
+			expect(
+				serverState.messages.get(
+					puzzlehunt.loggingChannelIds.puzzleAdd
+				) ?? []
+			).toEqual([]);
+
+			puzzlehunt.changeName(puzzle, 'Renamed');
+			puzzlehunt.updateStatus(puzzle, 'Working');
+			await resyncServerFull(context, guild, provisioning);
+			expect(provisioning.discord).toHaveBeenCalledTimes(2);
+			expect(provisioning.googleSheet).toHaveBeenCalledTimes(1);
+			expect(
+				serverState.findChannelBy('id', currentPuzzle.discord.channelId)
+					.name
+			).toBe('renamed');
+			expect(
+				serverState.messages.get(currentRound.discord.indexChannelId)[0]
+					.embeds[0].description
+			).toContain('**Renamed**');
+		}
+	);
+
+	it('awaits each provisioning checkpoint and reuses confirmed IDs after a failure', async () => {
+		const { context, guild, serverState } = await createContext();
+		const round = context.puzzlehunt.addRound('Round', '');
+		const existing: NonNullable<DiscordProvisioningOptions['existing']> =
+			{};
+		const createChannel = vi.spyOn(guild.channels, 'create');
+		const createRole = vi.spyOn(guild.roles, 'create');
+		const failure = new Error('Checkpoint failed');
+		try {
+			await expect(
+				provisionDiscordResources(context, guild, round, {
+					onCreated: async (resource, id) => {
+						expect(resource).toBe('role');
+						expect(createChannel).not.toHaveBeenCalled();
+						await Promise.resolve();
+						existing[resource] = id;
+						throw failure;
+					},
+				})
+			).rejects.toBe(failure);
+			expect(createChannel).not.toHaveBeenCalled();
+			expect(createRole).toHaveBeenCalledTimes(1);
+
+			const onCreated = vi.fn<
+				NonNullable<DiscordProvisioningOptions['onCreated']>
+			>(async (resource, id) => {
+				await Promise.resolve();
+				existing[resource] = id;
+			});
+			const result = await provisionDiscordResources(
+				context,
+				guild,
+				round,
+				{ existing, onCreated }
+			);
+			expect(createRole).toHaveBeenCalledTimes(1);
+			expect(createChannel).toHaveBeenCalledTimes(2);
+			expect(onCreated).toHaveBeenCalledTimes(2);
+			expect(result).toEqual(existing);
+			expect(
+				context.puzzlehunt.getRound(round.id).discord
+			).toBeUndefined();
+			expect(serverState.findChannelBy('id', existing.channel).type).toBe(
+				ChannelType.GuildCategory
+			);
+
+			await expect(
+				provisionDiscordResources(context, guild, round, {
+					existing,
+					onCreated,
+				})
+			).resolves.toEqual(result);
+			expect(createRole).toHaveBeenCalledTimes(1);
+			expect(createChannel).toHaveBeenCalledTimes(2);
+			expect(onCreated).toHaveBeenCalledTimes(2);
+		} finally {
+			createChannel.mockRestore();
+			createRole.mockRestore();
+		}
+	});
+
+	it('settles successful round-channel checkpoints before reporting a sibling failure', async () => {
+		const { context, guild } = await createContext();
+		const round = context.puzzlehunt.addRound('Round', '');
+		const existing: NonNullable<DiscordProvisioningOptions['existing']> =
+			{};
+		const createChannel = guild.channels.create.bind(guild.channels);
+		const createChannelSpy = vi.spyOn(guild.channels, 'create');
+		const failure = new Error('Index channel creation failed');
+		createChannelSpy.mockImplementation((options) =>
+			options.name === 'Round-puzzles'
+				? Promise.reject(failure)
+				: createChannel(options)
+		);
+		let releaseCheckpoint: () => void;
+		const checkpoint = new Promise<void>((resolve) => {
+			releaseCheckpoint = resolve;
+		});
+		let checkpointStarted: () => void;
+		const started = new Promise<void>((resolve) => {
+			checkpointStarted = resolve;
+		});
+		let settled = false;
+		try {
+			const provisioning = provisionDiscordResources(
+				context,
+				guild,
+				round,
+				{
+					onCreated: async (resource, id) => {
+						if (resource === 'channel') {
+							checkpointStarted();
+							await checkpoint;
+						}
+						existing[resource] = id;
+					},
+				}
+			).then(
+				() => {
+					settled = true;
+					throw new Error('Expected provisioning to fail');
+				},
+				(error: unknown) => {
+					settled = true;
+					return error;
+				}
+			);
+			await started;
+			await new Promise<void>((resolve) => setTimeout(resolve, 0));
+			expect(settled).toBe(false);
+			releaseCheckpoint();
+			expect(await provisioning).toBe(failure);
+			expect(existing.role).toBeDefined();
+			expect(existing.channel).toBeDefined();
+			expect(existing.indexChannel).toBeUndefined();
+
+			createChannelSpy.mockImplementation(createChannel);
+			createChannelSpy.mockClear();
+			await provisionDiscordResources(context, guild, round, {
+				existing,
+			});
+			expect(createChannelSpy).toHaveBeenCalledExactlyOnceWith(
+				expect.objectContaining({ name: 'Round-puzzles' })
+			);
+		} finally {
+			releaseCheckpoint();
+			createChannelSpy.mockRestore();
+		}
+	});
 
 	it.each(['change batch', 'full resync'] as const)(
 		'provisions rounds concurrently before puzzles during %s without modifying the captured view',
