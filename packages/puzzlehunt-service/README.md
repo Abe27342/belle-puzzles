@@ -199,10 +199,14 @@ const client = new HttpHuntDocumentClient({
 });
 const snapshot = await client.readActive(guildId);
 const model = new PuzzlehuntModel(client, snapshot);
+const observations = client.syncModel(model, {
+	onError: (error) => console.error('Hunt observations failed.', error),
+});
 
 model.addRound('Round', 'https://example.test/round');
 await model.flush();
-await model.refresh();
+// On page/model disposal:
+observations.close();
 ```
 
 Alternatively use `PuzzlehuntModel.load(client, { guildId, huntId })` when the
@@ -235,18 +239,38 @@ recognized rejection envelope with a matching HTTP status becomes
 responses, and 5xx responses remain uncertain; the model keeps the original
 command ID and exposes `retryPending()`.
 
+`syncModel` keeps the supplied model synchronized by consuming authenticated SSE
+revision hints and coalescing catch-up through its refresh queue. Observations never
+acknowledge or automatically retry uncertain commands. Subscriptions remain bound
+to the opened hunt when creation or active selection changes the guild's active hunt.
+
 Revision-relative reads and command acknowledgements transfer complete
 affected-node records and deletions. The store retains 1000 revisions of
 synchronization tracking per hunt; expired/missing history explicitly returns a
 full snapshot.
 
 The `/changes` endpoint sends an initial revision followed by revision hints.
-Clients use those hints to request updates, with the durable PostgreSQL state as
-the recovery source. Streams send 15-second heartbeats and rotate after 180
+Clients should use those hints to request updates, with the durable PostgreSQL
+state as the recovery source. Streams send 15-second heartbeats and rotate after 180
 seconds; reconnecting requests recheck authorization. Membership revocation is
 therefore checked on the next request or stream reconnection. Listener failure or
 transport backpressure closes affected streams so clients can reconnect.
-An unavailable listener returns 503 with `Retry-After: 30`.
+
+If the listener is unavailable before the SSE response headers are sent, including
+during the baseline read, the service returns 503 with `Retry-After: 30`. Clients
+should respect `Retry-After` when present. Once a stream has started, the service
+cannot add response headers; rotation, listener failure, and backpressure close
+the stream without a new `Retry-After` header.
+
+Clients should reconnect with fresh credentials after EOF, network errors, 429,
+or 5xx responses, using bounded backoff and jitter. A 401 means clients should
+pause until credentials are renewed; 403/404 and malformed known events should
+stop the subscription. Clients should use a stream inactivity watchdog separate
+from the REST request-lifetime timeout, allowing for the 15-second heartbeat
+interval. Clients should refresh after regaining visibility, focus, or network
+connectivity and periodically to recover missed hints, and close subscriptions
+when disposing the page or model. Closing a subscription does not flush pending
+model changes.
 
 ## Testability
 

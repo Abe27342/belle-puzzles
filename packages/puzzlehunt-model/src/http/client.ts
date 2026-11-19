@@ -21,6 +21,17 @@ import {
 	HuntHttpError,
 	HuntProtocolError,
 } from './protocol.js';
+import {
+	HuntWatchCredentialError,
+	watchHuntChanges,
+	syncPuzzlehuntModel,
+} from './changes.js';
+import type {
+	HuntChangeSubscription,
+	HuntChangeWatchOptions,
+	HuntModelSyncOptions,
+} from './changes.js';
+import type { PuzzlehuntModel } from '../model/puzzlehunt.js';
 export { HuntHttpError } from './protocol.js';
 
 export interface HttpHuntDocumentClientOptions {
@@ -163,6 +174,58 @@ export class HttpHuntDocumentClient
 		);
 		this.cache(result.snapshot);
 		return result;
+	}
+
+	/** Opens the authenticated revision-hint stream without refreshing a model. */
+	#watch(
+		scope: HuntScope,
+		options: HuntChangeWatchOptions
+	): HuntChangeSubscription {
+		const path = `${this.huntPath(scope)}/changes`;
+		return watchHuntChanges(
+			scope,
+			async (signal) => {
+				let authorization: string;
+				try {
+					authorization = await this.authorization();
+				} catch (error) {
+					throw new HuntWatchCredentialError(error);
+				}
+				signal.throwIfAborted();
+				return this.fetch(`${this.baseUrl}${path}`, {
+					method: 'GET',
+					headers: {
+						Accept: 'text/event-stream',
+						Authorization: authorization,
+					},
+					cache: 'no-store',
+					credentials: 'omit',
+					redirect: 'error',
+					signal,
+				});
+			},
+			options
+		);
+	}
+
+	/**
+	 * Starts continuous synchronization of the supplied model with its opened hunt.
+	 * Revision hints and recovery checks request queued refreshes; they never
+	 * acknowledge or automatically retry commands.
+	 *
+	 * The returned subscription controls synchronization lifetime, not initial
+	 * catch-up completion. Closing it removes observation/recovery hooks without
+	 * flushing or disposing the model, or cancelling an already-running refresh.
+	 */
+	syncModel(
+		model: PuzzlehuntModel,
+		options: HuntModelSyncOptions
+	): HuntChangeSubscription {
+		return syncPuzzlehuntModel(
+			(scope, watchOptions) => this.#watch(scope, watchOptions),
+			model,
+			options
+		);
 	}
 
 	private cache(snapshot: HuntSnapshot): HuntSnapshot {
