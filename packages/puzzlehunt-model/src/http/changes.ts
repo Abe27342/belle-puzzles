@@ -65,6 +65,9 @@ function abortable<Value>(
  * lines populate event fields; a blank line ends the event. Complete `revision`
  * events are parsed as JSON, validated for the expected hunt, and yielded as numbers.
  * An event without its terminating blank line is ignored at EOF.
+ *
+ * @see https://html.spec.whatwg.org/multipage/server-sent-events.html#parsing-an-event-stream
+ * @see https://html.spec.whatwg.org/multipage/server-sent-events.html#event-stream-interpretation
  */
 export async function* readHuntRevisionStream(
 	body: ReadableStream<Uint8Array>,
