@@ -36,11 +36,13 @@ URL cannot contain credentials. Never expose `PUZZLEHUNT_SERVICE_TOKEN` or
 `VITE_BELLE_BOT_CLIENT_ID`, which must identify the same application as bot
 `CLIENT_ID`.
 
-Run the existing puzzlehunt-service initializer and HTTP service separately.
+Run the existing puzzlehunt-service initializer explicitly. For combined local
+startup, see [the Local PostgreSQL stack target](../../README.md#local-postgresql-stack).
 Use a loopback service `HOST` and a distinct service `PORT` (normally 3001); bot
 `PORT` defaults to 3000 and the opted-in metadata server binds to `127.0.0.1`.
 Keep per-process port overrides separate rather than sharing a single `PORT` in
-the root environment. Register commands on the test guild using the existing
+the root environment. The combined target supplies separate process-scoped ports.
+Register commands on the test guild using the existing
 `update-commands` script and local bot credentials; `/retry_pending` and
 `/resync_all` are test-server-only.
 

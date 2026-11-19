@@ -20,6 +20,8 @@
 		"build:puzzlehunt-service": "pnpm --filter @belle-puzzles/puzzlehunt-service... build",
 		"init:puzzlehunt-service": "pnpm --filter @belle-puzzles/puzzlehunt-service run init",
 		"start:bot": "pnpm --filter @belle-puzzles/bot run start",
+		"start:local-postgres": "node scripts/local-postgres.mjs",
+		"test:local-launch": "vitest run scripts/local-postgres.spec.mjs",
 		"start:puzzlehunt-service": "pnpm --filter @belle-puzzles/puzzlehunt-service run start",
 		"start:localserver": "npx @fluidframework/azure-local-service",
 		"test": "pnpm --stream --filter @belle-puzzles/* run test"

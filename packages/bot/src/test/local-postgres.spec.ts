@@ -16,6 +16,7 @@ import {
 	type HuntChangeFeed,
 } from '@belle-puzzles/puzzlehunt-service/app';
 import { HttpHuntDocumentClient } from '@belle-puzzles/puzzlehunt-model/http';
+import { PuzzlehuntModel } from '@belle-puzzles/puzzlehunt-model/model';
 import {
 	snowflake,
 	type HuntCommand,
@@ -43,6 +44,7 @@ let discord: MockDiscord;
 let backend: LocalPostgresBackend;
 let client: BelleBotClient;
 let service: Server;
+let serviceUrl: string;
 let metadata: Server | undefined;
 let errors: Error[];
 let requests: string[];
@@ -87,12 +89,15 @@ beforeEach(async () => {
 			store: database.store,
 			changes: { subscribe: changes },
 			authorize: async (authorization, guildId) => {
-				expect(authorization).toBe(`Service ${token}`);
+				expect([`Service ${token}`, 'Bearer browser-token']).toContain(
+					authorization
+				);
 				expect(guildId).toBe(discord.getGuild().id);
 			},
 		})
 	);
 	const baseUrl = await listen(service);
+	serviceUrl = baseUrl;
 	const documents = new HttpHuntDocumentClient({
 		baseUrl,
 		authScheme: 'Service',
@@ -601,6 +606,106 @@ describe('HTTP-backed local bot', () => {
 				puzzle.id
 			].parentId
 		).toBe(second.id);
+	});
+
+	it('accepts independent browser edits and refreshes, then catches up HTTP writes made while the bot is stopped', async () => {
+		await runCommand(createCommand, client, discord);
+		await runCommand(
+			'/add_round name: Root url: https://example.test/round',
+			client,
+			discord
+		);
+		await backend.worker.reconcile();
+		const response = await fetch(await metadataUrl(), {
+			headers: { Authorization: 'Bearer member' },
+		});
+		const descriptor = await response.json();
+		const browserClient = () =>
+			new HttpHuntDocumentClient({
+				baseUrl: serviceUrl,
+				getToken: () => 'browser-token',
+			});
+		const tab = await PuzzlehuntModel.load(browserClient(), descriptor);
+		const otherTab = await PuzzlehuntModel.load(
+			browserClient(),
+			descriptor
+		);
+		const puzzle = tab.addPuzzle(
+			'Browser puzzle',
+			'https://example.test/puzzle',
+			tab.rounds[0]
+		);
+		await tab.flush();
+		expect(puzzle.discord).toBeUndefined();
+		expect(puzzle.sheetId).toBeUndefined();
+		expect(otherTab.puzzles).toHaveLength(0);
+		await backend.worker.reconcile();
+		expect(tab.getPuzzle(puzzle.id).discord).toBeUndefined();
+		await tab.refresh();
+		await otherTab.refresh();
+		expect(tab.getPuzzle(puzzle.id).discord).toBeDefined();
+		expect(tab.getPuzzle(puzzle.id).sheetId).toBeTruthy();
+		expect(otherTab.getPuzzle(puzzle.id).discord).toEqual(
+			tab.getPuzzle(puzzle.id).discord
+		);
+
+		otherTab.updateStatus(otherTab.getPuzzle(puzzle.id), 'Thinking');
+		await otherTab.flush();
+		expect((await active()).document.nodes[puzzle.id]).toMatchObject({
+			lastStatusUpdate: expect.any(Number),
+		});
+		const source = channelData(tab.getPuzzle(puzzle.id).discord.channelId);
+		const solveLog = tab.loggingChannelIds.puzzleSolve;
+		const before = (discord.serverState.messages.get(solveLog) ?? [])
+			.length;
+		await runCommand('/solve answer: ANSWER', client, discord, source);
+		expect(otherTab.getPuzzle(puzzle.id).status).toBe('Thinking');
+		await backend.worker.reconcile();
+		await backend.worker.reconcile();
+		await otherTab.refresh();
+		expect(otherTab.getPuzzle(puzzle.id).answer).toBe('ANSWER');
+		const saved = (await active()).document.nodes[puzzle.id];
+		expect(saved).not.toHaveProperty('status');
+		expect(saved).not.toHaveProperty('lastStatusUpdate');
+		expect(discord.serverState.messages.get(solveLog)).toHaveLength(
+			before + 1
+		);
+		const solvedEvents = await database.pool.query(
+			"SELECT * FROM integration_events WHERE hunt_id = $1 AND payload->'event'->>'type' = 'puzzle-solved'",
+			[descriptor.huntId]
+		);
+		expect(solvedEvents.rows).toHaveLength(1);
+
+		await client.shutdown();
+		const offline = tab.addPuzzle(
+			'Added while bot stopped',
+			'https://example.test/offline',
+			tab.rounds[0]
+		);
+		await tab.flush();
+		expect(
+			(await active()).document.nodes[offline.id].discord
+		).toBeUndefined();
+		backend = { ...backend, worker: makeWorker() };
+		client = makeClient();
+		const load = vi.spyOn(
+			client.puzzlehuntProvider,
+			'getPostgresPuzzlehunt'
+		);
+		client.emit('clientReady', client as Client<true>);
+		await client.ensurePendingWorkProcessed();
+		expect(load).not.toHaveBeenCalled();
+		const recovered = (await active()).document.nodes[offline.id];
+		expect(recovered.discord).toBeDefined();
+		expect(recovered).toMatchObject({ sheetId: expect.any(String) });
+		expect(tab.getPuzzle(offline.id).discord).toBeUndefined();
+		await tab.refresh();
+		expect(tab.getPuzzle(offline.id).discord).toEqual(recovered.discord);
+		expect(
+			discord.serverState.messages
+				.get(solveLog)
+				.filter((message) => message.content.includes('ANSWER'))
+		).toHaveLength(1);
 	});
 
 	it('starts independently of lazy model loads and catches up inactive hunts after a worker restart', async () => {

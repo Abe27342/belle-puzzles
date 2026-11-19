@@ -75,3 +75,16 @@ function stop(): Promise<void> {
 }
 process.once('SIGINT', () => void stop());
 process.once('SIGTERM', () => void stop());
+
+if (localPostgres && process.send) {
+	client.once('clientReady', () => {
+		void client.ensurePendingWorkProcessed().then(
+			() => process.send?.('local-stack-ready'),
+			async (error) => {
+				console.error('Local bot startup failed.', error);
+				process.exitCode = 1;
+				await stop();
+			}
+		);
+	});
+}
