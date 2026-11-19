@@ -244,15 +244,14 @@ export function watchHuntChanges(
 			) {
 				return { type: 'pause' };
 			}
-			if (
-				error instanceof HuntProtocolError ||
-				(error instanceof HuntHttpError &&
-					error.status !== 429 &&
-					error.status < 500)
-			) {
-				return { type: 'stop' };
+			if (error instanceof HuntHttpError) {
+				if (error.status === 429 || error.status >= 500) {
+					return { type: 'retry', retryAfterMs };
+				}
+			} else if (!(error instanceof HuntProtocolError)) {
+				return { type: 'retry', retryAfterMs };
 			}
-			return { type: 'retry', retryAfterMs };
+			return { type: 'stop' };
 		} finally {
 			clearTimeout(watchdog);
 			stream.abort();
