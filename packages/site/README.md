@@ -1,5 +1,68 @@
 # Belle Puzzles Website
 
+## Local PostgreSQL hunts (opt-in, non-live)
+
+Local PostgreSQL hunts require the `local-postgres` Vite development mode on a
+loopback HTTP page. Production builds (including `vite build --mode local-postgres`)
+do not enable them. The default/production website still uses Fluid.
+
+Create `packages/site/.env.local-postgres.local` (ignored by Git) with:
+
+```dotenv
+VITE_BELLE_BOT_CLIENT_ID=<the local bot's CLIENT_ID>
+```
+
+`packages/site/.env.local-postgres` supplies
+`VITE_BELLE_BOT_BASE_URL=http://localhost:3000`,
+`VITE_PUZZLEHUNT_SERVICE_BASE_URL=http://localhost:3001`, and the existing local
+Fluid fallback. Both API URLs must be loopback HTTP **origins**, without paths,
+credentials, query strings, or fragments. Never put `DATABASE_URL`, `DISCORD_TOKEN`, or
+`PUZZLEHUNT_SERVICE_TOKEN` in a `VITE_` variable.
+
+With the local bot and puzzlehunt service configured and running, start the site
+from the repository root:
+
+```powershell
+pnpm --filter @belle-puzzles/site start:local-postgres
+```
+
+Use **http://localhost:9000**, not Vite's port directly. The script runs Vite on
+5173 behind the SWA emulator on 9000 and starts the `site-api` Azure Functions.
+The existing SWA/Microsoft and Discord OAuth login shell remains. Register
+`http://localhost:9000` as the local Discord application's OAuth redirect.
+Use that same application's ID for the site, bot `CLIENT_ID`, and service
+`VITE_BELLE_BOT_CLIENT_ID`. Configure the service with
+`PUZZLEHUNT_ALLOWED_ORIGINS=http://localhost:9000`. In the ignored
+`packages/site-api/local.settings.json`, `Values.DISCORD_TOKEN` must be the same
+**local** bot's token so server discovery finds the right guilds. The
+`FLUID_RELAY_KEY` is needed only for remote Fluid hunts, not local PostgreSQL hunts.
+
+See [the bot's opt-in settings](../bot/README.md#local-postgresql-bot-opt-in) for
+`LOCAL_POSTGRES_GUILD_IDS`, `GUILD_ALLOW_LIST`, the loopback database/service,
+and server-only credentials. Create the hunt through Discord `/create` and its
+first root round with `/add_round`; there is no browser creation/root-round flow.
+The persistent full-stack VS Code launch recipe is a separate layer.
+
+### Refreshing and saving
+
+Local PostgreSQL hunts are **not live views**. Use **Refresh hunt** after pending
+edits finish to see other users' edits and newly created Discord/Google resources.
+These updates can also appear when you save another edit or reopen the page.
+Resources that are not ready yet are shown as pending. Fluid hunts remain live.
+
+Add, delete, solve, rename, URL, and sheet-ID edits appear immediately, but the
+dialog stays open until saving finishes. Rejected edits are undone and the error
+stays visible. If a save's outcome is uncertain, use **Retry pending edit** rather
+than submitting the edit again.
+
+Pending edits block in-app navigation/logout and warn before closing or reloading
+the tab. **Keep the tab open**: confirming a reload/close loses the ability to retry
+an uncertain save safely. If you need to sign in again, use the same account and
+reopen the original guild in the same tab to retry pending edits. Do not reload to
+resolve an uncertain save.
+When the active hunt changes, use **Open selected hunt** after pending edits finish.
+Login and service errors are displayed on the page.
+
 ## Running against a local belle-bot
 
 TODO: restore this flow

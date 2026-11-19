@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { Card, Button, Dialog, TextField } from '../../../fast';
+import { useMutationSubmission } from './useMutationSubmission';
 
 export type InputResult =
 	| { type: 'success' }
@@ -23,6 +24,7 @@ export const SingleInputModal: React.FC<SingleInputModalProps> = ({
 	processInput,
 	close,
 }) => {
+	const submission = useMutationSubmission(close);
 	const [errorText, setErrorText] = React.useState<string | undefined>(
 		undefined
 	);
@@ -45,7 +47,7 @@ export const SingleInputModal: React.FC<SingleInputModalProps> = ({
 			style={
 				{
 					'--dialog-width': '480px',
-					'--dialog-height': '320px',
+					'--dialog-height': submission.dialogHeight ?? '320px',
 				} as any /* these are custom properties on fast components */
 			}
 		>
@@ -58,6 +60,7 @@ export const SingleInputModal: React.FC<SingleInputModalProps> = ({
 				<p>{description}</p>
 				<TextField
 					required={true}
+					disabled={submission.disabled}
 					style={{
 						...(!content && errorText ? errorStyles : {}),
 					}}
@@ -68,6 +71,7 @@ export const SingleInputModal: React.FC<SingleInputModalProps> = ({
 					placeholder={placeholderText}
 					{...(content ? { value: content } : {})}
 				/>
+				{submission.status}
 				{errorText && (
 					<p
 						style={{
@@ -87,6 +91,7 @@ export const SingleInputModal: React.FC<SingleInputModalProps> = ({
 						left: 'var(--card-padding)',
 					}}
 					onClick={close}
+					disabled={submission.dismissDisabled}
 				>
 					Cancel
 				</Button>
@@ -98,13 +103,14 @@ export const SingleInputModal: React.FC<SingleInputModalProps> = ({
 						right: 'var(--card-padding)',
 					}}
 					onClick={() => {
-						const result = processInput(content);
-						if (result.type === 'error') {
-							setErrorText(result.displayMessage);
-						} else {
-							close();
-						}
+						submission.submit(() => {
+							const result = processInput(content);
+							if (result.type === 'error')
+								setErrorText(result.displayMessage);
+							return result;
+						});
 					}}
+					disabled={submission.disabled}
 				>
 					{confirmText}
 				</Button>

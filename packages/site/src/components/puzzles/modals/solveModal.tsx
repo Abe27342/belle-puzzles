@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Card, Button, Dialog, TextField } from '../../../fast';
 import { IPuzzlehunt, Puzzle, Round } from '@belle-puzzles/puzzlehunt-model';
+import { useMutationSubmission } from './useMutationSubmission';
 
 export interface EditNameModalProps {
 	puzzleObj: Round | Puzzle;
@@ -13,6 +14,7 @@ export const SolveModal: React.FC<EditNameModalProps> = ({
 	puzzlehunt,
 	close,
 }) => {
+	const submission = useMutationSubmission(close);
 	const [errorText, setErrorText] = React.useState<string | undefined>(
 		undefined
 	);
@@ -35,7 +37,7 @@ export const SolveModal: React.FC<EditNameModalProps> = ({
 			style={
 				{
 					'--dialog-width': '480px',
-					'--dialog-height': '320px',
+					'--dialog-height': submission.dialogHeight ?? '320px',
 				} as any /* these are custom properties on fast components */
 			}
 		>
@@ -48,6 +50,7 @@ export const SolveModal: React.FC<EditNameModalProps> = ({
 				<p>Solve "{puzzleObj.name}"</p>
 				<TextField
 					required={true}
+					disabled={submission.disabled}
 					style={{
 						...(!content && errorText ? errorStyles : {}),
 					}}
@@ -58,6 +61,7 @@ export const SolveModal: React.FC<EditNameModalProps> = ({
 					placeholder={'Answer'}
 					{...(content ? { value: content } : {})}
 				/>
+				{submission.status}
 				{errorText && (
 					<p
 						style={{
@@ -77,6 +81,7 @@ export const SolveModal: React.FC<EditNameModalProps> = ({
 						left: 'var(--card-padding)',
 					}}
 					onClick={close}
+					disabled={submission.dismissDisabled}
 				>
 					Cancel
 				</Button>
@@ -92,9 +97,11 @@ export const SolveModal: React.FC<EditNameModalProps> = ({
 							setErrorText('Name must be filled.');
 							return;
 						}
-						puzzlehunt.solve(puzzleObj.id, content);
-						close();
+						submission.submit(() => {
+							puzzlehunt.solve(puzzleObj.id, content);
+						});
 					}}
+					disabled={submission.disabled}
 				>
 					Solve puzzle
 				</Button>
