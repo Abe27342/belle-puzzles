@@ -16,6 +16,8 @@ import {
 	getAncestorRounds,
 } from '../utils/index.js';
 import type {
+	DiscordPuzzleInfo,
+	DiscordRoundInfo,
 	DocumentNode,
 	Puzzle,
 	Round,
@@ -24,15 +26,123 @@ import { PermissionsBitField, Role } from 'discord.js';
 import { PuzzlehuntContext } from '../puzzlehunt-context.js';
 import { createGoogleSheet } from '../integrations/google.js';
 
-export const createDiscordAssociation = (
+export const createDiscordAssociation = async (
 	context: PuzzlehuntContext,
 	guild: Guild,
 	puzzleObj: Puzzle | Round
 ): Promise<void> => {
-	return puzzleObj.type === 'puzzle'
-		? createPuzzleChannel(context, guild, puzzleObj)
-		: createRoundChannels(context, guild, puzzleObj);
+	const { puzzlehunt } = context;
+	if (puzzleObj.type === 'puzzle') {
+		const parent = puzzlehunt.getRound(puzzleObj.parentId);
+		const discordInfo = await provisionDiscordResources(
+			context,
+			guild,
+			puzzleObj
+		);
+		if (puzzlehunt.loggingChannelIds) {
+			const { puzzleAdd } = puzzlehunt.loggingChannelIds;
+			const channel = guild.channels.cache.get(puzzleAdd);
+			if (channel?.isTextBased()) {
+				await channel.send(
+					`New puzzle unlocked in round "${parent.name}": "${puzzleObj.name}".`
+				);
+			}
+		}
+
+		puzzlehunt.augmentWithDiscord(puzzleObj, discordInfo);
+	} else {
+		puzzlehunt.augmentWithDiscord(
+			puzzleObj,
+			await provisionDiscordResources(context, guild, puzzleObj)
+		);
+	}
 };
+
+export async function createGoogleSheetAssociation(
+	context: PuzzlehuntContext,
+	puzzle: Puzzle
+): Promise<void> {
+	const sheetId = await createGoogleSheet(
+		puzzle.name,
+		context.googleFolderId
+	);
+	context.puzzlehunt.augmentWithGoogleSheet(puzzle, sheetId);
+}
+
+/** Callbacks must make associations visible in the model before resolving. */
+export interface SyncProvisioning {
+	discord(node: Puzzle | Round): Promise<void>;
+	googleSheet(puzzle: Puzzle): Promise<void>;
+}
+
+/** Fluid-facing persistence and puzzle-add logging; workers supply their own callbacks. */
+export function createSyncProvisioning(
+	context: PuzzlehuntContext,
+	guild: Guild
+): SyncProvisioning {
+	return {
+		discord: (node) => createDiscordAssociation(context, guild, node),
+		googleSheet: (puzzle) => createGoogleSheetAssociation(context, puzzle),
+	};
+}
+
+export interface DiscordProvisioningOptions {
+	/** Previously confirmed resources to reuse, without creating replacements. */
+	readonly existing?: Partial<Record<keyof DiscordRoundInfo, string>>;
+	/**
+	 * Await persistence of each confirmed external ID before proceeding.
+	 * Round channels are created concurrently; merge each field independently.
+	 * A crash between external creation and this callback can still leave an orphan.
+	 */
+	readonly onCreated?: (
+		resource: keyof DiscordRoundInfo,
+		id: string
+	) => Promise<void>;
+}
+
+/** Create external resources only, without association writes or puzzle-add logs. */
+export function provisionDiscordResources(
+	context: PuzzlehuntContext,
+	guild: Guild,
+	node: Puzzle,
+	options?: DiscordProvisioningOptions
+): Promise<DiscordPuzzleInfo>;
+export function provisionDiscordResources(
+	context: PuzzlehuntContext,
+	guild: Guild,
+	node: Round,
+	options?: DiscordProvisioningOptions
+): Promise<DiscordRoundInfo>;
+export function provisionDiscordResources(
+	context: PuzzlehuntContext,
+	guild: Guild,
+	node: Puzzle | Round,
+	options?: DiscordProvisioningOptions
+): Promise<DiscordPuzzleInfo | DiscordRoundInfo>;
+export function provisionDiscordResources(
+	context: PuzzlehuntContext,
+	guild: Guild,
+	node: Puzzle | Round,
+	options: DiscordProvisioningOptions = {}
+): Promise<DiscordPuzzleInfo | DiscordRoundInfo> {
+	return node.type === 'puzzle'
+		? createPuzzleChannel(context, guild, node, options)
+		: createRoundChannels(context, guild, node, options);
+}
+
+async function provisionDiscordResource(
+	resource: keyof DiscordRoundInfo,
+	options: DiscordProvisioningOptions,
+	create: () => Promise<{ id: string }>
+): Promise<string> {
+	const existing = options.existing?.[resource];
+	if (existing !== undefined) {
+		return existing;
+	}
+	const { id } = await create();
+	await options.onCreated?.(resource, id);
+	return id;
+}
 
 export const removeDiscordAssociation = async (
 	guild: Guild,
@@ -57,50 +167,48 @@ export const removeDiscordAssociation = async (
 const createPuzzleChannel = async (
 	context: PuzzlehuntContext,
 	guild: Guild,
-	puzzle: Puzzle
-) => {
+	puzzle: Puzzle,
+	options: DiscordProvisioningOptions
+): Promise<DiscordPuzzleInfo> => {
 	const { puzzlehunt } = context;
 	const { name, parentId } = puzzle;
 	const parent = puzzlehunt.getRound(parentId);
-	const role = await guild.roles.create({
-		name,
-		mentionable: false,
-	});
+	const role = await provisionDiscordResource('role', options, () =>
+		guild.roles.create({
+			name,
+			mentionable: false,
+		})
+	);
 
-	const channel = await guild.channels.create({
-		name,
-		parent: parent.discord.channelId,
-		permissionOverwrites: getViewPermissions(context, puzzle, role),
-	});
+	const channel = await provisionDiscordResource('channel', options, () =>
+		guild.channels.create({
+			name,
+			parent: parent.discord.channelId,
+			permissionOverwrites: getViewPermissions(context, puzzle, role),
+		})
+	);
 
-	if (puzzlehunt.loggingChannelIds) {
-		const { puzzleAdd } = puzzlehunt.loggingChannelIds;
-		const channel = guild.channels.cache.get(puzzleAdd);
-		if (channel?.isTextBased()) {
-			await channel.send(
-				`New puzzle unlocked in round "${parent.name}": "${puzzle.name}".`
-			);
-		}
-	}
-
-	puzzlehunt.augmentWithDiscord(puzzle, { role, channel });
+	return { role, channel };
 };
 
 const createRoundChannels = async (
 	context: PuzzlehuntContext,
 	guild: Guild,
-	round: Round
-) => {
+	round: Round,
+	options: DiscordProvisioningOptions
+): Promise<DiscordRoundInfo> => {
 	const { puzzlehunt, allPuzzlesRoleId, indexId } = context;
 	const { name } = round;
 
-	const role = await guild.roles.create({
-		name,
-		mentionable: false,
-	});
+	const role = await provisionDiscordResource('role', options, () =>
+		guild.roles.create({
+			name,
+			mentionable: false,
+		})
+	);
 
 	console.log(
-		`adding channel in guild ${puzzlehunt.guildId} with permissions ${role.id} and ${allPuzzlesRoleId}`
+		`adding channel in guild ${puzzlehunt.guildId} with permissions ${role} and ${allPuzzlesRoleId}`
 	);
 	const permissionOverwrites = getViewPermissions(context, round, role);
 	console.log(
@@ -111,35 +219,46 @@ const createRoundChannels = async (
 			}))
 		)
 	);
-	const [categoryChannel, indexChannel] = await Promise.all([
-		guild.channels.create({
-			type: ChannelType.GuildCategory,
-			name,
-			permissionOverwrites,
-		}),
-		guild.channels.create({
-			name: `${name}-puzzles`,
-			parent: indexId,
-			permissionOverwrites: [
-				{
-					id: guild.id,
-					deny: [PermissionsBitField.Flags.SendMessages],
-					type: OverwriteType.Role,
-				},
-				{
-					id: BELLE_USER_ID,
-					allow: [PermissionsBitField.Flags.SendMessages],
-					type: OverwriteType.Member,
-				},
-			],
-		}),
+	// Settle both checkpoints before surfacing a failure so retries can reuse either result.
+	const [categoryChannel, indexChannel] = await Promise.allSettled([
+		provisionDiscordResource('channel', options, () =>
+			guild.channels.create({
+				type: ChannelType.GuildCategory,
+				name,
+				permissionOverwrites,
+			})
+		),
+		provisionDiscordResource('indexChannel', options, () =>
+			guild.channels.create({
+				name: `${name}-puzzles`,
+				parent: indexId,
+				permissionOverwrites: [
+					{
+						id: guild.id,
+						deny: [PermissionsBitField.Flags.SendMessages],
+						type: OverwriteType.Role,
+					},
+					{
+						id: BELLE_USER_ID,
+						allow: [PermissionsBitField.Flags.SendMessages],
+						type: OverwriteType.Member,
+					},
+				],
+			})
+		),
 	]);
+	if (categoryChannel.status === 'rejected') {
+		throw categoryChannel.reason;
+	}
+	if (indexChannel.status === 'rejected') {
+		throw indexChannel.reason;
+	}
 
-	puzzlehunt.augmentWithDiscord(round, {
+	return {
 		role,
-		channel: categoryChannel,
-		indexChannel,
-	});
+		channel: categoryChannel.value,
+		indexChannel: indexChannel.value,
+	};
 };
 
 export async function syncRoles(
@@ -382,9 +501,15 @@ function getViewPermissions(
 	];
 }
 
+/**
+ * Reconcile current model state without requiring historical change events.
+ * Existing associations are synchronized, not recreated. Without removal snapshots,
+ * this cannot discover orphaned resources belonging to nodes already deleted.
+ */
 export async function resyncServerFull(
 	context: PuzzlehuntContext,
-	guild: Guild
+	guild: Guild,
+	provisioning: SyncProvisioning = createSyncProvisioning(context, guild)
 ): Promise<void> {
 	const { puzzlehunt } = context;
 	const puzzles = Array.from(puzzlehunt.puzzles);
@@ -394,21 +519,15 @@ export async function resyncServerFull(
 	await Promise.all(
 		Array.from(puzzlehunt.rounds)
 			.filter((round) => !round.discord)
-			.map((round) => createDiscordAssociation(context, guild, round))
+			.map((round) => provisioning.discord(round))
 	);
 	await Promise.all([
 		...puzzles
 			.filter((obj) => !obj.discord)
-			.map((obj) => createDiscordAssociation(context, guild, obj)),
+			.map((obj) => provisioning.discord(obj)),
 		...puzzles
 			.filter((puzzle) => !puzzle.sheetId)
-			.map(async (puzzle) => {
-				const sheetId = await createGoogleSheet(
-					puzzle.name,
-					context.googleFolderId
-				);
-				context.puzzlehunt.augmentWithGoogleSheet(puzzle, sheetId);
-			}),
+			.map((puzzle) => provisioning.googleSheet(puzzle)),
 	]);
 
 	// Then verify all embeds / roles are up-to-date. In theory this should happen already
