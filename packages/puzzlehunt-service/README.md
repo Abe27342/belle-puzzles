@@ -250,22 +250,27 @@ synchronization tracking per hunt; expired/missing history explicitly returns a
 full snapshot.
 
 The `/changes` endpoint sends an initial revision followed by revision hints.
-Clients use those hints to request updates, with the durable PostgreSQL state as
-the recovery source. Streams send 15-second heartbeats and rotate after 180
+Clients should use those hints to request updates, with the durable PostgreSQL
+state as the recovery source. Streams send 15-second heartbeats and rotate after 180
 seconds; reconnecting requests recheck authorization. Membership revocation is
 therefore checked on the next request or stream reconnection. Listener failure or
 transport backpressure closes affected streams so clients can reconnect.
-An unavailable listener returns 503 with `Retry-After: 30`.
 
-Client subscriptions reconnect with fresh credentials on EOF, network errors,
-429, and 5xx responses, using bounded backoff and jitter and honoring `Retry-After`.
-A 401 pauses until credentials are renewed and `observations.reconnect()` is
-called; 403/404 and malformed known events stop the subscription.
-`observations.done` completes on close or terminal failure. A separate 45-second
-stream inactivity watchdog replaces the REST lifetime timeout. Visible-page,
-focus, online, and periodic safety refreshes recover missed hints; Node clients
-use the same API with periodic safety reads. Close observations when disposing
-the page or model; closing a subscription does not flush pending model changes.
+If the listener is unavailable before the SSE response headers are sent, including
+during the baseline read, the service returns 503 with `Retry-After: 30`. Clients
+should respect `Retry-After` when present. Once a stream has started, the service
+cannot add response headers; rotation, listener failure, and backpressure close
+the stream without a new `Retry-After` header.
+
+Clients should reconnect with fresh credentials after EOF, network errors, 429,
+or 5xx responses, using bounded backoff and jitter. A 401 means clients should
+pause until credentials are renewed; 403/404 and malformed known events should
+stop the subscription. Clients should use a stream inactivity watchdog separate
+from the REST request-lifetime timeout, allowing for the 15-second heartbeat
+interval. Clients should refresh after regaining visibility, focus, or network
+connectivity and periodically to recover missed hints, and close subscriptions
+when disposing the page or model. Closing a subscription does not flush pending
+model changes.
 
 ## Testability
 
