@@ -3,6 +3,7 @@ import { applyHuntCommand, snowflake } from '../../document.js';
 import type { HuntDocumentClient, HuntSnapshot } from '../../document.js';
 import { HttpHuntDocumentClient } from '../../http/client.js';
 import {
+	HuntWatchCredentialError,
 	readHuntRevisionStream,
 	watchHuntChanges,
 	watchPuzzlehuntModel,
@@ -232,6 +233,114 @@ describe('Hunt SSE client', () => {
 		await subscription.done;
 	});
 
+	it.each(['close', 'reconnect'] as const)(
+		'can %s immediately during retry backoff',
+		async (action) => {
+			vi.useFakeTimers();
+			const request = vi
+				.fn(async () => live().response)
+				.mockResolvedValueOnce(
+					new Response(null, {
+						status: 503,
+						headers: { 'Retry-After': '120' },
+					})
+				);
+			const onError = vi.fn();
+			const subscription = watchHuntChanges(scope, request, {
+				onRevision: vi.fn(),
+				onError,
+			});
+			try {
+				await vi.advanceTimersByTimeAsync(0);
+				expect(request).toHaveBeenCalledOnce();
+				subscription[action]();
+				await vi.advanceTimersByTimeAsync(0);
+				expect(request).toHaveBeenCalledTimes(
+					action === 'reconnect' ? 2 : 1
+				);
+				expect(onError).toHaveBeenCalledOnce();
+			} finally {
+				subscription.close();
+				await subscription.done;
+			}
+			expect(vi.getTimerCount()).toBe(0);
+			await vi.advanceTimersByTimeAsync(120000);
+			expect(request).toHaveBeenCalledTimes(
+				action === 'reconnect' ? 2 : 1
+			);
+		}
+	);
+
+	it('pauses for a failed credential provider and supports explicit resume and external cancellation', async () => {
+		vi.useFakeTimers();
+		const signal = new AbortController();
+		const token = vi
+			.fn(() => 'renewed')
+			.mockImplementationOnce(() => {
+				throw new Error('Credentials expired.');
+			});
+		const fetch = vi.fn(async () => live().response);
+		const client = new HttpHuntDocumentClient({
+			baseUrl: 'https://api.example.test',
+			getToken: token,
+			fetch,
+		});
+		const onError = vi.fn();
+		const subscription = client.watch(scope, {
+			onRevision: vi.fn(),
+			onError,
+			signal: signal.signal,
+		});
+		try {
+			await vi.advanceTimersByTimeAsync(120000);
+			expect(token).toHaveBeenCalledOnce();
+			expect(fetch).not.toHaveBeenCalled();
+			expect(onError).toHaveBeenCalledWith(
+				expect.any(HuntWatchCredentialError)
+			);
+			subscription.reconnect();
+			await vi.advanceTimersByTimeAsync(0);
+			expect(fetch).toHaveBeenCalledWith(
+				expect.anything(),
+				expect.objectContaining({
+					headers: expect.objectContaining({
+						Authorization: 'Bearer renewed',
+					}),
+				})
+			);
+		} finally {
+			signal.abort();
+			await subscription.done;
+		}
+		await vi.advanceTimersByTimeAsync(120000);
+		expect(fetch).toHaveBeenCalledOnce();
+		expect(onError).toHaveBeenCalledOnce();
+	});
+
+	it('can reconnect while the previous request ignores cancellation', async () => {
+		vi.useFakeTimers();
+		const request = vi
+			.fn(async (_signal: AbortSignal) => live().response)
+			.mockImplementationOnce(() => new Promise<Response>(() => {}));
+		const onError = vi.fn();
+		const subscription = watchHuntChanges(scope, request, {
+			onRevision: vi.fn(),
+			onError,
+		});
+		try {
+			await vi.advanceTimersByTimeAsync(0);
+			subscription.reconnect();
+			await vi.advanceTimersByTimeAsync(0);
+			expect(request).toHaveBeenCalledTimes(2);
+			expect(request.mock.calls[0][0].aborted).toBe(true);
+			expect(request.mock.calls[1][0].aborted).toBe(false);
+			expect(onError).not.toHaveBeenCalled();
+		} finally {
+			subscription.close();
+			await subscription.done;
+		}
+	});
+
 	it('can close while an asynchronous credential provider has not resolved', async () => {
 		const client = new HttpHuntDocumentClient({
 			baseUrl: 'https://api.example.test',
@@ -259,6 +368,20 @@ describe('Hunt SSE client', () => {
 			expect(onError).toHaveBeenCalledOnce();
 		}
 	);
+
+	it('keeps terminal failures terminal if onError requests a reconnect', async () => {
+		const request = vi.fn(async () => new Response(null, { status: 403 }));
+		const onError = vi.fn(() => {
+			subscription.reconnect();
+		});
+		const subscription = watchHuntChanges(scope, request, {
+			onRevision: vi.fn(),
+			onError,
+		});
+		await subscription.done;
+		expect(request).toHaveBeenCalledOnce();
+		expect(onError).toHaveBeenCalledOnce();
+	});
 
 	it('stops automatic reconnection for bad known payloads', async () => {
 		const request = vi.fn(

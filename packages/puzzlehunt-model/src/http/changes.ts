@@ -159,131 +159,138 @@ export function watchHuntChanges(
 	request: (signal: AbortSignal) => Promise<Response>,
 	options: HuntChangeWatchOptions
 ): HuntChangeSubscription {
-	let stopped = false;
-	let attempt: AbortController | undefined;
-	let wake: (() => void) | undefined;
+	type Outcome =
+		| { type: 'retry'; retryAfterMs: number }
+		| { type: 'pause' | 'stop' };
+	let closed = false;
+	let cycle = new AbortController();
 	let retryMs = 1000;
-	let restartRequested = false;
 	const close = () => {
-		stopped = true;
-		attempt?.abort();
-		wake?.();
+		closed = true;
+		cycle.abort();
 	};
-	const reconnect = () => {
-		restartRequested = true;
-		attempt?.abort();
-		wake?.();
-	};
-	const wait = (delay?: number) =>
+	const reconnect = () => cycle.abort();
+	const waitForAbort = (signal: AbortSignal) =>
 		new Promise<void>((resolve) => {
-			let timer: ReturnType<typeof setTimeout> | undefined;
-			const finish = () => {
-				clearTimeout(timer);
-				wake = undefined;
-				resolve();
-			};
-			wake = finish;
-			if (stopped) finish();
-			else if (delay !== undefined) timer = setTimeout(finish, delay);
+			if (signal.aborted) resolve();
+			else
+				signal.addEventListener('abort', () => resolve(), {
+					once: true,
+				});
 		});
+
+	async function observe(signal: AbortSignal): Promise<Outcome> {
+		const stream = new AbortController();
+		// A watchdog timeout ends the stream, not the cycle's retry backoff.
+		const streamSignal = AbortSignal.any([signal, stream.signal]);
+		let watchdog: ReturnType<typeof setTimeout> | undefined;
+		let retryAfterMs = 0;
+		const activity = () => {
+			clearTimeout(watchdog);
+			watchdog = setTimeout(
+				() =>
+					stream.abort(
+						new Error('Puzzlehunt change stream timed out.')
+					),
+				45000
+			);
+		};
+		try {
+			activity();
+			const response = await abortable(
+				request(streamSignal),
+				streamSignal
+			);
+			if (response.status !== 200) {
+				await response.body?.cancel();
+				const retryAfter = response.headers.get('retry-after');
+				if (retryAfter !== null) {
+					const delay = /^[0-9]+$/.test(retryAfter)
+						? Number(retryAfter) * 1000
+						: Date.parse(retryAfter) - Date.now();
+					if (Number.isFinite(delay)) {
+						retryAfterMs = Math.max(0, Math.min(2147483647, delay));
+					}
+				}
+				throw new HuntHttpError(response.status);
+			}
+			if (
+				response.headers
+					.get('content-type')
+					?.split(';')[0]
+					.trim()
+					.toLowerCase() !== 'text/event-stream' ||
+				!response.body
+			) {
+				await response.body?.cancel();
+				throw new HuntProtocolError('Expected a hunt SSE response.');
+			}
+			for await (const revision of readHuntRevisionStream(
+				response.body,
+				scope.huntId,
+				streamSignal,
+				activity
+			)) {
+				retryMs = 1000;
+				options.onRevision(revision);
+			}
+			return { type: 'retry', retryAfterMs: 0 };
+		} catch (error) {
+			signal.throwIfAborted();
+			options.onError(error);
+			if (
+				error instanceof HuntWatchCredentialError ||
+				(error instanceof HuntHttpError && error.status === 401)
+			) {
+				return { type: 'pause' };
+			}
+			if (
+				error instanceof HuntProtocolError ||
+				(error instanceof HuntHttpError &&
+					error.status !== 429 &&
+					error.status < 500)
+			) {
+				return { type: 'stop' };
+			}
+			return { type: 'retry', retryAfterMs };
+		} finally {
+			clearTimeout(watchdog);
+			stream.abort();
+		}
+	}
+
 	options.signal?.addEventListener('abort', close, { once: true });
 	if (options.signal?.aborted) close();
 	const done = (async () => {
 		try {
-			while (!stopped) {
-				restartRequested = false;
-				attempt = new AbortController();
-				const controller = attempt;
-				let watchdog: ReturnType<typeof setTimeout> | undefined;
-				let paused = false;
-				let terminal = false;
-				let timedOut = false;
-				let retryAfterMs = 0;
-				const activity = () => {
-					clearTimeout(watchdog);
-					watchdog = setTimeout(() => {
-						timedOut = true;
-						controller.abort(
-							new Error('Puzzlehunt change stream timed out.')
-						);
-					}, 45000);
-				};
+			while (!closed) {
+				const controller = (cycle = new AbortController());
+				let retryTimer: ReturnType<typeof setTimeout> | undefined;
 				try {
-					activity();
-					const response = await abortable(
-						request(controller.signal),
-						controller.signal
-					);
-					if (response.status !== 200) {
-						await response.body?.cancel();
-						const error = new HuntHttpError(response.status);
-						paused = response.status === 401;
-						terminal =
-							!paused &&
-							response.status !== 429 &&
-							response.status < 500;
-						const retryAfter = response.headers.get('retry-after');
-						if (retryAfter !== null) {
-							const delay = /^[0-9]+$/.test(retryAfter)
-								? Number(retryAfter) * 1000
-								: Date.parse(retryAfter) - Date.now();
-							if (Number.isFinite(delay)) {
-								retryAfterMs = Math.max(
-									0,
-									Math.min(2147483647, delay)
-								);
-							}
-						}
-						options.onError(error);
-					} else {
-						if (
-							response.headers
-								.get('content-type')
-								?.split(';')[0]
-								.trim()
-								.toLowerCase() !== 'text/event-stream' ||
-							!response.body
-						) {
-							await response.body?.cancel();
-							throw new HuntProtocolError(
-								'Expected a hunt SSE response.'
-							);
-						}
-						for await (const revision of readHuntRevisionStream(
-							response.body,
-							scope.huntId,
-							controller.signal,
-							activity
-						)) {
-							retryMs = 1000;
-							options.onRevision(revision);
-						}
+					const outcome = await observe(controller.signal);
+					if (outcome.type === 'stop') break;
+					controller.signal.throwIfAborted();
+					if (outcome.type === 'retry') {
+						const delay = Math.max(
+							outcome.retryAfterMs,
+							Math.min(
+								30000,
+								retryMs * (0.75 + Math.random() * 0.5)
+							)
+						);
+						retryTimer = setTimeout(
+							() => controller.abort(),
+							delay
+						);
 					}
+					await waitForAbort(controller.signal);
+					retryMs = Math.min(30000, retryMs * 2);
 				} catch (error) {
-					if (!stopped && (!controller.signal.aborted || timedOut)) {
-						paused = error instanceof HuntWatchCredentialError;
-						terminal = error instanceof HuntProtocolError;
-						options.onError(error);
-					}
+					if (!controller.signal.aborted) throw error;
 				} finally {
-					clearTimeout(watchdog);
+					clearTimeout(retryTimer);
 					controller.abort();
-					attempt = undefined;
 				}
-				if (stopped || terminal) break;
-				if (restartRequested) continue;
-				await wait(
-					paused
-						? undefined
-						: Math.max(
-								retryAfterMs,
-								Math.min(
-									30000,
-									retryMs * (0.75 + Math.random() * 0.5)
-								)
-						  )
-				);
-				retryMs = Math.min(30000, retryMs * 2);
 			}
 		} finally {
 			options.signal?.removeEventListener('abort', close);
