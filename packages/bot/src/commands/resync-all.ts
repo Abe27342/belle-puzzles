@@ -7,6 +7,8 @@ import {
 import { Command } from './types.js';
 import { PuzzlehuntContext } from '../puzzlehunt-context.js';
 import { resyncServerFull } from '../sync/sync.js';
+import type { BelleBotClient } from '../client.js';
+import { HuntContextError } from '../puzzlehunt-context.js';
 
 export const syncAll: Command = {
 	adminOnly: true,
@@ -20,14 +22,35 @@ export const syncAll: Command = {
 		interaction: ChatInputCommandInteraction<CacheType>
 	) {
 		if (context.huntContextMessage.channelId !== interaction.channelId) {
-			await interaction.reply({
-				content: 'This command can only be run from the admin channel.',
-				flags: MessageFlags.Ephemeral,
-			});
+			const content =
+				'This command can only be run from the admin channel.';
+			if (interaction.deferred) await interaction.editReply({ content });
+			else
+				await interaction.reply({
+					content,
+					flags: MessageFlags.Ephemeral,
+				});
 			return;
 		}
 		if (!interaction.deferred) {
 			await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+		}
+		if (context.backend === 'postgres') {
+			const client = interaction.client as BelleBotClient;
+			if (
+				!client.localPostgres?.guildIds.includes(interaction.guildId) ||
+				!client.isGuildAllowed(interaction.guildId)
+			) {
+				throw new HuntContextError(
+					403,
+					'PostgreSQL reconciliation is disabled for this guild.'
+				);
+			}
+			await client.localPostgres.worker.reconcile();
+			await interaction.editReply(
+				'A bounded durable-worker reconciliation pass completed. Pending or paused work may remain; inspect worker diagnostics.'
+			);
+			return;
 		}
 		await interaction.editReply(
 			'Re-syncing all discord state to reflect the Fluid file. This may take a while...'
@@ -41,5 +64,21 @@ export const syncAll: Command = {
 			return;
 		}
 		await interaction.editReply('Complete!');
+	},
+};
+
+export const resyncAll: Command = {
+	...syncAll,
+	testServerOnly: true,
+	data: new SlashCommandBuilder()
+		.setName('resync_all')
+		.setDescription(
+			'Request a durable reconciliation pass for a local PostgreSQL hunt.'
+		),
+	async execute(context, interaction) {
+		if (context.backend !== 'postgres') {
+			throw new HuntContextError(409, 'Use /sync_all for a Fluid hunt.');
+		}
+		await syncAll.execute(context, interaction);
 	},
 };

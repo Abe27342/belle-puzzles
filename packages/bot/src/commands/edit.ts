@@ -4,7 +4,7 @@ import {
 	SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from './types.js';
-import { PuzzlehuntContext } from '../puzzlehunt-context.js';
+import { PuzzlehuntContext, settleHuntContext } from '../puzzlehunt-context.js';
 import { computeAssociatedRoundOrPuzzle } from '../utils/index.js';
 
 const NAME_ARG = 'new_name';
@@ -54,9 +54,10 @@ export const edit: Command = {
 		)
 		.setDescription('Edit features of existing puzzles and rounds.'),
 	async execute(
-		{ puzzlehunt }: PuzzlehuntContext,
+		context: PuzzlehuntContext,
 		interaction: ChatInputCommandInteraction<CacheType>
 	) {
+		const { puzzlehunt } = context;
 		if (!interaction.deferred) {
 			await interaction.deferReply({ ephemeral: true });
 		}
@@ -100,6 +101,7 @@ export const edit: Command = {
 				break;
 		}
 
+		await settleHuntContext(context);
 		await interaction.editReply('Updated.');
 	},
 };
