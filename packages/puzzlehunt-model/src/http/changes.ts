@@ -159,27 +159,10 @@ export function watchHuntChanges(
 	request: (signal: AbortSignal) => Promise<Response>,
 	options: HuntChangeWatchOptions
 ): HuntChangeSubscription {
-	type Outcome =
-		| { type: 'retry'; retryAfterMs: number }
-		| { type: 'pause' | 'stop' };
-	let closed = false;
-	let cycle = new AbortController();
-	let retryMs = 1000;
-	const close = () => {
-		closed = true;
-		cycle.abort();
-	};
-	const reconnect = () => cycle.abort();
-	const waitForAbort = (signal: AbortSignal) =>
-		new Promise<void>((resolve) => {
-			if (signal.aborted) resolve();
-			else
-				signal.addEventListener('abort', () => resolve(), {
-					once: true,
-				});
-		});
-
-	async function observe(signal: AbortSignal): Promise<Outcome> {
+	async function observe(
+		signal: AbortSignal,
+		resetBackoff: () => void
+	): Promise<RetryOutcome> {
 		const stream = new AbortController();
 		// A watchdog timeout ends the stream, not the cycle's retry backoff.
 		const streamSignal = AbortSignal.any([signal, stream.signal]);
@@ -231,10 +214,10 @@ export function watchHuntChanges(
 				streamSignal,
 				activity
 			)) {
-				retryMs = 1000;
+				resetBackoff();
 				options.onRevision(revision);
 			}
-			return { type: 'retry', retryAfterMs: 0 };
+			return { type: 'retry', minimumDelayMs: 0 };
 		} catch (error) {
 			signal.throwIfAborted();
 			options.onError(error);
@@ -246,10 +229,10 @@ export function watchHuntChanges(
 			}
 			if (error instanceof HuntHttpError) {
 				if (error.status === 429 || error.status >= 500) {
-					return { type: 'retry', retryAfterMs };
+					return { type: 'retry', minimumDelayMs: retryAfterMs };
 				}
 			} else if (!(error instanceof HuntProtocolError)) {
-				return { type: 'retry', retryAfterMs };
+				return { type: 'retry', minimumDelayMs: retryAfterMs };
 			}
 			return { type: 'stop' };
 		} finally {
@@ -258,20 +241,71 @@ export function watchHuntChanges(
 		}
 	}
 
-	options.signal?.addEventListener('abort', close, { once: true });
-	if (options.signal?.aborted) close();
+	return runRetryLoop(observe, options.signal);
+}
+
+type RetryOutcome =
+	| { type: 'retry'; minimumDelayMs: number }
+	| { type: 'pause' | 'stop' };
+
+/**
+ * Runs sequential attempts with interruptible backoff or an indefinite pause.
+ * Retries use jittered exponential backoff with a one-second initial base and a
+ * 30-second cap, unless the outcome's minimumDelayMs requires a longer wait.
+ * A pause waits for reconnect; a stop completes done. Non-cancellation exceptions
+ * reject done instead of implicitly retrying.
+ *
+ * @param attempt - Performs one attempt and returns its retry, pause or stop policy.
+ * Must honor its abort signal and settle after cleanup before another attempt starts.
+ * Call resetBackoff after healthy progress to reset the next retry's base delay.
+ * @param signal - Optional external cancellation that permanently closes the loop.
+ * @returns Controls to close permanently or reconnect by aborting the current attempt
+ * or wait, plus a promise that completes when the loop ends.
+ */
+function runRetryLoop(
+	attempt: (
+		signal: AbortSignal,
+		resetBackoff: () => void
+	) => Promise<RetryOutcome>,
+	signal?: AbortSignal
+): HuntChangeSubscription {
+	let closed = false;
+	let cycle = new AbortController();
+	let retryMs = 1000;
+	const resetBackoff = () => {
+		retryMs = 1000;
+	};
+	const close = () => {
+		closed = true;
+		cycle.abort();
+	};
+	const reconnect = () => cycle.abort();
+	const waitForAbort = (signal: AbortSignal) =>
+		new Promise<void>((resolve) => {
+			if (signal.aborted) resolve();
+			else
+				signal.addEventListener('abort', () => resolve(), {
+					once: true,
+				});
+		});
+
+	signal?.addEventListener('abort', close, { once: true });
+	if (signal?.aborted) close();
 	const done = (async () => {
 		try {
 			while (!closed) {
 				const controller = (cycle = new AbortController());
 				let retryTimer: ReturnType<typeof setTimeout> | undefined;
 				try {
-					const outcome = await observe(controller.signal);
+					const outcome = await attempt(
+						controller.signal,
+						resetBackoff
+					);
 					if (outcome.type === 'stop') break;
 					controller.signal.throwIfAborted();
 					if (outcome.type === 'retry') {
 						const delay = Math.max(
-							outcome.retryAfterMs,
+							outcome.minimumDelayMs,
 							Math.min(
 								30000,
 								retryMs * (0.75 + Math.random() * 0.5)
@@ -292,7 +326,7 @@ export function watchHuntChanges(
 				}
 			}
 		} finally {
-			options.signal?.removeEventListener('abort', close);
+			signal?.removeEventListener('abort', close);
 		}
 	})();
 	return { done, close, reconnect };

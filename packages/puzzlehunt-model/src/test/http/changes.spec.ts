@@ -233,6 +233,39 @@ describe('Hunt SSE client', () => {
 		await subscription.done;
 	});
 
+	it('resets reconnect backoff after receiving a valid revision', async () => {
+		vi.useFakeTimers();
+		vi.spyOn(Math, 'random').mockReturnValue(0.5);
+		const stream = live();
+		const request = vi
+			.fn(async () => live().response)
+			.mockResolvedValueOnce(new Response(null, { status: 503 }))
+			.mockResolvedValueOnce(new Response(null, { status: 503 }))
+			.mockResolvedValueOnce(stream.response);
+		const subscription = watchHuntChanges(scope, request, {
+			onRevision: vi.fn(),
+			onError: vi.fn(),
+		});
+		try {
+			await vi.advanceTimersByTimeAsync(1000);
+			expect(request).toHaveBeenCalledTimes(2);
+			await vi.advanceTimersByTimeAsync(1999);
+			expect(request).toHaveBeenCalledTimes(2);
+			await vi.advanceTimersByTimeAsync(1);
+			expect(request).toHaveBeenCalledTimes(3);
+			stream.controller.enqueue(encoder.encode(event(1)));
+			await vi.advanceTimersByTimeAsync(0);
+			stream.controller.close();
+			await vi.advanceTimersByTimeAsync(999);
+			expect(request).toHaveBeenCalledTimes(3);
+			await vi.advanceTimersByTimeAsync(1);
+			expect(request).toHaveBeenCalledTimes(4);
+		} finally {
+			subscription.close();
+			await subscription.done;
+		}
+	});
+
 	it.each(['close', 'reconnect'] as const)(
 		'can %s immediately during retry backoff',
 		async (action) => {
@@ -381,6 +414,19 @@ describe('Hunt SSE client', () => {
 		await subscription.done;
 		expect(request).toHaveBeenCalledOnce();
 		expect(onError).toHaveBeenCalledOnce();
+	});
+
+	it('rejects done instead of retrying an unexpected callback failure', async () => {
+		const failure = new Error('Error callback failed.');
+		const request = vi.fn(async () => new Response(null, { status: 503 }));
+		const subscription = watchHuntChanges(scope, request, {
+			onRevision: vi.fn(),
+			onError: () => {
+				throw failure;
+			},
+		});
+		await expect(subscription.done).rejects.toBe(failure);
+		expect(request).toHaveBeenCalledOnce();
 	});
 
 	it('stops automatic reconnection for bad known payloads', async () => {
