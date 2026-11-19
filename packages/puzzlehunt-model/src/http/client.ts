@@ -2,7 +2,10 @@ import { applyHuntStateUpdate, isUuid } from '../document.js';
 import type {
 	HuntCommandRequest,
 	HuntCommandResult,
+	HuntCollectionClient,
+	HuntCreateRequest,
 	HuntDocumentClient,
+	HuntListing,
 	HuntScope,
 	HuntSnapshot,
 	HuntStateUpdate,
@@ -10,6 +13,8 @@ import type {
 import {
 	decodeHuntCommandResult,
 	decodeHuntCommandUpdateResult,
+	decodeHuntCreateRequest,
+	decodeHuntListing,
 	decodeHuntRejection,
 	decodeHuntSnapshot,
 	decodeHuntStateUpdate,
@@ -27,7 +32,9 @@ export interface HttpHuntDocumentClientOptions {
 	readonly timeoutMs?: number;
 }
 
-export class HttpHuntDocumentClient implements HuntDocumentClient {
+export class HttpHuntDocumentClient
+	implements HuntDocumentClient, HuntCollectionClient
+{
 	private readonly baseUrl: string;
 	private readonly fetch: typeof globalThis.fetch;
 	private readonly timeoutMs: number;
@@ -70,6 +77,47 @@ export class HttpHuntDocumentClient implements HuntDocumentClient {
 			);
 		}
 		return this.cache(snapshot);
+	}
+
+	async create(
+		guildId: string,
+		request: HuntCreateRequest
+	): Promise<HuntSnapshot> {
+		const snapshot = decodeHuntSnapshot(
+			await this.request(
+				`${this.guildPath(guildId)}/hunts`,
+				decodeHuntCreateRequest(request),
+				'POST',
+				201
+			)
+		);
+		if (snapshot.guildId !== guildId) {
+			throw new HuntProtocolError(
+				'Created hunt response returned a different guild.'
+			);
+		}
+		return this.cache(snapshot);
+	}
+
+	async list(guildId: string): Promise<HuntListing> {
+		return decodeHuntListing(
+			await this.request(`${this.guildPath(guildId)}/hunts`),
+			guildId
+		);
+	}
+
+	async selectActive(scope: HuntScope): Promise<HuntSnapshot> {
+		this.huntPath(scope);
+		return this.cache(
+			decodeHuntSnapshot(
+				await this.request(
+					`${this.guildPath(scope.guildId)}/hunts/active`,
+					{ huntId: scope.huntId },
+					'PUT'
+				),
+				scope
+			)
+		);
 	}
 
 	async read(scope: HuntScope): Promise<HuntSnapshot> {
@@ -169,19 +217,21 @@ export class HttpHuntDocumentClient implements HuntDocumentClient {
 
 	private async request(
 		path: string,
-		command?: HuntCommandRequest
+		body?: HuntCommandRequest | HuntCreateRequest | { huntId: string },
+		method = body === undefined ? 'GET' : 'POST',
+		successStatus = 200
 	): Promise<unknown> {
 		const authorization = await this.authorization();
 		const response = await this.fetch(`${this.baseUrl}${path}`, {
-			method: command === undefined ? 'GET' : 'POST',
+			method,
 			headers: {
 				Accept: 'application/json',
 				Authorization: authorization,
-				...(command === undefined
+				...(body === undefined
 					? {}
 					: { 'Content-Type': 'application/json' }),
 			},
-			body: command === undefined ? undefined : JSON.stringify(command),
+			body: body === undefined ? undefined : JSON.stringify(body),
 			cache: 'no-store',
 			credentials: 'omit',
 			redirect: 'error',
@@ -210,7 +260,7 @@ export class HttpHuntDocumentClient implements HuntDocumentClient {
 				{ cause: error }
 			);
 		}
-		if (response.status !== 200) {
+		if (response.status !== successStatus) {
 			throw (
 				decodeHuntRejection(value, response.status) ??
 				new HuntHttpError(response.status)
