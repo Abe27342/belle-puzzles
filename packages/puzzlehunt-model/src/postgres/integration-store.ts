@@ -41,6 +41,17 @@ export type IntegrationOperationIntent = {
 	readonly googleFolderId?: string;
 	readonly channelId?: string;
 };
+/**
+ * Persisted node-operation checkpoints, not hunt setup/resume tracking.
+ *
+ * @remarks
+ * `integration_progress` retains independently merged confirmed IDs, actual requested
+ * names/destination IDs, unconfirmed intents and blocking diagnostics across job
+ * completion, node deletion, and process restart. Only clear an intent with
+ * {@link OwnedHuntIntegrations.retryOperation} when the service definitively did not
+ * perform the operation. Unresolved intents and blocked targets require manual inspection;
+ * a new task must not automatically adopt or recreate those resources.
+ */
 export type IntegrationProgress = {
 	workId: string | null;
 	confirmed: Record<string, string>;
@@ -58,7 +69,21 @@ function boundedLimit(limit: number): number {
 	return limit;
 }
 
-/** Worker-only bookkeeping, independent of the user-facing document store instance. */
+/**
+ * Worker-only bookkeeping, independent of the user-facing document store instance.
+ *
+ * @remarks
+ * Exported from `/postgres`; do not expose this capability through user commands or
+ * general HTTP routes. {@link discover} pages all hunts in a caller-authorized guild.
+ * {@link acquire} returns an owned handle, or `undefined` if another connection owns
+ * that guild. Always release the handle in `finally` and keep the pool open until all
+ * handles have been released. Session advisory locks require a direct/session-pooled
+ * connection.
+ *
+ * Requires an initialized schema containing the integration columns/table from the
+ * opt-in `schema.sql`. This store does not provide schema-only initialization or a
+ * migration runner.
+ */
 export class PostgresHuntIntegrationStore implements HuntIntegrationClient {
 	constructor(private readonly pool: HuntDatabasePool) {}
 
@@ -119,6 +144,14 @@ export class PostgresHuntIntegrationStore implements HuntIntegrationClient {
 	/**
 	 * Keep this method behind a worker-only service boundary.
 	 * Atomically persist an optional result and complete one item, using its ID to deduplicate retries.
+	 *
+	 * @remarks
+	 * Compares the current association with the job's enqueue-time association under
+	 * the authoritative hunt lock. Changed/manual associations reject stale results;
+	 * same-task receipt retries remain idempotent and do not replay writes over newer
+	 * state. Cancelled/replaced nodes cannot gain results. Completion does not enqueue
+	 * follow-up integration jobs/events; workers must reconcile derived Discord state
+	 * after completion and periodically.
 	 */
 	public completeWork(
 		scope: HuntScope,
@@ -129,7 +162,28 @@ export class PostgresHuntIntegrationStore implements HuntIntegrationClient {
 	}
 }
 
-/** Capabilities tied to one live ownership connection. Do not share across concurrent passes. */
+/**
+ * Capabilities tied to one live ownership connection. Do not share across concurrent passes.
+ *
+ * @remarks
+ * Always await {@link release} in `finally`. The handle observes connection loss and
+ * cannot be used after release. Job/event attempts, due times, errors, send intent and
+ * delivery acknowledgements are persisted. Scans are limited to 1-1000 entries per call.
+ *
+ * Process {@link dueJobs} using {@link startJob}, then the store's
+ * {@link PostgresHuntIntegrationStore.completeWork} or {@link failJob}. Jobs are selected
+ * parent-first before applying the batch bound; older pending/backed-off/paused jobs
+ * gate newer jobs for the same node/target.
+ *
+ * Process {@link dueEvents} using {@link startEvent}, persist send intent with
+ * {@link beginEventDelivery}, then acknowledge with {@link completeEvent} or record
+ * failure with {@link failEvent}. Logs retain their distinct order; deletion tombstones
+ * can run independently of paused logs.
+ *
+ * Node-operation progress uses {@link progress}, {@link beginOperation},
+ * {@link confirmOperation}, {@link retryOperation}, and {@link blockProgress}; see
+ * {@link IntegrationProgress} for retention and uncertainty-handling requirements.
+ */
 export class OwnedHuntIntegrations {
 	private released = false;
 	private lost: Error | undefined;

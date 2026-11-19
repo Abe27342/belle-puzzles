@@ -31,6 +31,31 @@ import {
 	puzzleStatusMessage,
 } from './logs.js';
 
+/**
+ * Caller-owned dependencies and bounds for the opt-in PostgreSQL worker.
+ *
+ * @remarks
+ * Use the model package's `/postgres` exports for the stores and a caller-owned `pg`
+ * pool with at least two connections: one for ownership and one for document reads/writes.
+ * The pool must support session advisory locks, not transaction-mode PgBouncer.
+ * Stop the worker before closing the pool.
+ *
+ * {@link getGuild} must return the authorized guild with role/channel caches populated
+ * and a client configured with `rest: { retries: 0 }`. SDK transport retries can duplicate
+ * creates/sends after lost responses, so the worker refuses automatic retries. Google
+ * copies disable transport retries and use a 30-second request timeout. A separate local
+ * client can keep the deployed Fluid client's configuration unchanged.
+ *
+ * Batch sizes are 1-1000. Defaults per pass are 10 hunts per guild, 50 jobs, 50 events,
+ * and 50 reconciliation nodes per hunt, at 30-second intervals. Known no-effect failures
+ * use persisted attempts/errors/due times with a 30-second retry base and one-hour cap.
+ * Selected Discord 4xx responses are recognized; other errors pause unless
+ * {@link isKnownNoEffect} proves that the external service performed no operation.
+ * Never classify timeouts or failed checkpoints as safe.
+ *
+ * {@link createSheet} is injectable for tests. Worker tests use disposable native
+ * PostgreSQL and mocked Discord/Google operations, not real services or secrets.
+ */
 export interface DurableIntegrationWorkerOptions {
 	readonly integrations: PostgresHuntIntegrationStore;
 	/** Must read committed state; never pass a mutable/optimistic model. */
@@ -84,7 +109,64 @@ function requireProgress(
 		);
 }
 
-/** Explicitly constructed/started by the backend owner; importing this starts no work. */
+/**
+ * Explicitly constructed/started by the backend owner; importing this starts no work.
+ *
+ * @remarks
+ * Construction leaves default startup and deployed Fluid behavior unchanged. The worker
+ * discovers all stored hunts in explicitly authorized guilds, including inactive hunts:
+ * selection does not cancel committed work. It does not depend on browser access, model
+ * caches, SSE, or notification hints. A PostgreSQL advisory lock excludes a second worker
+ * for the whole guild, including another hunt. Ownership is released after each pass or
+ * shutdown; connection loss stops further bookkeeping/operation admission.
+ *
+ * Round-robin hunt/node cursors cover larger hunts across bounded passes. Cursors may
+ * restart from the beginning after a process restart, but committed work is not discarded.
+ * Each desired-state job reads fresh committed node/configuration state, not an optimistic
+ * model or historical job payload. Ancestors are selected before dependents, and subsequent
+ * work reads acknowledged associations. Hunts need nonempty `googleFolderId`, `indexId`,
+ * and `allPuzzlesRoleId`, plus an available index category and all-puzzles role in that
+ * guild, before node provisioning or derived sends. Resource setup is outside this worker.
+ *
+ * Provisioning reuses {@link provisionDiscordResources} with intent/result/failure
+ * checkpoints and {@link createGoogleSheet}. Confirmed associations complete through
+ * the trusted store, not general document writes. Periodic {@link syncCurrentNode} calls
+ * share full Fluid resync's channel/embed/permission logic, including old/new parent
+ * membership, puzzle category movement, ancestor permissions, and repair after a crash
+ * between completion and derived sync. These passes neither create missing associations
+ * themselves nor synthesize historical logs.
+ *
+ * Add/solve/status events retain distinct payloads and delivery acknowledgements in order.
+ * Puzzle-add events retain the enqueue-time parent name even if the round is later removed.
+ * Events without configured logging are acknowledged without sending. Solve/status logging
+ * remains in the Fluid commands; PostgreSQL command wiring must not also send those direct
+ * logs. Deletion tombstones proceed independently of blocked log delivery: recorded Discord
+ * IDs are deleted idempotently, while Google Sheets are always retained.
+ *
+ * External effects are not exactly-once. Persisted intent precedes each create/send,
+ * including the requested name and destination IDs for manual inspection. Confirmed
+ * resource/message IDs are reused, including an embed sent but not yet pinned. Timeouts,
+ * lost responses, interrupted intents, and unacknowledged sends pause the node/target or
+ * log stream with manual-inspection diagnostics instead of repeating the effect. Later
+ * jobs cannot bypass that pause. Stale completions cannot overwrite manual/newer
+ * associations; confirmed but rejected results remain recorded. Node deletion retains
+ * and blocks progress even if a replacement reuses the ID. There is deliberately no setup
+ * ledger, automatic adoption, or general resume CLI.
+ *
+ * @example
+ * ```ts
+ * const worker = createDurableIntegrationWorker({
+ *     documents: new PostgresPuzzlehuntStore(pool),
+ *     integrations: new PostgresHuntIntegrationStore(pool),
+ *     authorizedGuildIds: configuredGuildIds,
+ *     getGuild: loadAuthorizedGuild,
+ *     onError: (error, scope) => console.error(scope, error),
+ * });
+ * await worker.start(); // One bounded startup pass, then non-overlapping periodic passes.
+ * // await worker.reconcile(); // Explicit bounded catch-up; joins an in-flight pass.
+ * await worker.stop(); // Stop admission, settle current work, release database ownership.
+ * ```
+ */
 export class DurableIntegrationWorker {
 	private readonly guilds: readonly string[];
 	private readonly huntCursors = new Map<string, string>();
