@@ -2,11 +2,9 @@
 
 ## Local PostgreSQL hunts (opt-in, non-live)
 
-The browser uses the puzzlehunt **HTTP client**, never PostgreSQL or a trusted
-service credential. The default/production website still uses Fluid. HTTP hunts
-are enabled only by the `local-postgres` Vite development mode on a loopback HTTP
-page; production builds (including `vite build --mode local-postgres`) cannot
-enable this path.
+Local PostgreSQL hunts require the `local-postgres` Vite development mode on a
+loopback HTTP page. Production builds (including `vite build --mode local-postgres`)
+do not enable them. The default/production website still uses Fluid.
 
 Create `packages/site/.env.local-postgres.local` (ignored by Git) with:
 
@@ -18,8 +16,7 @@ VITE_BELLE_BOT_CLIENT_ID=<the local bot's CLIENT_ID>
 `VITE_BELLE_BOT_BASE_URL=http://localhost:3000`,
 `VITE_PUZZLEHUNT_SERVICE_BASE_URL=http://localhost:3001`, and the existing local
 Fluid fallback. Both API URLs must be loopback HTTP **origins**, without paths,
-credentials, query strings, or fragments. A descriptor or Discord pin cannot
-choose the service URL. Never put `DATABASE_URL`, `DISCORD_TOKEN`, or
+credentials, query strings, or fragments. Never put `DATABASE_URL`, `DISCORD_TOKEN`, or
 `PUZZLEHUNT_SERVICE_TOKEN` in a `VITE_` variable.
 
 With the local bot and puzzlehunt service configured and running, start the site
@@ -38,8 +35,7 @@ Use that same application's ID for the site, bot `CLIENT_ID`, and service
 `PUZZLEHUNT_ALLOWED_ORIGINS=http://localhost:9000`. In the ignored
 `packages/site-api/local.settings.json`, `Values.DISCORD_TOKEN` must be the same
 **local** bot's token so server discovery finds the right guilds. The
-`FLUID_RELAY_KEY` is only used by the existing remote Fluid token route; HTTP
-hunts do not request Fluid tokens.
+`FLUID_RELAY_KEY` is needed only for remote Fluid hunts, not local PostgreSQL hunts.
 
 See [the bot's opt-in settings](../bot/README.md#local-postgresql-bot-opt-in) for
 `LOCAL_POSTGRES_GUILD_IDS`, `GUILD_ALLOW_LIST`, the loopback database/service,
@@ -49,29 +45,23 @@ The persistent full-stack VS Code launch recipe is a separate layer.
 
 ### Refreshing and saving
 
-The site revalidates bot metadata on entry rather than trusting persisted RTK
-query data, then loads the **exact guild and hunt ID** it received. There is no
-SSE, server watch, or document polling for HTTP hunts. **Refresh hunt** rechecks
-metadata and reloads the document after any pending edits settle. Other users'
-edits and late Discord/Google associations appear on refresh, reload, or a later
-authoritative command response. Missing associations are shown as pending, not
-broken links. Fluid retains its live session and metadata keepalive.
+Local PostgreSQL hunts are **not live views**. Use **Refresh hunt** after pending
+edits finish to see other users' edits and newly created Discord/Google resources.
+These updates can also appear when you save another edit or reopen the page.
+Resources that are not ready yet are shown as pending. Fluid hunts remain live.
 
-Add, delete, solve, rename, URL, and sheet-ID edits remain optimistic, but HTTP
-dialogs wait for acknowledgement before closing. A definite rejection rolls
-back the edit and stays visible. An uncertain result retains the original
-model/command IDs: use **Retry pending edit**, not a new submission. This retries
-the same command even if the server committed it before the response was lost.
-Direct sheet-ID edits remain user commands, not worker operations.
+Add, delete, solve, rename, URL, and sheet-ID edits appear immediately, but the
+dialog stays open until saving finishes. Rejected edits are undone and the error
+stays visible. If a save's outcome is uncertain, use **Retry pending edit** rather
+than submitting the edit again.
 
-Pending HTTP edits block in-app navigation/logout and warn before closing or
-reloading the tab. An unexpected component unmount retains the unsettled model
-in memory for reopening the original guild in the same tab/account; this is
-**not a durable/offline queue**. Confirming a browser reload/close loses that
-in-memory retry state. Do not reload to resolve an uncertain save.
-An active-hunt/backend change is announced; **Open selected hunt** deliberately
-opens the newly verified selection only after the old model has settled.
-Auth and service failures are displayed without redirecting local HTTP saves.
+Pending edits block in-app navigation/logout and warn before closing or reloading
+the tab. **Keep the tab open**: confirming a reload/close loses the ability to retry
+an uncertain save safely. If you need to sign in again, use the same account and
+reopen the original guild in the same tab to retry pending edits. Do not reload to
+resolve an uncertain save.
+When the active hunt changes, use **Open selected hunt** after pending edits finish.
+Login and service errors are displayed on the page.
 
 ## Running against a local belle-bot
 

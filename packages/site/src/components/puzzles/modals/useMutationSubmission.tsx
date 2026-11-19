@@ -4,6 +4,17 @@ import { errorMessage } from '../usePuzzlehunt';
 import { Button } from '../../../fast';
 import type { InputResult } from './singleInputModal';
 
+/**
+ * Optional HTTP settlement boundary shared by mutation dialogs.
+ *
+ * @remarks
+ * Mutations stay synchronous and optimistic, but HTTP dialogs await flush before
+ * closing. Definite rejections roll back; uncertain outcomes retain the model's
+ * original queue and command IDs. Retry calls retryPending instead of rerunning
+ * the mutation or using the generic fetch retry wrapper. Direct sheet-ID edits
+ * remain user commands, not worker operations. Without this context, Fluid
+ * dialogs preserve their synchronous submission behavior.
+ */
 export interface MutationSettlement {
 	model: PuzzlehuntModel;
 	isCurrent(): boolean;

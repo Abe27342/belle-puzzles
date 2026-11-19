@@ -34,6 +34,17 @@ export function errorMessage(error: unknown): string {
 	return String(error);
 }
 
+/**
+ * Explicit refresh, selection, and settlement actions for the loaded hunt.
+ *
+ * @remarks
+ * Entry and refresh force a fresh metadata request instead of treating persisted
+ * RTK Query data as authoritative. HTTP refresh settles pending writes before
+ * reading; an uncertain outcome prevents both refresh and scope replacement.
+ * Changed backend/guild/hunt identity requires deliberate reopening, never retargeting
+ * a model with queued writes. A resumed model must revalidate metadata before new edits.
+ * Fluid retains its live session and five-minute metadata keepalive.
+ */
 interface HuntControls {
 	refresh(): Promise<void>;
 	reopen(): Promise<void>;

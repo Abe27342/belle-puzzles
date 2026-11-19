@@ -1,3 +1,11 @@
+/**
+ * Build-time configuration for the opt-in local HTTP path.
+ *
+ * @remarks
+ * Only configured loopback HTTP origins may receive browser OAuth credentials.
+ * Neither hunt descriptors nor Discord pins choose the service destination.
+ * Database and trusted-service credentials must never be exposed as VITE variables.
+ */
 interface LocalHuntEnvironment {
 	PROD: boolean;
 	MODE: string;

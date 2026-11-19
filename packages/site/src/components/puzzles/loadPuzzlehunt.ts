@@ -10,6 +10,21 @@ import { getDiscordToken } from '../../store/auth';
 import type { AppStore } from '../../store/store';
 import { getLocalHuntServiceUrl } from '../../services/localHuntConfig';
 
+/**
+ * Owns one non-live HTTP model without pretending it is a Fluid session.
+ *
+ * @remarks
+ * Loading uses the descriptor's exact guild/hunt scope, never a separate active-hunt
+ * lookup. The HTTP client reads the current Redux Discord OAuth token per request;
+ * this path neither accesses PostgreSQL directly nor requests Fluid tokens.
+ * Model subscriptions observe optimistic and authoritative changes and save status,
+ * not remote notifications: no SSE, observer, or document polling is installed.
+ *
+ * Disposal suspends requests; the owning hook releases subscriptions and guards late
+ * loads/callbacks. An unsettled model is retained only in memory for the original
+ * account/guild and service origin. Resuming preserves its original scope and queued
+ * command IDs even when active-hunt metadata changes. This is not a durable queue.
+ */
 export interface HttpPuzzlehunt {
 	readonly backend: 'postgres';
 	descriptor: PostgresHuntDescriptor;
