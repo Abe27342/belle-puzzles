@@ -120,6 +120,7 @@ CREATE TABLE integration_jobs (
     available_at timestamptz NOT NULL DEFAULT now(),
     attempts integer NOT NULL DEFAULT 0,
     last_error text,
+    paused_at timestamptz,
     completed_at timestamptz,
     cancelled_at timestamptz,
     CHECK (completed_at IS NULL OR cancelled_at IS NULL),
@@ -141,6 +142,9 @@ CREATE TABLE integration_events (
     available_at timestamptz NOT NULL DEFAULT now(),
     attempts integer NOT NULL DEFAULT 0,
     last_error text,
+    paused_at timestamptz,
+    delivery_started_at timestamptz,
+    message_id text,
     delivered_at timestamptz,
     PRIMARY KEY (hunt_id, command_id, ordinal),
     FOREIGN KEY (hunt_id, command_id)
@@ -149,3 +153,22 @@ CREATE TABLE integration_events (
 
 CREATE INDEX integration_events_ready ON integration_events (available_at)
     WHERE delivered_at IS NULL;
+
+-- Node operations, not hunt setup progress. Keep confirmed IDs and unresolved
+-- intents across jobs, cancellation, and restarts; never silently adopt/recreate.
+CREATE TABLE integration_progress (
+    hunt_id uuid NOT NULL REFERENCES hunts(id),
+    node_id uuid NOT NULL,
+    target text NOT NULL CHECK (target IN ('discord', 'google', 'embed')),
+    work_id uuid REFERENCES integration_jobs(id),
+    confirmed jsonb NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(confirmed) = 'object'),
+    intents jsonb NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(intents) = 'object'),
+    pending text[] NOT NULL DEFAULT '{}',
+    blocked_error text,
+    attempts integer NOT NULL DEFAULT 0,
+    available_at timestamptz NOT NULL DEFAULT now(),
+    last_error text,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (hunt_id, node_id, target),
+    CHECK ((target = 'embed') = (work_id IS NULL))
+);

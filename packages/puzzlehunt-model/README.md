@@ -48,6 +48,44 @@ committed an additional hunt. List hunts and inspect the active selection before
 retrying manually. Creation has no idempotency key, and these APIs do not delete
 hunts.
 
+## Trusted durable integration storage
+
+`PostgresHuntIntegrationStore` is a worker-only capability exported from `/postgres`.
+Do not expose it through user commands or general HTTP routes. `discover(guildId,
+afterHuntId?, limit?)` pages all hunts in a caller-authorized guild.
+`acquire(scope)` returns an `OwnedHuntIntegrations` handle, or `undefined` if another
+connection owns that guild. Always `await handle.release()` in `finally`; keep the pool
+open until all handles are released. The handle observes connection loss and cannot be
+used after release. Session advisory locks require a direct/session-pooled connection.
+
+The owned handle provides `dueJobs`, `startJob`, `failJob`, `dueEvents`, `startEvent`, `beginEventDelivery`,
+`completeEvent`, `failEvent`, and node-operation `progress`, `beginOperation`,
+`confirmOperation`, `retryOperation`, `blockProgress`. Jobs are selected parent-first
+before applying the batch bound; an older pending/backed-off/paused job gates newer jobs
+for the same node/target. Logs retain their distinct order; deletion tombstones can run
+independently of paused logs. Attempts, due times, errors, send intent and delivery
+acknowledgements are persisted. Scans are limited to 1-1000 entries per call.
+
+`integration_progress` is node-operation bookkeeping, not hunt setup/resume tracking.
+It retains independently merged confirmed IDs, actual requested names/destination IDs,
+unconfirmed intents and blocking
+diagnostics across job completion, node deletion, and process restart. Only clear an
+intent with `retryOperation` when a service definitively did not perform the operation.
+An unresolved intent or blocked target requires manual inspection; a new task must
+not adopt or recreate those resources automatically.
+
+`completeWork(scope, workId, result?)` still atomically persists an optional association
+and completes just that job using the work-ID receipt. It now also compares the current
+association against the job's enqueue-time association under the authoritative hunt
+lock. Changed/manual associations reject stale results; same-task receipt retries
+remain idempotent and do not replay writes over newer state. Cancelled/replaced nodes
+cannot gain results. Completion does not enqueue follow-up integration jobs/events;
+workers must reconcile derived Discord state after completion and periodically.
+
+These additions are part of the opt-in `schema.sql`; use an initialized schema containing
+the new columns/table. This package does not add schema-only initialization or a migration
+runner.
+
 ## Testing
 
 Models are tested using contract-based tests running against local databases/services.

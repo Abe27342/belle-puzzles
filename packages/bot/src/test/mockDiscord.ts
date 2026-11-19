@@ -6,6 +6,7 @@
 import { expect, vi } from 'vitest';
 import {
 	Client,
+	ClientOptions,
 	Guild,
 	Channel,
 	User,
@@ -20,6 +21,7 @@ import {
 	ChannelType,
 	TextChannel,
 	OverwriteType,
+	DiscordAPIError,
 } from 'discord.js';
 import { BELLE_USER_ID } from '../utils/index.js';
 
@@ -137,8 +139,8 @@ export class MockDiscord {
 	private guildMember!: GuildMember;
 	public serverState: IServerState;
 
-	constructor() {
-		this.mockClient();
+	constructor(options: ClientOptions = { intents: [] }) {
+		this.mockClient(options);
 		this.mockGuild();
 
 		this.mockUser();
@@ -209,8 +211,8 @@ export class MockDiscord {
 		return interaction;
 	}
 
-	private mockClient(): void {
-		this.client = new Client({ intents: [] });
+	private mockClient(options: ClientOptions): void {
+		this.client = new Client(options);
 		this.client.login = vi.fn(() => Promise.resolve('LOGIN_TOKEN'));
 
 		let currentId = 0;
@@ -226,6 +228,7 @@ export class MockDiscord {
 		const channelMessagesPinRegex = new RegExp(
 			Routes.channelMessagesPin('(.*)', '(.*)')
 		);
+		const channelMessageRegex = /^\/channels\/([^/]+)\/messages\/([^/]+)$/;
 
 		this.client.rest.get = vi.fn(
 			async (fullRoute: `/${string}`, options?: RequestData) => {
@@ -254,6 +257,14 @@ export class MockDiscord {
 						(message) => message.pinned
 					);
 					return messages;
+				} else if (fullRoute.match(channelMessageRegex)) {
+					const [, channelId, messageId] =
+						fullRoute.match(channelMessageRegex);
+					const message = serverState.messages
+						.get(channelId)
+						?.find((message) => message.id === messageId);
+					expect(message).toBeDefined();
+					return message;
 				} else {
 					expect.fail(
 						`Unexpected GET request: ${fullRoute}. Mock fidelity must be increased.`
@@ -386,6 +397,9 @@ export class MockDiscord {
 					);
 					const channel = serverState.findChannelBy('id', channelId);
 					channel.name = (options.body as any).name ?? channel.name;
+					if ((options.body as any).parent_id !== undefined) {
+						channel.parent_id = (options.body as any).parent_id;
+					}
 					if ((options.body as any).permission_overwrites) {
 						channel.permission_overwrites = JSON.parse(
 							JSON.stringify(
@@ -408,7 +422,17 @@ export class MockDiscord {
 				const values = role ? serverState.roles : serverState.channels;
 				const id = (role ?? channel)[1];
 				const index = values.findIndex((value) => value.id === id);
-				expect(index).toBeGreaterThanOrEqual(0);
+				if (index < 0) {
+					const code = role ? 10011 : 10003;
+					throw new DiscordAPIError(
+						{ code, message: 'Unknown resource' },
+						code,
+						404,
+						'DELETE',
+						fullRoute,
+						{}
+					);
+				}
 				return values.splice(index, 1)[0];
 			}
 			expect.fail(

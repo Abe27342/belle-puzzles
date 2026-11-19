@@ -61,6 +61,232 @@ beforeEach(async () => {
 });
 
 describe('Authoritative commands on multiple PostgreSQL connections', () => {
+	it('scopes discovery and excludes a second guild owner until release, even for another hunt', async () => {
+		const integrations = new PostgresHuntIntegrationStore(database.pool);
+		const other = await database.store.create(scope.guildId, {
+			name: 'Inactive/current',
+		});
+		await database.store.create('unrelated-guild', {
+			name: 'Not authorized',
+		});
+		const first = await integrations.discover(scope.guildId, undefined, 1);
+		const second = await integrations.discover(
+			scope.guildId,
+			first[0].huntId,
+			1
+		);
+		expect(
+			[...first, ...second].map((value) => value.huntId).sort()
+		).toEqual([scope.huntId, other.huntId].sort());
+		const owner = await integrations.acquire(scope);
+		expect(owner).toBeDefined();
+		try {
+			expect(await integrations.acquire(scope)).toBeUndefined();
+			expect(await integrations.acquire(other)).toBeUndefined();
+		} finally {
+			await owner!.release();
+		}
+		await expect(owner!.dueJobs()).rejects.toThrow('released');
+		const successor = await integrations.acquire(other);
+		expect(successor).toBeDefined();
+		await successor!.release();
+		await successor!.release();
+		await expect(
+			integrations.acquire({ ...scope, guildId: snowflake('wrong') })
+		).rejects.toThrow('not found');
+	});
+
+	it('retains attempts, due times, and parallel checkpoints without letting later jobs bypass retry', async () => {
+		const integrations = new PostgresHuntIntegrationStore(database.pool);
+		const owner = (await integrations.acquire(scope))!;
+		let jobId: string;
+		try {
+			const job = (await owner.dueJobs()).find(
+				(job) => job.nodeId === rootId
+			)!;
+			jobId = job.id;
+			await owner.startJob(job.id);
+			await owner.beginOperation(rootId, 'discord', 'channel', job.id, {
+				name: 'Root',
+			});
+			await owner.beginOperation(
+				rootId,
+				'discord',
+				'indexChannel',
+				job.id,
+				{ name: 'Root', indexId: 'index-category' }
+			);
+			await Promise.all([
+				owner.confirmOperation(
+					rootId,
+					'discord',
+					'channel',
+					'category'
+				),
+				owner.confirmOperation(
+					rootId,
+					'discord',
+					'indexChannel',
+					'index'
+				),
+			]);
+			await owner.failJob(job.id, 'Rate limited', 60000);
+			await database.store.submit(scope, {
+				commandId: crypto.randomUUID(),
+				command: {
+					type: 'set-property',
+					nodeId: rootId,
+					property: 'name',
+					value: 'New name',
+				},
+			});
+			expect(
+				(await owner.dueJobs()).filter(
+					(value) => value.nodeId === rootId
+				)
+			).toEqual([]);
+			const { rows } = await database.pool.query(
+				'SELECT attempts, last_error, available_at > now() AS delayed FROM integration_jobs WHERE id = $1',
+				[job.id]
+			);
+			expect(rows).toEqual([
+				{ attempts: 1, last_error: 'Rate limited', delayed: true },
+			]);
+		} finally {
+			await owner.release();
+		}
+		const resumed = (await integrations.acquire(scope))!;
+		try {
+			expect(await resumed.progress(rootId, 'discord')).toMatchObject({
+				workId: jobId!,
+				confirmed: { channel: 'category', indexChannel: 'index' },
+				intents: {
+					channel: { name: 'Root' },
+					indexChannel: { name: 'Root', indexId: 'index-category' },
+				},
+				pending: [],
+			});
+			await resumed.beginOperation(rootId, 'discord', 'role', jobId!, {
+				name: 'New name',
+			});
+			await database.store.submit(scope, {
+				commandId: crypto.randomUUID(),
+				command: { type: 'delete', nodeId: rootId },
+			});
+			expect(await resumed.progress(rootId, 'discord')).toMatchObject({
+				pending: ['role'],
+				blockedError: expect.stringContaining('deleted'),
+			});
+			await expect(
+				resumed.beginOperation(
+					rootId,
+					'discord',
+					'role',
+					crypto.randomUUID(),
+					{ name: 'Replacement' }
+				)
+			).rejects.toThrow('blocked');
+		} finally {
+			await resumed.release();
+		}
+	});
+
+	it('rejects a stale sheet result after a newer manual association under the authoritative lock', async () => {
+		const integrations = new PostgresHuntIntegrationStore(database.pool);
+		const owner = (await integrations.acquire(scope))!;
+		try {
+			const job = (await owner.dueJobs()).find(
+				(job) => job.target === 'google'
+			)!;
+			await owner.beginOperation(puzzleId, 'google', 'sheet', job.id, {
+				name: 'Puzzle',
+				googleFolderId: 'folder',
+			});
+			await owner.confirmOperation(
+				puzzleId,
+				'google',
+				'sheet',
+				'created-sheet'
+			);
+			await database.store.submit(scope, {
+				commandId: crypto.randomUUID(),
+				command: {
+					type: 'set-property',
+					nodeId: puzzleId,
+					property: 'sheetId',
+					value: 'manual-sheet',
+				},
+			});
+			await expect(
+				integrations.completeWork(scope, job.id, {
+					type: 'set-property',
+					nodeId: puzzleId,
+					property: 'sheetId',
+					value: 'created-sheet',
+				})
+			).rejects.toThrow('association changed');
+			expect(
+				(await database.store.read(scope)).document.nodes[puzzleId]
+			).toMatchObject({ sheetId: 'manual-sheet' });
+			expect(await owner.progress(puzzleId, 'google')).toMatchObject({
+				confirmed: { sheet: 'created-sheet' },
+			});
+			await integrations.completeWork(scope, job.id);
+		} finally {
+			await owner.release();
+		}
+	});
+
+	it('holds later log events behind retry/uncertainty without blocking deletion tombstones', async () => {
+		const integrations = new PostgresHuntIntegrationStore(database.pool);
+		const owner = (await integrations.acquire(scope))!;
+		try {
+			const [first] = await owner.dueEvents();
+			await owner.startEvent(first);
+			await owner.beginEventDelivery(first);
+			await owner.failEvent(first, 'Response lost', 60000, true);
+			await database.store.submit(scope, {
+				commandId: crypto.randomUUID(),
+				command: { type: 'delete', nodeId: rootId },
+			});
+			const events = await owner.dueEvents();
+			expect(events).toHaveLength(2);
+			expect(
+				events.every(
+					(value) => value.payload.event.type === 'node-deleted'
+				)
+			).toBe(true);
+			for (const event of events) await owner.completeEvent(event);
+			expect(await owner.dueEvents()).toEqual([]);
+			const { rows } = await database.pool.query(
+				`SELECT attempts, last_error, delivery_started_at IS NOT NULL AS started
+				 FROM integration_events WHERE command_id = $1 AND ordinal = $2`,
+				[first.commandId, first.ordinal]
+			);
+			expect(rows).toEqual([
+				{ attempts: 1, last_error: 'Response lost', started: true },
+			]);
+		} finally {
+			await owner.release();
+		}
+	});
+
+	it('observes ownership connection loss and permits a new owner without reusing the failed connection', async () => {
+		const integrations = new PostgresHuntIntegrationStore(database.pool);
+		const owner = (await integrations.acquire(scope))!;
+		await database.pool.query(
+			`SELECT pg_terminate_backend(pid) FROM pg_locks
+			 WHERE locktype = 'advisory' AND granted AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`
+		);
+		await vi.waitFor(async () => {
+			await expect(owner.dueJobs()).rejects.toThrow();
+		});
+		await expect(owner.release()).rejects.toThrow();
+		const replacement = await integrations.acquire(scope);
+		expect(replacement).toBeDefined();
+		await replacement!.release();
+	});
+
 	it('retains independently created hunts under concurrent active selection', async () => {
 		const original = await database.store.read(scope);
 		const created = await Promise.all(

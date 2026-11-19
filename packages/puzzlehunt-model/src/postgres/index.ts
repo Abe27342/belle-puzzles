@@ -1,4 +1,14 @@
 export { PostgresPuzzlehuntStore } from './store.js';
 export type { HuntDatabaseConnection, HuntDatabasePool } from './database.js';
-export { PostgresHuntIntegrationStore } from './integration-store.js';
+export {
+	PostgresHuntIntegrationStore,
+	OwnedHuntIntegrations,
+} from './integration-store.js';
+export type {
+	IntegrationJob,
+	IntegrationEvent,
+	IntegrationProgress,
+	IntegrationProgressTarget,
+	IntegrationOperationIntent,
+} from './integration-store.js';
 export type { HuntIntegrationTarget } from './integrations.js';

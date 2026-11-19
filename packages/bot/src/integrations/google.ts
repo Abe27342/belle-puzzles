@@ -3,7 +3,8 @@ import { google, type sheets_v4 } from 'googleapis';
 
 export const createGoogleSheet = async (
 	name: string,
-	googleFolderId: string
+	googleFolderId: string,
+	options?: { readonly retry: boolean; readonly timeout?: number }
 ) => {
 	const auth = new google.auth.GoogleAuth({
 		credentials: JSON.parse(process.env.GOOGLE_API_KEY),
@@ -11,14 +12,17 @@ export const createGoogleSheet = async (
 	});
 	google.options({ auth });
 	const drive = google.drive({ version: 'v3' });
-	const file = await drive.files.copy({
-		fileId: GOOGLE_SHEET_TEMPLATE_ID,
-		requestBody: {
-			name,
-			parents: [googleFolderId],
-			mimeType: 'application/vnd.google-apps.spreadsheet',
+	const file = await drive.files.copy(
+		{
+			fileId: GOOGLE_SHEET_TEMPLATE_ID,
+			requestBody: {
+				name,
+				parents: [googleFolderId],
+				mimeType: 'application/vnd.google-apps.spreadsheet',
+			},
 		},
-	});
+		options
+	);
 	return file.data.id;
 };
 

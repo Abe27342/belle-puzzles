@@ -1,5 +1,6 @@
 import { HuntCommandError } from '../document.js';
 import type {
+	DocumentNode,
 	HuntCommand,
 	HuntDocumentEvent,
 	HuntIntegrationCommand,
@@ -15,15 +16,17 @@ export async function validateIntegrationWork(
 	connection: HuntDatabaseConnection,
 	scope: HuntScope,
 	workId: string,
-	result: HuntCommand | HuntIntegrationCommand | undefined
+	result: HuntCommand | HuntIntegrationCommand | undefined,
+	snapshot: HuntSnapshot
 ): Promise<void> {
 	const { rows } = await connection.query<{
 		node_id: string;
 		target: HuntIntegrationTarget;
 		completed_at: unknown;
 		cancelled_at: unknown;
+		payload: { node: DocumentNode };
 	}>(
-		`SELECT node_id, target, completed_at, cancelled_at
+		`SELECT node_id, target, completed_at, cancelled_at, payload
 		 FROM integration_jobs WHERE hunt_id = $1 AND id = $2`,
 		[scope.huntId, workId]
 	);
@@ -51,6 +54,30 @@ export async function validateIntegrationWork(
 			'invalid-command',
 			'Integration result does not match the work item.'
 		);
+	}
+	if (result !== undefined) {
+		const current = snapshot.document.nodes[work.node_id];
+		const original = work.payload.node;
+		const association = (node: typeof current) =>
+			work.target === 'discord'
+				? node?.discord
+				: node?.type === 'puzzle'
+				? node.sheetId
+				: undefined;
+		const before = association(original);
+		const now = association(current);
+		const same =
+			typeof before === 'object' && typeof now === 'object'
+				? before.channelId === now.channelId &&
+				  before.roleId === now.roleId &&
+				  before.indexChannelId === now.indexChannelId
+				: before === now;
+		if (current === undefined || !same) {
+			throw new HuntCommandError(
+				'conflict',
+				'Integration association changed since this work was enqueued.'
+			);
+		}
 	}
 }
 
@@ -93,6 +120,13 @@ export async function recordPendingIntegrationWork(
 			 AND completed_at IS NULL AND cancelled_at IS NULL`,
 			[committed.huntId, removed]
 		);
+		await connection.query(
+			`UPDATE integration_progress
+			 SET blocked_error = 'Node deleted; inspect retained resource IDs before any further operation.',
+			     updated_at = clock_timestamp()
+			 WHERE hunt_id = $1 AND node_id = ANY($2::uuid[])`,
+			[committed.huntId, removed]
+		);
 	}
 	const nodes = changedIds.flatMap((id) => {
 		const node = committed.document.nodes[id];
@@ -124,7 +158,8 @@ export async function recordPendingIntegrationWork(
 		await connection.query(
 			`INSERT INTO integration_events (hunt_id, command_id, ordinal, revision, payload)
 			 SELECT $1, $2, (ordinal - 1)::integer, $3,
-				jsonb_build_object('event', event, 'configuration', $5::jsonb)
+				jsonb_build_object('event', event, 'configuration', $5::jsonb,
+					'parentName', $6::jsonb->(event->'node'->>'parentId')->>'name')
 			 FROM jsonb_array_elements($4::jsonb) WITH ORDINALITY AS emitted(event, ordinal)`,
 			[
 				committed.huntId,
@@ -132,6 +167,7 @@ export async function recordPendingIntegrationWork(
 				committed.revision,
 				JSON.stringify(events),
 				configuration,
+				JSON.stringify(committed.document.nodes),
 			]
 		);
 	}
