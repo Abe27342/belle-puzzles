@@ -1,258 +1,15 @@
+import { CartesianCoord, CartesianGrid, Edge, Grid } from './grid/index.js';
 import { Arith, z3 } from './index.js';
 
-function* mapIterable<T, O>(
-	iterable: Iterable<T>,
-	fn: (t: T) => O
-): Iterable<O> {
-	for (const item of iterable) {
-		yield fn(item);
-	}
-}
-
-interface Grid<TCoord, T> {
-	get(coord: TCoord): T;
-
-	set(coord: TCoord, value: T): void;
-
-	neighbors(coord: TCoord): Iterable<TCoord>;
-
-	cells(): Iterable<[TCoord, T]>;
-
-	cellValues(): Iterable<T>;
-}
-
-type RectangularCoord = [x: number, y: number];
-
-class RectangularGrid<T> implements Grid<RectangularCoord, T> {
-	#grid: T[][];
-	public readonly width: number;
-	public readonly height: number;
-
-	constructor(grid: T[][]) {
-		this.height = grid.length;
-		// Copy for safety
-		this.#grid = [...grid].map((row) => [...row]);
-		this.width = grid[0]?.length ?? 0;
-
-		for (const row of this.#grid) {
-			if (row.length !== this.width) {
-				throw new Error('All rows must have the same length');
-			}
-		}
-	}
-
-	public static fromDimensions<T>(
-		width: number,
-		height: number,
-		filledValue: () => T
-	): RectangularGrid<T> {
-		const grid: T[][] = Array.from({ length: height }, () =>
-			Array.from({ length: width }, () => filledValue())
-		);
-		return new RectangularGrid(grid);
-	}
-
-	#validateCoord(coord: RectangularCoord): void {
-		const [x, y] = coord;
-		if (y < 0 || y >= this.height || x < 0 || x >= this.width) {
-			throw new RangeError('Coordinate out of bounds');
-		}
-	}
-
-	public set(coord: RectangularCoord, value: T): void {
-		this.#validateCoord(coord);
-		const [x, y] = coord;
-		this.#grid[y][x] = value;
-	}
-
-	public get(coord: RectangularCoord): T {
-		this.#validateCoord(coord);
-		const [x, y] = coord;
-		return this.#grid[y][x];
-	}
-
-	static #up = [0, -1];
-	static #down = [0, 1];
-	static #left = [-1, 0];
-	static #right = [1, 0];
-
-	static #deltas = [
-		RectangularGrid.#up,
-		RectangularGrid.#down,
-		RectangularGrid.#left,
-		RectangularGrid.#right,
-	];
-
-	public neighbors(coord: RectangularCoord): RectangularCoord[] {
-		const [x, y] = coord;
-		return RectangularGrid.#deltas
-			.map(([dx, dy]) => [x + dx, y + dy] as RectangularCoord)
-			.filter(
-				([nx, ny]) =>
-					nx >= 0 && nx < this.width && ny >= 0 && ny < this.height
-			);
-	}
-
-	public cells(): Iterable<[RectangularCoord, T]> {
-		const result: [RectangularCoord, T][] = [];
-		for (let y = 0; y < this.height; y++) {
-			for (let x = 0; x < this.width; x++) {
-				result.push([[x, y], this.#grid[y][x]]);
-			}
-		}
-		return result;
-	}
-
-	public cellValues(): Iterable<T> {
-		return this.#grid.flat();
-	}
-}
-
-const compareCoords = (start: RectangularCoord, end: RectangularCoord) => {
-	if (start[0] < end[0]) return -1;
-	if (start[0] > end[0]) return 1;
-	if (start[1] < end[1]) return -1;
-	if (start[1] > end[1]) return 1;
-	return 0;
-};
-
-const equalCoord = (a: RectangularCoord, b: RectangularCoord) =>
-	a[0] === b[0] && a[1] === b[1];
-
 const move = (
-	coord: RectangularCoord,
-	direction: RectangularCoord
-): RectangularCoord => [coord[0] + direction[0], coord[1] + direction[1]];
+	coord: CartesianCoord,
+	direction: CartesianCoord
+): CartesianCoord => [coord[0] + direction[0], coord[1] + direction[1]];
 
-const down = (coord: RectangularCoord) => move(coord, [0, 1]);
-const up = (coord: RectangularCoord) => move(coord, [0, -1]);
-const left = (coord: RectangularCoord) => move(coord, [-1, 0]);
-const right = (coord: RectangularCoord) => move(coord, [1, 0]);
-
-class Edge {
-	#start: RectangularCoord;
-	#end: RectangularCoord;
-	#grid: RectangularGrid<unknown>;
-
-	constructor(
-		start: RectangularCoord,
-		end: RectangularCoord,
-		grid: RectangularGrid<unknown>
-	) {
-		if (compareCoords(start, end) < 0) {
-			this.#start = start;
-			this.#end = end;
-		} else {
-			this.#start = end;
-			this.#end = start;
-		}
-		const dx = Math.abs(this.#end[0] - this.#start[0]);
-		const dy = Math.abs(this.#end[1] - this.#start[1]);
-		if ((dx !== 0 && dy !== 0) || (dx !== 1 && dy !== 1)) {
-			throw new Error('Invalid edge');
-		}
-		this.#grid = grid;
-	}
-
-	public toString(): string {
-		return `(${JSON.stringify(this.#start)}, ${JSON.stringify(this.#end)})`;
-	}
-
-	public overlaps(other: Edge): boolean {
-		return (
-			equalCoord(this.#start, other.#start) ||
-			equalCoord(this.#start, other.#end) ||
-			equalCoord(this.#end, other.#start) ||
-			equalCoord(this.#end, other.#end)
-		);
-	}
-
-	public *neighbors(): Iterable<Edge> {
-		const { width, height } = this.#grid;
-		const yieldNeighbors = function* (
-			coord: RectangularCoord
-		): Iterable<RectangularCoord> {
-			for (const direction of [
-				[0, 1],
-				[0, -1],
-				[1, 0],
-				[-1, 0],
-			]) {
-				const [dx, dy] = direction;
-				const nx = coord[0] + dx;
-				const ny = coord[1] + dy;
-				if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-					yield [nx, ny];
-				}
-			}
-		};
-
-		for (const neighbor of yieldNeighbors(this.#start)) {
-			if (!equalCoord(neighbor, this.#end)) {
-				yield new Edge(neighbor, this.#start, this.#grid);
-			}
-		}
-		for (const neighbor of yieldNeighbors(this.#end)) {
-			if (!equalCoord(neighbor, this.#start)) {
-				yield new Edge(neighbor, this.#end, this.#grid);
-			}
-		}
-	}
-}
-
-interface Renderer<TCoord, T> {
-	render(grid: Grid<TCoord, T>): void;
-}
-
-class RectangularGridPrintRenderer<T> implements Renderer<RectangularCoord, T> {
-	#renderT: (t: T) => string;
-
-	constructor(renderT: (t: T) => string = (t) => `${t}`) {
-		this.#renderT = renderT;
-	}
-
-	public render(grid: Grid<RectangularCoord, T>): void {
-		if (!(grid instanceof RectangularGrid)) {
-			throw new Error('Grid must be a RectangularGrid');
-		}
-
-		const padLength = Math.max(
-			...mapIterable(grid.cellValues(), (t) => this.#renderT(t).length)
-		);
-
-		for (let y = 0; y < grid.height; y++) {
-			let row = '';
-			for (let x = 0; x < grid.width; x++) {
-				if (padLength > 1) {
-					row += '|';
-				}
-				row += this.#padLeft(
-					this.#renderT(grid.get([x, y])),
-					padLength
-				);
-			}
-			console.log(row);
-		}
-	}
-
-	#padLeft(str: string, length: number): string {
-		return str.padStart(length, ' ');
-	}
-}
-
-const renderer = new RectangularGridPrintRenderer();
-const grid = new RectangularGrid([
-	[1, 2, 3],
-	[4, 15, 6],
-	[7, 8, 9],
-]);
-renderer.render(grid);
-const grid2 = new RectangularGrid([
-	[1, 2, 3],
-	[4, 5, 6],
-	[7, 8, 9],
-]);
-renderer.render(grid2);
+const down = (coord: CartesianCoord) => move(coord, [0, 1]);
+const up = (coord: CartesianCoord) => move(coord, [0, -1]);
+const left = (coord: CartesianCoord) => move(coord, [-1, 0]);
+const right = (coord: CartesianCoord) => move(coord, [1, 0]);
 
 interface MasyuPuzzleProps {
 	width: number;
@@ -261,11 +18,11 @@ interface MasyuPuzzleProps {
 }
 
 interface Pearl {
-	coord: RectangularCoord;
+	coord: CartesianCoord;
 	color: 'black' | 'white';
 }
 
-class MasyuPuzzle {
+export class MasyuPuzzle {
 	#width: number;
 	#height: number;
 	/**
@@ -279,7 +36,7 @@ class MasyuPuzzle {
 	 */
 	#pearls: Pearl[];
 
-	#grid: RectangularGrid<'black' | 'white' | 'empty'>;
+	#grid: CartesianGrid<'black' | 'white' | 'empty'>;
 
 	public get width() {
 		return this.#width;
@@ -293,7 +50,7 @@ class MasyuPuzzle {
 		this.#width = props.width;
 		this.#height = props.height;
 		this.#pearls = props.pearls;
-		this.#grid = RectangularGrid.fromDimensions(
+		this.#grid = CartesianGrid.fromDimensions(
 			this.#width,
 			this.#height,
 			() => 'empty'
@@ -325,7 +82,7 @@ class MasyuPuzzle {
 		return new MasyuPuzzle({ width, height, pearls });
 	}
 
-	public getCell(coord: RectangularCoord): 'black' | 'white' | 'empty' {
+	public getCell(coord: CartesianCoord): 'black' | 'white' | 'empty' {
 		return this.#grid.get(coord);
 	}
 
@@ -342,8 +99,7 @@ class MasyuPuzzle {
 			}
 		}
 
-		const stringifyCoord = (coord: RectangularCoord) =>
-			JSON.stringify(coord);
+		const stringifyCoord = (coord: CartesianCoord) => JSON.stringify(coord);
 
 		// You will want:
 
@@ -399,8 +155,8 @@ class MasyuPuzzle {
 		solver.add(neverVar.eq(-42)); // xd
 
 		const getEdgeVar = (
-			a: RectangularCoord,
-			b: RectangularCoord,
+			a: CartesianCoord,
+			b: CartesianCoord,
 			defaultVar = neverVar
 		) =>
 			variables[new Edge(a, b, this.#grid).toString()] ??
@@ -528,51 +284,16 @@ class MasyuPuzzle {
 	}
 }
 
-let puzzle = new MasyuPuzzle({
-	width: 3,
-	height: 3,
-	pearls: [
-		{ coord: [0, 0], color: 'black' },
-		{ coord: [2, 2], color: 'black' },
-	],
-});
-
-puzzle = MasyuPuzzle.fromTextGrid(`
-B.W...
-..W..W
-....B.
-.B....
-......
-....B.
-`);
-
-// this is actually a shingoki
-// https://puzzling.stackexchange.com/questions/104786/shingoki-an-exploration-of-unicode
-// puzzle = MasyuPuzzle.fromTextGrid(`
-// ..........B
-// ...WBW.....
-// B....B.BB..
-// ..W..B...W.
-// W..B......B
-// ..BB.B....B
-// .W..B..W...
-// ....BBB.W..
-// ....W......
-// ....B...BBW
-// B..........
-// `);
-
-const result = await puzzle.solve();
-console.log(JSON.stringify(result));
-
-async function renderMasyuSolution(puzzle: MasyuPuzzle): Promise<string> {
+export async function renderMasyuSolution(
+	puzzle: MasyuPuzzle
+): Promise<string> {
 	const edgeAssignments = await puzzle.solve();
 	if (typeof edgeAssignments === 'string') {
 		return edgeAssignments;
 	}
 
 	const assignmentByEdge = Object.fromEntries(edgeAssignments);
-	const mockGrid = RectangularGrid.fromDimensions(
+	const mockGrid = CartesianGrid.fromDimensions(
 		puzzle.width,
 		puzzle.height,
 		() => 0
@@ -582,7 +303,7 @@ async function renderMasyuSolution(puzzle: MasyuPuzzle): Promise<string> {
 		let pearlLine = '';
 		let verticalEdgeLine = '';
 		for (let x = 0; x < puzzle.width; x++) {
-			const current: RectangularCoord = [x, y];
+			const current: CartesianCoord = [x, y];
 			switch (puzzle.getCell(current)) {
 				case 'black':
 					pearlLine += '⬤';
@@ -615,5 +336,3 @@ async function renderMasyuSolution(puzzle: MasyuPuzzle): Promise<string> {
 
 	return result;
 }
-
-console.log(await renderMasyuSolution(puzzle));
