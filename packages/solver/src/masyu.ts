@@ -136,30 +136,26 @@ export class MasyuPuzzle {
 		for (const edge of edges) {
 			const strEdge = edge.toString();
 			const edgeVar = Int.const(strEdge);
-			solver.add(bound(edgeVar, 0, 1));
 			variables[strEdge] = edgeVar;
-
 			const connectivityVar = Int.const(`connectivity_${strEdge}`);
-
 			connectivityVariables[strEdge] = connectivityVar;
-			solver.add(bound(connectivityVar, -1, this.#width * this.#height));
-			solver.add(Implies(edgeVar.eq(0), connectivityVar.eq(-1)));
-			solver.add(Implies(edgeVar.eq(1), connectivityVar.ge(1)));
+
+			solver.add(
+				bound(edgeVar, 0, 1),
+				bound(connectivityVar, -1, this.#width * this.#height),
+				Implies(edgeVar.eq(0), connectivityVar.eq(-1)),
+				Implies(edgeVar.eq(1), connectivityVar.ge(1))
+			);
 		}
 
-		// Allows creating a constraint that is always false, useful for conditional constraints that should never be satisfied
-		const dummyVar = Int.const('dummy');
-		const never = And(dummyVar.eq(0), dummyVar.neq(0));
+		// Can be used for constraints that should never be satisfied as well as to represent "out-of-bounds" edges.
 		const zeroVar = Int.const('zero');
 		solver.add(zeroVar.eq(0));
-		const neverVar = Int.const('never');
-		solver.add(neverVar.eq(-42)); // xd
 
-		const getEdgeVar = (a: Vertex, b: Vertex, defaultVar = neverVar) =>
-			variables[this.#grid.getEdge(a, b).toString()] ??
-			variables[this.#grid.getEdge(b, a).toString()] ??
-			// Any constraint placed on an edge that does not exist will lead to a contradiction, so we use neverVar to represent such edges.
-			defaultVar;
+		const getEdgeVar = (a: Vertex, b: Vertex) => {
+			const edge = this.#grid.getEdge(a, b);
+			return variables[edge.toString()] ?? zeroVar;
+		};
 
 		for (const pearl of this.#pearls) {
 			const { coord, color } = pearl;
@@ -278,10 +274,10 @@ export class MasyuPuzzle {
 			for (const vertex of this.#grid.vertices()) {
 				const adj = vertex.oobNeighbors;
 				const degree = Sum(
-					getEdgeVar(vertex, adj.up, zeroVar),
-					getEdgeVar(vertex, adj.down, zeroVar),
-					getEdgeVar(vertex, adj.left, zeroVar),
-					getEdgeVar(vertex, adj.right, zeroVar)
+					getEdgeVar(vertex, adj.up),
+					getEdgeVar(vertex, adj.down),
+					getEdgeVar(vertex, adj.left),
+					getEdgeVar(vertex, adj.right)
 				);
 				solver.add(Or(degree.eq(0), degree.eq(2)));
 			}
