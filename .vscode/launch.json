@@ -101,6 +101,21 @@
 			"presentation": {
 				"group": "tests"
 			}
+		},
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Debug Current Test File (no server required)",
+			"autoAttachChildProcesses": true,
+			"skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+			"program": "${workspaceRoot}/packages/solver/node_modules/vitest/vitest.mjs",
+			"cwd": "${workspaceRoot}",
+			"args": ["run", "${relativeFile}"],
+			"smartStep": true,
+			"console": "integratedTerminal",
+			"presentation": {
+				"group": "tests"
+			}
 		}
 	],
 	"compounds": [
