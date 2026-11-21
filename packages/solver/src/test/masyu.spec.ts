@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MasyuPuzzle, renderMasyuSolution } from '../masyu.js';
+import { MasyuPuzzle } from '../masyu.js';
 
 function expectEqualSolutionString(actual: string, expected: string) {
 	const normalizedActual = actual.trim();
