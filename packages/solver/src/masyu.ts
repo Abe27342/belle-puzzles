@@ -118,24 +118,12 @@ export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white'> {
 		const { Int, And, Or, Implies, Sum } = context;
 
 		const edgeVariables = this.createEdgeVariables(context);
-		const connectivityVariables = this.createEdgeVariables(
-			context,
-			'connectivity_'
-		);
 		const bound = (a: Arith<string>, b: number, c: number) =>
 			And(a.ge(b), a.le(c));
 
 		for (const edge of edges) {
 			const edgeVar = edgeVariables.get(edge) ?? oob(edge);
-			const connectivityVar =
-				connectivityVariables.get(edge) ?? oob(edge);
-
-			solver.add(
-				bound(edgeVar, 0, 1),
-				bound(connectivityVar, -1, this.width * this.height),
-				Implies(edgeVar.eq(0), connectivityVar.eq(-1)),
-				Implies(edgeVar.eq(1), connectivityVar.ge(1))
-			);
+			solver.add(bound(edgeVar, 0, 1));
 		}
 
 		// Can be used for constraints that should never be satisfied as well as to represent "out-of-bounds" edges.
@@ -192,36 +180,8 @@ export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white'> {
 			}
 		}
 
-		// This constraint enforces connectivity.
-		// Intuitively, this constraint can be satisfied on a connected graph by assigning an arbitrary vertex 1 and cascading outwards
-		// with increasing values via BFS or something like that.
-		// See this paper for more details:
-		// https://www.cs.ru.nl/bachelors-theses/2021/Gerhard_van_der_Knijff___1006946___Solving_and_generating_puzzles_with_a_connectivity_constraint.pdf
 		{
-			for (const edge of edges) {
-				const edgeVar = edgeVariables.get(edge) ?? oob(edge);
-				const connectivityEdgeVar =
-					connectivityVariables.get(edge) ?? oob(edge);
-				solver.add(Implies(edgeVar.eq(1), connectivityEdgeVar.ge(0)));
-			}
-
-			for (const edge of edges) {
-				const edgeVar = connectivityVariables.get(edge) ?? oob(edge);
-
-				const adjacentEdges = Array.from(
-					edge.neighbors({ includeOutOfBounds: false })
-				).map((e) => connectivityVariables.get(e) ?? oob(e));
-
-				solver.add(
-					Or(
-						edgeVar.eq(-1),
-						edgeVar.eq(1),
-						...adjacentEdges.map((e) =>
-							And(e.le(edgeVar), e.neq(-1))
-						)
-					)
-				);
-			}
+			solver.add(...connectedConstraints(edgeVariables, context));
 
 			for (const vertex of this.grid.vertices()) {
 				const { up, down, left, right } = vertex;
@@ -249,5 +209,81 @@ export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white'> {
 
 	public override renderT(t: 'black' | 'white'): string {
 		return this.#renderChars[t];
+	}
+}
+
+interface HasNeighbors<T extends HasNeighbors<T>> {
+	neighbors(options: { includeOutOfBounds: boolean }): Iterable<T>;
+}
+
+/**
+ * Given a set of indicator variables with some underlying topology (expressed via {@link HasNeighbors}),
+ * yields a set of constraints that enforce all enabled variables form a single connected component.
+ *
+ * The specific constraints used force the existence of a function f: V(G) => { -1, 1, 2, ..., |V(G)| } such that:
+ * - f(v) = -1 if vertex v is disabled
+ * - f(v) >= 1 if vertex v is enabled.
+ * - For each vertex v with f(v) > 1, there exists an adjacent vertex u with f(u) < f(v) and f(u) != -1.
+ *
+ * Intuitively, when a graph has a single connected component, this is possible to achieve by an algorithm like:
+ * - Assign all disabled vertices -1
+ * - Pick an arbitrary enabled vertex and assign it 1
+ * - Flow outward from already assigned vertices via BFS, assign each newly reached vertex the next available smallest number
+ *
+ * And when a graph has more than one connected component, at least one of those components does not contain a vertex with f(v) = 1,
+ * which means its minimum assignment from f will be greater than 1, and therefore cannot satisfy constraint 3.
+ *
+ * For details, see this paper:
+ * https://www.cs.ru.nl/bachelors-theses/2021/Gerhard_van_der_Knijff___1006946___Solving_and_generating_puzzles_with_a_connectivity_constraint.pdf
+ *
+ * @remarks
+ * The graph these constraints operate on does not need to conceptually align with the graph the rest of the puzzle generally uses.
+ *
+ * E.g. closed-loop puzzles frequently use edge indicator variables, which results in this function operating on the {@link https://en.wikipedia.org/wiki/Incidence_(graph) | Incidence Graph}
+ * (such that "vertex" variable naming in the code below actually refers to edges in the original puzzle graph).
+ */
+function* connectedConstraints<T extends HasNeighbors<T>>(
+	indicatorVariables: Map<HasNeighbors<T>, Arith<string>>,
+	context: Context<string>
+) {
+	const vertices = Array.from(indicatorVariables.keys());
+	const connectivityVariables = new Map<HasNeighbors<T>, Arith<string>>();
+
+	const bound = (a: Arith<string>, b: number, c: number) =>
+		And(a.ge(b), a.le(c));
+
+	const { Int, Or, And, Implies } = context;
+	for (const v of vertices) {
+		const conVar = Int.const(`connectivity_${v}`);
+		connectivityVariables.set(v, conVar);
+		const edgeVariable = indicatorVariables.get(v) ?? oob(v);
+		yield* [
+			// If all vertices are in one connected component, the assignment gives them values 1, 2, ..., up to the number of vertices.
+			bound(conVar, -1, vertices.length),
+			Implies(edgeVariable.eq(0), conVar.eq(-1)),
+			Implies(edgeVariable.eq(1), conVar.ge(1)),
+		];
+	}
+
+	// This constraint enforces connectivity.
+	// Intuitively, this constraint can be satisfied on a connected graph by assigning an arbitrary vertex 1 and cascading outwards
+	// with increasing values via BFS or something like that.
+	// See this paper for more details:
+	// https://www.cs.ru.nl/bachelors-theses/2021/Gerhard_van_der_Knijff___1006946___Solving_and_generating_puzzles_with_a_connectivity_constraint.pdf
+	for (const v of vertices) {
+		const connectivityVar = connectivityVariables.get(v) ?? oob(v);
+
+		const adjacent = Array.from(
+			v.neighbors({ includeOutOfBounds: false })
+		).map((e) => connectivityVariables.get(e) ?? oob(e));
+
+		// Either this vertex is assigned -1 (not part of the connected component),
+		// 1 (the lowest part of the connected component),
+		// or it has an adjacent vertex with a lower connectivity value.
+		yield Or(
+			connectivityVar.eq(-1),
+			connectivityVar.eq(1),
+			...adjacent.map((e) => And(e.le(connectivityVar), e.neq(-1)))
+		);
 	}
 }
