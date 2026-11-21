@@ -1,27 +1,25 @@
 import { CartesianCoord, CartesianGrid, Edge, Vertex } from './grid/index.js';
 import type { Arith, Context, Model, Solver } from './z3.js';
-import { Puzzle } from './puzzle.js';
+import {
+	EdgeIndicatorPuzzleProps,
+	EdgeIndicatorPuzzle,
+	EdgeIndicatorRenderOptions,
+} from './edge-indicator-puzzle.js';
 import { oob } from './utils.js';
 
-const move = (
-	coord: CartesianCoord,
-	direction: CartesianCoord
-): CartesianCoord => [coord[0] + direction[0], coord[1] + direction[1]];
-
-const down = (coord: CartesianCoord) => move(coord, [0, 1]);
-const up = (coord: CartesianCoord) => move(coord, [0, -1]);
-const left = (coord: CartesianCoord) => move(coord, [-1, 0]);
-const right = (coord: CartesianCoord) => move(coord, [1, 0]);
-
-interface MasyuPuzzleProps {
-	width: number;
-	height: number;
+export interface MasyuPuzzleProps extends EdgeIndicatorPuzzleProps {
 	pearls: ConstructionPearl[];
+	renderOptions?: PearlRenderOptions;
 }
 
 interface Pearl {
 	coord: Vertex;
 	color: 'black' | 'white';
+}
+
+export interface PearlRenderOptions extends EdgeIndicatorRenderOptions {
+	black: string;
+	white: string;
 }
 
 /**
@@ -37,9 +35,7 @@ interface ConstructionPearl {
 
 export type EdgeIndicator = [Edge, 1 | 0];
 
-export class MasyuPuzzle extends Puzzle<Edge, 0 | 1> {
-	#width: number;
-	#height: number;
+export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white'> {
 	/**
 	 * Note: the indexing model assumes pearls are placed go-style.
 	 *
@@ -51,38 +47,34 @@ export class MasyuPuzzle extends Puzzle<Edge, 0 | 1> {
 	 */
 	#pearls: Pearl[];
 
-	#grid: CartesianGrid<'black' | 'white' | 'empty'>;
-
-	public get width() {
-		return this.#width;
-	}
-
-	public get height() {
-		return this.#height;
-	}
+	#renderChars: PearlRenderOptions;
 
 	constructor(props: MasyuPuzzleProps) {
-		super();
-		this.#width = props.width;
-		this.#height = props.height;
-		this.#grid = CartesianGrid.fromDimensions(
-			this.#width,
-			this.#height,
-			() => 'empty'
-		);
+		super(props);
+		this.#renderChars = props.renderOptions ?? {
+			vertex: '·',
+			horizontal: '━',
+			vertical: '┃',
+			black: '⬤',
+			white: '◯',
+		};
+
 		this.#pearls = props.pearls.map((p) => ({
-			coord: this.#grid.getVertex(p.coord),
+			coord: this.grid.getVertex(p.coord),
 			color: p.color,
 		}));
 		for (const pearl of this.#pearls) {
-			if (!this.#grid.inBounds(pearl.coord.coord)) {
+			if (!this.grid.inBounds(pearl.coord.coord)) {
 				throw new Error(`Pearl at ${pearl.coord} is out of bounds`);
 			}
-			this.#grid.set(pearl.coord.coord, pearl.color);
+			this.grid.set(pearl.coord.coord, pearl.color);
 		}
 	}
 
-	public static fromTextGrid(text: string) {
+	public static fromTextGrid(
+		text: string,
+		renderOptions?: PearlRenderOptions
+	) {
 		const lines = text.trim().split('\n');
 		const height = lines.length;
 		const width = lines[0].length;
@@ -97,18 +89,18 @@ export class MasyuPuzzle extends Puzzle<Edge, 0 | 1> {
 				}
 			}
 		}
-		return new MasyuPuzzle({ width, height, pearls });
+		return new MasyuPuzzle({ width, height, pearls, renderOptions });
 	}
 
 	public getCell(coord: CartesianCoord): 'black' | 'white' | 'empty' {
-		return this.#grid.get(coord);
+		return this.grid.get(coord);
 	}
 
 	public override addConstraints(
 		context: Context<string>,
 		solver: Solver<string>
 	): Map<Edge, Arith<string>> {
-		const edges = [...this.#grid.edges()];
+		const edges = [...this.grid.edges()];
 
 		// You will want:
 
@@ -130,7 +122,7 @@ export class MasyuPuzzle extends Puzzle<Edge, 0 | 1> {
 
 		const { Int, And, Or, Implies, Sum } = context;
 
-		const edgeVariables = createEdgeIndicatorVariables(this.#grid, context);
+		const edgeVariables = this.createEdgeIndicatorVariables(context);
 
 		const bound = (a: Arith<string>, b: number, c: number) =>
 			And(a.ge(b), a.le(c));
@@ -143,7 +135,7 @@ export class MasyuPuzzle extends Puzzle<Edge, 0 | 1> {
 
 			solver.add(
 				bound(edgeVar, 0, 1),
-				bound(connectivityVar, -1, this.#width * this.#height),
+				bound(connectivityVar, -1, this.width * this.height),
 				Implies(edgeVar.eq(0), connectivityVar.eq(-1)),
 				Implies(edgeVar.eq(1), connectivityVar.ge(1))
 			);
@@ -154,7 +146,7 @@ export class MasyuPuzzle extends Puzzle<Edge, 0 | 1> {
 		solver.add(zeroVar.eq(0));
 
 		const getEdgeVar = (a: Vertex, b: Vertex) => {
-			const edge = this.#grid.getEdge(a, b);
+			const edge = this.grid.getEdge(a, b);
 			return edgeVariables.get(edge) ?? zeroVar;
 		};
 
@@ -234,7 +226,7 @@ export class MasyuPuzzle extends Puzzle<Edge, 0 | 1> {
 				);
 			}
 
-			for (const vertex of this.#grid.vertices()) {
+			for (const vertex of this.grid.vertices()) {
 				const { up, down, left, right } = vertex;
 				const degree = Sum(
 					getEdgeVar(vertex, up),
@@ -257,80 +249,8 @@ export class MasyuPuzzle extends Puzzle<Edge, 0 | 1> {
 		}
 		return value;
 	}
-}
 
-export function createEdgeIndicatorVariables(
-	grid: CartesianGrid<unknown>,
-	context: Context<string>
-): Map<Edge, Arith<string>> {
-	const edgeVariables = new Map<Edge, Arith<string>>();
-	for (const edge of grid.edges()) {
-		edgeVariables.set(edge, context.Int.const(edge.toString()));
+	public override renderT(t: 'black' | 'white'): string {
+		return this.#renderChars[t];
 	}
-	return edgeVariables;
-}
-
-export async function renderMasyuSolution(
-	puzzle: MasyuPuzzle,
-	renderChars: Record<
-		'black' | 'white' | 'vertex' | 'horizontal' | 'vertical',
-		string
-	> = {
-		black: '⬤',
-		white: '◯',
-		vertex: '·',
-		horizontal: '━',
-		vertical: '┃',
-	}
-): Promise<string> {
-	const edgeAssignments = await puzzle.solve();
-	if (typeof edgeAssignments === 'string') {
-		return edgeAssignments;
-	}
-
-	const assignmentByEdge = Object.fromEntries(edgeAssignments);
-	const mockGrid = CartesianGrid.fromDimensions(
-		puzzle.width,
-		puzzle.height,
-		() => 0
-	);
-	let result = '';
-	for (let y = 0; y < puzzle.height; y++) {
-		let pearlLine = '';
-		let verticalEdgeLine = '';
-		for (let x = 0; x < puzzle.width; x++) {
-			const current: CartesianCoord = [x, y];
-			switch (puzzle.getCell(current)) {
-				case 'black':
-					pearlLine += renderChars.black;
-					break;
-				case 'white':
-					pearlLine += renderChars.white;
-					break;
-				default:
-					pearlLine += renderChars.vertex;
-					break;
-			}
-
-			const rightEdge = mockGrid.getEdge(current, right(current));
-			const rightEdgeAssignment = assignmentByEdge[rightEdge.toString()];
-			if (rightEdgeAssignment !== undefined) {
-				pearlLine +=
-					rightEdgeAssignment === 1 ? renderChars.horizontal : ' ';
-			}
-
-			const downEdge = mockGrid.getEdge(current, down(current));
-			const downEdgeAssignment = assignmentByEdge[downEdge.toString()];
-			verticalEdgeLine +=
-				downEdgeAssignment === 1 ? renderChars.vertical + ' ' : '  ';
-		}
-
-		result += pearlLine + '\n';
-
-		if (y < puzzle.height - 1) {
-			result += verticalEdgeLine + '\n';
-		}
-	}
-
-	return result;
 }

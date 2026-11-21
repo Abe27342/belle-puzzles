@@ -49,7 +49,11 @@ export class CartesianGrid<T> implements Grid<CartesianCoord, T> {
 		this.#grid[y][x] = value;
 	}
 
-	public get(coord: CartesianCoord): T {
+	public get(coord: CartesianCoord | Vertex): T {
+		if (coord instanceof Vertex) {
+			return this.get(coord.coord);
+		}
+
 		this.#validateCoord(coord);
 		const [x, y] = coord;
 		return this.#grid[y][x];

@@ -74,9 +74,10 @@ B-·-W-· ·-·
 	};
 	for (const [name, input, expected] of testCases) {
 		it(`should solve for input: ${name}`, async () => {
-			const puzzle = MasyuPuzzle.fromTextGrid(input);
+			const puzzle = MasyuPuzzle.fromTextGrid(input, renderChars);
+			const assignment = await puzzle.solve();
 			expectEqualSolutionString(
-				await renderMasyuSolution(puzzle, renderChars),
+				await puzzle.renderSolution(assignment),
 				expected
 			);
 		});
