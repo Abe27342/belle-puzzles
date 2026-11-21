@@ -32,11 +32,11 @@ B..
 ...
 ..B`,
 			`
-⬤━·━·
-┃   ┃ 
+B-·-·
+|   | 
 · · ·
-┃   ┃ 
-·━·━⬤`,
+|   | 
+·-·-B`,
 		],
 		[
 			'complex',
@@ -49,26 +49,34 @@ B.W...
 ....B.
 `,
 			`
-⬤━·━◯━· ·━·
-┃     ┃ ┃ ┃ 
-· ·━◯━· · ◯
-┃ ┃     ┃ ┃ 
-· ·━·━·━⬤ ·
-┃         ┃ 
-· ⬤━·━· ·━·
-┃ ┃   ┃ ┃   
-· · ·━· · ·
-┃ ┃ ┃   ┃   
-·━· ·━·━⬤ ·
+B-·-W-· ·-·
+|     | | | 
+· ·-W-· · W
+| |     | | 
+· ·-·-·-B ·
+|         | 
+· B-·-· ·-·
+| |   | |   
+· · ·-· · ·
+| | |   |   
+·-· ·-·-B ·
             `,
 		],
 	];
 
+	// This set of characters renders better in VSCode editor.
+	const renderChars = {
+		black: 'B',
+		white: 'W',
+		vertex: '·',
+		horizontal: '-',
+		vertical: '|',
+	};
 	for (const [name, input, expected] of testCases) {
 		it(`should solve for input: ${name}`, async () => {
 			const puzzle = MasyuPuzzle.fromTextGrid(input);
 			expectEqualSolutionString(
-				await renderMasyuSolution(puzzle),
+				await renderMasyuSolution(puzzle, renderChars),
 				expected
 			);
 		});

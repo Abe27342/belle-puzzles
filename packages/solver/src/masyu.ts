@@ -279,7 +279,17 @@ export class MasyuPuzzle {
 }
 
 export async function renderMasyuSolution(
-	puzzle: MasyuPuzzle
+	puzzle: MasyuPuzzle,
+	renderChars: Record<
+		'black' | 'white' | 'vertex' | 'horizontal' | 'vertical',
+		string
+	> = {
+		black: '⬤',
+		white: '◯',
+		vertex: '·',
+		horizontal: '━',
+		vertical: '┃',
+	}
 ): Promise<string> {
 	const edgeAssignments = await puzzle.solve();
 	if (typeof edgeAssignments === 'string') {
@@ -300,25 +310,27 @@ export async function renderMasyuSolution(
 			const current: CartesianCoord = [x, y];
 			switch (puzzle.getCell(current)) {
 				case 'black':
-					pearlLine += '⬤';
+					pearlLine += renderChars.black;
 					break;
 				case 'white':
-					pearlLine += '◯';
+					pearlLine += renderChars.white;
 					break;
 				default:
-					pearlLine += '·';
+					pearlLine += renderChars.vertex;
 					break;
 			}
 
 			const rightEdge = mockGrid.getEdge(current, right(current));
 			const rightEdgeAssignment = assignmentByEdge[rightEdge.toString()];
 			if (rightEdgeAssignment !== undefined) {
-				pearlLine += rightEdgeAssignment === '1' ? '━' : ' ';
+				pearlLine +=
+					rightEdgeAssignment === '1' ? renderChars.horizontal : ' ';
 			}
 
 			const downEdge = mockGrid.getEdge(current, down(current));
 			const downEdgeAssignment = assignmentByEdge[downEdge.toString()];
-			verticalEdgeLine += downEdgeAssignment === '1' ? '┃ ' : '  ';
+			verticalEdgeLine +=
+				downEdgeAssignment === '1' ? renderChars.vertical + ' ' : '  ';
 		}
 
 		result += pearlLine + '\n';
