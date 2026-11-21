@@ -37,7 +37,7 @@ interface ConstructionPearl {
 
 export type EdgeIndicator = [Edge, 1 | 0];
 
-export class MasyuPuzzle extends Puzzle<EdgeIndicator[]> {
+export class MasyuPuzzle extends Puzzle<Edge, 0 | 1> {
 	#width: number;
 	#height: number;
 	/**
@@ -104,10 +104,10 @@ export class MasyuPuzzle extends Puzzle<EdgeIndicator[]> {
 		return this.#grid.get(coord);
 	}
 
-	#edgeVariables: Map<Edge, Arith<string>> = new Map();
-	public *getConstraints(
-		context: Context<string>
-	): Iterable<Parameters<Solver<string>['add']>[0]> {
+	public override addConstraints(
+		context: Context<string>,
+		solver: Solver<string>
+	): Map<Edge, Arith<string>> {
 		const edges = [...this.#grid.edges()];
 
 		// You will want:
@@ -130,32 +130,32 @@ export class MasyuPuzzle extends Puzzle<EdgeIndicator[]> {
 
 		const { Int, And, Or, Implies, Sum } = context;
 
-		this.#edgeVariables = createEdgeIndicatorVariables(this.#grid, context);
+		const edgeVariables = createEdgeIndicatorVariables(this.#grid, context);
 
 		const bound = (a: Arith<string>, b: number, c: number) =>
 			And(a.ge(b), a.le(c));
 
 		for (const edge of edges) {
 			const strEdge = edge.toString();
-			const edgeVar = this.#edgeVariables.get(edge) ?? oob();
+			const edgeVar = edgeVariables.get(edge) ?? oob();
 			const connectivityVar = Int.const(`connectivity_${strEdge}`);
 			connectivityVariables[strEdge] = connectivityVar;
 
-			yield* [
+			solver.add(
 				bound(edgeVar, 0, 1),
 				bound(connectivityVar, -1, this.#width * this.#height),
 				Implies(edgeVar.eq(0), connectivityVar.eq(-1)),
-				Implies(edgeVar.eq(1), connectivityVar.ge(1)),
-			];
+				Implies(edgeVar.eq(1), connectivityVar.ge(1))
+			);
 		}
 
 		// Can be used for constraints that should never be satisfied as well as to represent "out-of-bounds" edges.
 		const zeroVar = Int.const('zero');
-		yield zeroVar.eq(0);
+		solver.add(zeroVar.eq(0));
 
 		const getEdgeVar = (a: Vertex, b: Vertex) => {
 			const edge = this.#grid.getEdge(a, b);
-			return this.#edgeVariables.get(edge) ?? zeroVar;
+			return edgeVariables.get(edge) ?? zeroVar;
 		};
 
 		// Some predicates that are helpful for defining constraints related to pearl colors.
@@ -181,19 +181,23 @@ export class MasyuPuzzle extends Puzzle<EdgeIndicator[]> {
 				const rightUsed = goesHorizontallyThrough(right);
 				const downUsed = goesVerticallyThrough(down);
 				const upUsed = goesVerticallyThrough(up);
-				yield Or(
-					And(downUsed, Or(leftUsed, rightUsed)),
-					And(upUsed, Or(leftUsed, rightUsed))
+				solver.add(
+					Or(
+						And(downUsed, Or(leftUsed, rightUsed)),
+						And(upUsed, Or(leftUsed, rightUsed))
+					)
 				);
 			} else if (color === 'white') {
-				yield Or(
-					And(
-						goesVerticallyThrough(coord),
-						Or(hasHorizontalEdge(up), hasHorizontalEdge(down))
-					),
-					And(
-						goesHorizontallyThrough(coord),
-						Or(hasVerticalEdge(left), hasVerticalEdge(right))
+				solver.add(
+					Or(
+						And(
+							goesVerticallyThrough(coord),
+							Or(hasHorizontalEdge(up), hasHorizontalEdge(down))
+						),
+						And(
+							goesHorizontallyThrough(coord),
+							Or(hasVerticalEdge(left), hasVerticalEdge(right))
+						)
 					)
 				);
 			}
@@ -206,10 +210,10 @@ export class MasyuPuzzle extends Puzzle<EdgeIndicator[]> {
 		// https://www.cs.ru.nl/bachelors-theses/2021/Gerhard_van_der_Knijff___1006946___Solving_and_generating_puzzles_with_a_connectivity_constraint.pdf
 		{
 			for (const edge of edges) {
-				const edgeVar = this.#edgeVariables.get(edge) ?? oob();
+				const edgeVar = edgeVariables.get(edge) ?? oob();
 				const connectivityEdgeVar =
 					connectivityVariables[edge.toString()];
-				yield Implies(edgeVar.eq(1), connectivityEdgeVar.ge(0));
+				solver.add(Implies(edgeVar.eq(1), connectivityEdgeVar.ge(0)));
 			}
 
 			for (const edge of edges) {
@@ -219,10 +223,14 @@ export class MasyuPuzzle extends Puzzle<EdgeIndicator[]> {
 					edge.neighbors({ includeOutOfBounds: false })
 				).map((e) => connectivityVariables[e.toString()]);
 
-				yield Or(
-					edgeVar.eq(-1),
-					edgeVar.eq(1),
-					...adjacentEdges.map((e) => And(e.le(edgeVar), e.neq(-1)))
+				solver.add(
+					Or(
+						edgeVar.eq(-1),
+						edgeVar.eq(1),
+						...adjacentEdges.map((e) =>
+							And(e.le(edgeVar), e.neq(-1))
+						)
+					)
 				);
 			}
 
@@ -235,19 +243,19 @@ export class MasyuPuzzle extends Puzzle<EdgeIndicator[]> {
 					getEdgeVar(vertex, right)
 				);
 
-				yield Or(degree.eq(0), degree.eq(2));
+				solver.add(Or(degree.eq(0), degree.eq(2)));
 			}
 		}
+
+		return edgeVariables;
 	}
 
-	public resolveSolution(model: Model<string>): EdgeIndicator[] {
-		return Array.from(this.#edgeVariables.entries(), ([edge, variable]) => {
-			const presence = Number(model.eval(variable).toString());
-			if (presence !== 0 && presence !== 1) {
-				throw new Error(`Invalid edge presence value: ${presence}`);
-			}
-			return [edge, presence] as const;
-		});
+	public override parseAssignment(assignment: string): 0 | 1 {
+		const value = Number(assignment);
+		if (value !== 0 && value !== 1) {
+			throw new Error(`Invalid assignment value: ${value}`);
+		}
+		return value;
 	}
 }
 
