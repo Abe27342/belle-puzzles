@@ -126,7 +126,7 @@ export class MasyuPuzzle {
 
 		const context = new z3.Context<string>('MasyuPuzzle');
 
-		const { Solver, solve, Int, And, Or, Implies, Sum } = context;
+		const { Solver, Int, And, Or, Implies, Sum } = context;
 
 		const solver = new Solver();
 		const bound = (a: Arith<string>, b: number, c: number) =>

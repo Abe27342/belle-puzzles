@@ -1,4 +1,5 @@
-import { mapIterable } from '../utils.js';
+import { Context } from 'z3-solver';
+import { getOrCreate } from '../utils.js';
 import type { Grid } from './grid.js';
 
 export type CartesianCoord = [x: number, y: number];
@@ -7,6 +8,9 @@ export class CartesianGrid<T> implements Grid<CartesianCoord, T> {
 	#grid: T[][];
 	public readonly width: number;
 	public readonly height: number;
+
+	#vertexCache = new Map<string, Vertex>();
+	#edgeCache = new Map<string, Edge>();
 
 	constructor(grid: T[][]) {
 		this.height = grid.length;
@@ -86,6 +90,26 @@ export class CartesianGrid<T> implements Grid<CartesianCoord, T> {
 	public cellValues(): Iterable<T> {
 		return this.#grid.flat();
 	}
+
+	public getVertex(coord: CartesianCoord): Vertex {
+		return getOrCreate(
+			this.#vertexCache,
+			coord.toString(),
+			() => new Vertex(coord, this)
+		);
+	}
+
+	/**
+	 * @remarks
+	 * Caches edge objects to allow reuse based on object identity.
+	 */
+	public getEdge(start: CartesianCoord, end: CartesianCoord): Edge {
+		return getOrCreate(
+			this.#edgeCache,
+			`${start}-${end}`,
+			() => new Edge(start, end, this)
+		);
+	}
 }
 
 const compareCoords = (start: CartesianCoord, end: CartesianCoord) => {
@@ -98,6 +122,58 @@ const compareCoords = (start: CartesianCoord, end: CartesianCoord) => {
 
 const equalCoord = (a: CartesianCoord, b: CartesianCoord) =>
 	a[0] === b[0] && a[1] === b[1];
+
+export class Vertex {
+	#grid: CartesianGrid<unknown>;
+	constructor(
+		public readonly coord: CartesianCoord,
+		grid: CartesianGrid<unknown>
+	) {
+		this.#grid = grid;
+	}
+
+	public get x() {
+		return this.coord[0];
+	}
+	public get y() {
+		return this.coord[1];
+	}
+
+	public get up(): Vertex | undefined {
+		if (this.y === 0) return undefined;
+		return new Vertex([this.x, this.y - 1], this.#grid);
+	}
+
+	public get down(): Vertex | undefined {
+		if (this.y === this.#grid.height - 1) return undefined;
+		return new Vertex([this.x, this.y + 1], this.#grid);
+	}
+
+	public get left(): Vertex | undefined {
+		if (this.x === 0) return undefined;
+		return new Vertex([this.x - 1, this.y], this.#grid);
+	}
+
+	public get right(): Vertex | undefined {
+		if (this.x === this.#grid.width - 1) return undefined;
+		return new Vertex([this.x + 1, this.y], this.#grid);
+	}
+
+	public *neighbors(): Iterable<Vertex> {
+		if (this.up) yield this.up;
+		if (this.down) yield this.down;
+		if (this.left) yield this.left;
+		if (this.right) yield this.right;
+	}
+
+	public toString(): string {
+		return `(${this.x}, ${this.y})`;
+	}
+
+	public equal(other: Vertex): boolean {
+		return equalCoord(this.coord, other.coord);
+	}
+}
 
 export class Edge {
 	#start: CartesianCoord;

@@ -6,3 +6,10 @@ export function* mapIterable<T, O>(
 		yield fn(item);
 	}
 }
+
+export function getOrCreate<K, V>(map: Map<K, V>, key: K, create: () => V): V {
+	if (!map.has(key)) {
+		map.set(key, create());
+	}
+	return map.get(key)!;
+}
