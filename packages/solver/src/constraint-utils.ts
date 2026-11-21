@@ -5,6 +5,7 @@
 
 import { Arith, Bool, Context, Solver } from 'z3-solver';
 import { oob } from './utils';
+import { Vertex, CartesianGrid, Edge } from './grid';
 
 /**
  * Abstract representation of a vertex in a graph that can provide its neighboring vertices.
@@ -152,4 +153,114 @@ export function* connectedLoopConstraints<T extends HasNeighbors<T>>(
 
 		yield Or(edgeVar.eq(0), degree.eq(2));
 	}
+}
+
+/**
+ * Utility functions for defining constraints on a Cartesian grid in terms of indicator variables.
+ */
+export interface CartesianGridConstraintUtils {
+	/** Constraints on edge incidence variables used to construct the utils */
+	edges: {
+		/**
+		 * Edges pass vertically through this vertex
+		 */
+		goesVerticallyThrough: (v: Vertex) => Bool<string>;
+		/**
+		 * Edges pass horizontally through this vertex
+		 */
+		goesHorizontallyThrough: (v: Vertex) => Bool<string>;
+		/**
+		 * At least one edge passes horizontally through this vertex
+		 */
+		hasHorizontalEdge: (v: Vertex) => Bool<string>;
+		/**
+		 * At least one edge passes vertically through this vertex
+		 */
+		hasVerticalEdge: (v: Vertex) => Bool<string>;
+	};
+	/**
+	 * Masyu constraints on edge incidence variables used to construct the utils.
+	 */
+	masyu: MasyuConstraints;
+}
+
+/**
+ * Pearl constraints for Masyu puzzles on a Cartesian grid.
+ */
+export interface MasyuConstraints {
+	/**
+	 * The loop turns 90 degrees at this vertex, and continues straight on either side.
+	 */
+	blackPearl: (v: Vertex) => Bool<string>;
+	/**
+	 * The loop goes straight through this vertex, but turns on at least one adjacent vertex.
+	 */
+	whitePearl: (v: Vertex) => Bool<string>;
+}
+
+export function createCartesianGridConstraintUtils(
+	context: Context<string>,
+	solver: Solver<string>,
+	grid: CartesianGrid<unknown>,
+	edgeIndicators: Map<Edge, Arith<string>>
+): CartesianGridConstraintUtils {
+	const { Int, And, Or } = context;
+
+	const zeroVar = Int.const('zero');
+	solver.add(zeroVar.eq(0));
+
+	const getEdgeVar = (a: Vertex, b: Vertex) => {
+		const edge = grid.getEdge(a, b);
+		return edgeIndicators.get(edge) ?? zeroVar;
+	};
+
+	// Some predicates that are helpful for defining constraints related to pearl colors.
+	const goesVerticallyThrough = (v: Vertex) =>
+		And(getEdgeVar(v, v.up).eq(1), getEdgeVar(v, v.down).eq(1));
+
+	const goesHorizontallyThrough = (v: Vertex) =>
+		And(getEdgeVar(v, v.left).eq(1), getEdgeVar(v, v.right).eq(1));
+
+	// Whether one of the horizontal edges adjacent to the vertex is used.
+	const hasHorizontalEdge = (v: Vertex) =>
+		Or(getEdgeVar(v, v.left).eq(1), getEdgeVar(v, v.right).eq(1));
+
+	// Whether one of the vertical edges adjacent to the vertex is used.
+	const hasVerticalEdge = (v: Vertex) =>
+		Or(getEdgeVar(v, v.up).eq(1), getEdgeVar(v, v.down).eq(1));
+
+	const masyu = {
+		blackPearl: (v: Vertex) => {
+			const leftUsed = goesHorizontallyThrough(v.left);
+			const rightUsed = goesHorizontallyThrough(v.right);
+			const downUsed = goesVerticallyThrough(v.down);
+			const upUsed = goesVerticallyThrough(v.up);
+			return Or(
+				And(downUsed, Or(leftUsed, rightUsed)),
+				And(upUsed, Or(leftUsed, rightUsed))
+			);
+		},
+		whitePearl: (v: Vertex) => {
+			return Or(
+				And(
+					goesVerticallyThrough(v),
+					Or(hasHorizontalEdge(v.up), hasHorizontalEdge(v.down))
+				),
+				And(
+					goesHorizontallyThrough(v),
+					Or(hasVerticalEdge(v.left), hasVerticalEdge(v.right))
+				)
+			);
+		},
+	};
+
+	return {
+		edges: {
+			goesVerticallyThrough,
+			goesHorizontallyThrough,
+			hasHorizontalEdge,
+			hasVerticalEdge,
+		},
+		masyu,
+	};
 }

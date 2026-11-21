@@ -5,7 +5,10 @@ import {
 	EdgeIndicatorPuzzle,
 	EdgeIndicatorRenderOptions,
 } from './edge-indicator-puzzle.js';
-import { connectedLoopConstraints } from './constraint-utils.js';
+import {
+	connectedLoopConstraints,
+	createCartesianGridConstraintUtils,
+} from './constraint-utils.js';
 
 export interface MasyuPuzzleProps extends EdgeIndicatorPuzzleProps {
 	pearls: ConstructionPearl[];
@@ -98,63 +101,26 @@ export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white'> {
 		context: Context<string>,
 		solver: Solver<string>
 	): Map<Edge, Arith<string>> {
-		const { Int, And, Or } = context;
 		const edgeVariables = this.createEdgeIndicatorVariables(
 			context,
 			solver
 		);
 
-		// Can be used for constraints that should never be satisfied as well as to represent "out-of-bounds" edges.
-		const zeroVar = Int.const('zero');
-		solver.add(zeroVar.eq(0));
+		const gridUtils = createCartesianGridConstraintUtils(
+			context,
+			solver,
+			this.grid,
+			edgeVariables
+		);
 
-		const getEdgeVar = (a: Vertex, b: Vertex) => {
-			const edge = this.grid.getEdge(a, b);
-			return edgeVariables.get(edge) ?? zeroVar;
-		};
-
-		// Some predicates that are helpful for defining constraints related to pearl colors.
-		const goesVerticallyThrough = (v: Vertex) =>
-			And(getEdgeVar(v, v.up).eq(1), getEdgeVar(v, v.down).eq(1));
-
-		const goesHorizontallyThrough = (v: Vertex) =>
-			And(getEdgeVar(v, v.left).eq(1), getEdgeVar(v, v.right).eq(1));
-
-		// Whether one of the horizontal edges adjacent to the vertex is used.
-		const hasHorizontalEdge = (v: Vertex) =>
-			Or(getEdgeVar(v, v.left).eq(1), getEdgeVar(v, v.right).eq(1));
-
-		// Whether one of the vertical edges adjacent to the vertex is used.
-		const hasVerticalEdge = (v: Vertex) =>
-			Or(getEdgeVar(v, v.up).eq(1), getEdgeVar(v, v.down).eq(1));
-
-		for (const pearl of this.#pearls) {
-			const { coord, color } = pearl;
-			const { up, down, left, right } = coord;
-			if (color === 'black') {
-				const leftUsed = goesHorizontallyThrough(left);
-				const rightUsed = goesHorizontallyThrough(right);
-				const downUsed = goesVerticallyThrough(down);
-				const upUsed = goesVerticallyThrough(up);
-				solver.add(
-					Or(
-						And(downUsed, Or(leftUsed, rightUsed)),
-						And(upUsed, Or(leftUsed, rightUsed))
-					)
-				);
-			} else if (color === 'white') {
-				solver.add(
-					Or(
-						And(
-							goesVerticallyThrough(coord),
-							Or(hasHorizontalEdge(up), hasHorizontalEdge(down))
-						),
-						And(
-							goesHorizontallyThrough(coord),
-							Or(hasVerticalEdge(left), hasVerticalEdge(right))
-						)
-					)
-				);
+		for (const { color, coord } of this.#pearls) {
+			switch (color) {
+				case 'black':
+					solver.add(gridUtils.masyu.blackPearl(coord));
+					break;
+				case 'white':
+					solver.add(gridUtils.masyu.whitePearl(coord));
+					break;
 			}
 		}
 
