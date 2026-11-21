@@ -4,6 +4,12 @@ import type { Grid } from './grid.js';
 
 export type CartesianCoord = [x: number, y: number];
 
+/**
+ * A representation of a 2D cartesian grid.
+ * @remarks
+ * The implementation takes some pain to allocate exactly one edge/vertex object per unique edge/vertex, which
+ * allows constraint problem representations to safely use these objects as keys.
+ */
 export class CartesianGrid<T> implements Grid<CartesianCoord, T> {
 	#grid: T[][];
 	public readonly width: number;
@@ -280,12 +286,12 @@ export class Edge {
 	): Iterable<Edge> {
 		for (const neighbor of this.#start.neighbors(optionsArg)) {
 			if (!this.#end.equal(neighbor)) {
-				yield new Edge(neighbor, this.#start, this.#grid);
+				yield this.#grid.getEdge(neighbor, this.#start);
 			}
 		}
 		for (const neighbor of this.#end.neighbors(optionsArg)) {
 			if (!this.#start.equal(neighbor)) {
-				yield new Edge(neighbor, this.#end, this.#grid);
+				yield this.#grid.getEdge(neighbor, this.#end);
 			}
 		}
 	}

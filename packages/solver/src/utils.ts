@@ -25,6 +25,6 @@ export function fail(message?: string): never {
 	throw new Error(message ?? 'Failed');
 }
 
-export function oob(message?: string): never {
-	return fail(message ?? 'Out of bounds');
+export function oob(obj?: any): never {
+	return fail((obj ?? 'Out of bounds').toString());
 }

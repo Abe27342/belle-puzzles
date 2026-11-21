@@ -13,6 +13,11 @@ export type EdgeIndicatorRenderOptions = Record<
 	string
 >;
 
+/**
+ * Base class for puzzles whose solution is represented by indicator functions on the edges of a grid.
+ *
+ * Ex: slitherlink, masyu
+ */
 export abstract class EdgeIndicatorPuzzle<TCell> extends Puzzle<Edge, 0 | 1> {
 	#width: number;
 	#height: number;
@@ -49,12 +54,16 @@ export abstract class EdgeIndicatorPuzzle<TCell> extends Puzzle<Edge, 0 | 1> {
 		return this.grid.get(coord);
 	}
 
-	protected createEdgeIndicatorVariables(
-		context: Context<string>
+	protected createEdgeVariables(
+		context: Context<string>,
+		prefix = ''
 	): Map<Edge, Arith<string>> {
 		const edgeVariables = new Map<Edge, Arith<string>>();
 		for (const edge of this.grid.edges()) {
-			edgeVariables.set(edge, context.Int.const(edge.toString()));
+			edgeVariables.set(
+				edge,
+				context.Int.const(prefix + edge.toString())
+			);
 		}
 		return edgeVariables;
 	}

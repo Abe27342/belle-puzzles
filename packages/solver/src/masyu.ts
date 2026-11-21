@@ -115,23 +115,20 @@ export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white'> {
 		// The pearl constraints will require looking up variables for edges adjacent to other edges
 		// Should all be doable by mapping the str representation of an edge to their corresponding variable pretty simply.
 
-		const connectivityVariables: Record<
-			/* Edge.toString() */ string,
-			Arith<string>
-		> = {};
-
 		const { Int, And, Or, Implies, Sum } = context;
 
-		const edgeVariables = this.createEdgeIndicatorVariables(context);
-
+		const edgeVariables = this.createEdgeVariables(context);
+		const connectivityVariables = this.createEdgeVariables(
+			context,
+			'connectivity_'
+		);
 		const bound = (a: Arith<string>, b: number, c: number) =>
 			And(a.ge(b), a.le(c));
 
 		for (const edge of edges) {
-			const strEdge = edge.toString();
-			const edgeVar = edgeVariables.get(edge) ?? oob();
-			const connectivityVar = Int.const(`connectivity_${strEdge}`);
-			connectivityVariables[strEdge] = connectivityVar;
+			const edgeVar = edgeVariables.get(edge) ?? oob(edge);
+			const connectivityVar =
+				connectivityVariables.get(edge) ?? oob(edge);
 
 			solver.add(
 				bound(edgeVar, 0, 1),
@@ -202,18 +199,18 @@ export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white'> {
 		// https://www.cs.ru.nl/bachelors-theses/2021/Gerhard_van_der_Knijff___1006946___Solving_and_generating_puzzles_with_a_connectivity_constraint.pdf
 		{
 			for (const edge of edges) {
-				const edgeVar = edgeVariables.get(edge) ?? oob();
+				const edgeVar = edgeVariables.get(edge) ?? oob(edge);
 				const connectivityEdgeVar =
-					connectivityVariables[edge.toString()];
+					connectivityVariables.get(edge) ?? oob(edge);
 				solver.add(Implies(edgeVar.eq(1), connectivityEdgeVar.ge(0)));
 			}
 
 			for (const edge of edges) {
-				const edgeVar = connectivityVariables[edge.toString()];
+				const edgeVar = connectivityVariables.get(edge) ?? oob(edge);
 
 				const adjacentEdges = Array.from(
 					edge.neighbors({ includeOutOfBounds: false })
-				).map((e) => connectivityVariables[e.toString()]);
+				).map((e) => connectivityVariables.get(e) ?? oob(e));
 
 				solver.add(
 					Or(
