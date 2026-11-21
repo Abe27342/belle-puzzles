@@ -159,19 +159,16 @@ export class MasyuPuzzle {
 
 		for (const pearl of this.#pearls) {
 			const { coord, color } = pearl;
-			const adj = coord.oobNeighbors;
-			const down1 = getEdgeVar(coord, adj.down);
-			const up1 = getEdgeVar(coord, adj.up);
-			const left1 = getEdgeVar(coord, adj.left);
-			const right1 = getEdgeVar(coord, adj.right);
+			const { up, down, left, right } = coord;
+			const down1 = getEdgeVar(coord, down);
+			const up1 = getEdgeVar(coord, up);
+			const left1 = getEdgeVar(coord, left);
+			const right1 = getEdgeVar(coord, right);
 			if (color === 'black') {
-				const down2 = getEdgeVar(adj.down, adj.down.oobNeighbors.down);
-				const up2 = getEdgeVar(adj.up, adj.up.oobNeighbors.up);
-				const left2 = getEdgeVar(adj.left, adj.left.oobNeighbors.left);
-				const right2 = getEdgeVar(
-					adj.right,
-					adj.right.oobNeighbors.right
-				);
+				const down2 = getEdgeVar(down, down.down);
+				const up2 = getEdgeVar(up, up.up);
+				const left2 = getEdgeVar(left, left.left);
+				const right2 = getEdgeVar(right, right.right);
 
 				const leftUsed = And(left1.eq(1), left2.eq(1));
 				const rightUsed = And(right1.eq(1), right2.eq(1));
@@ -185,31 +182,14 @@ export class MasyuPuzzle {
 					)
 				);
 			} else if (color === 'white') {
-				const adj = coord.oobNeighbors;
-				const downLeft = getEdgeVar(
-					adj.down,
-					adj.down.oobNeighbors.left
-				);
-				const downRight = getEdgeVar(
-					adj.down,
-					adj.down.oobNeighbors.right
-				);
-				const upLeft = getEdgeVar(adj.up, adj.up.oobNeighbors.left);
-				const upRight = getEdgeVar(adj.up, adj.up.oobNeighbors.right);
-
-				const leftUp = getEdgeVar(adj.left, adj.left.oobNeighbors.up);
-				const leftDown = getEdgeVar(
-					adj.left,
-					adj.left.oobNeighbors.down
-				);
-				const rightUp = getEdgeVar(
-					adj.right,
-					adj.right.oobNeighbors.up
-				);
-				const rightDown = getEdgeVar(
-					adj.right,
-					adj.right.oobNeighbors.down
-				);
+				const downLeft = getEdgeVar(down, down.left);
+				const downRight = getEdgeVar(down, down.right);
+				const upLeft = getEdgeVar(up, up.left);
+				const upRight = getEdgeVar(up, up.right);
+				const leftUp = getEdgeVar(left, left.up);
+				const leftDown = getEdgeVar(left, left.down);
+				const rightUp = getEdgeVar(right, right.up);
+				const rightDown = getEdgeVar(right, right.down);
 
 				solver.add(
 					Or(
@@ -256,9 +236,9 @@ export class MasyuPuzzle {
 			for (const edge of edges) {
 				const edgeVar = connectivityVariables[edge.toString()];
 
-				const adjacentEdges = Array.from(edge.neighbors()).map(
-					(e) => connectivityVariables[e.toString()]
-				);
+				const adjacentEdges = Array.from(
+					edge.neighbors({ includeOutOfBounds: false })
+				).map((e) => connectivityVariables[e.toString()]);
 
 				solver.add(
 					Or(
@@ -272,12 +252,12 @@ export class MasyuPuzzle {
 			}
 
 			for (const vertex of this.#grid.vertices()) {
-				const adj = vertex.oobNeighbors;
+				const { up, down, left, right } = vertex;
 				const degree = Sum(
-					getEdgeVar(vertex, adj.up),
-					getEdgeVar(vertex, adj.down),
-					getEdgeVar(vertex, adj.left),
-					getEdgeVar(vertex, adj.right)
+					getEdgeVar(vertex, up),
+					getEdgeVar(vertex, down),
+					getEdgeVar(vertex, left),
+					getEdgeVar(vertex, right)
 				);
 				solver.add(Or(degree.eq(0), degree.eq(2)));
 			}

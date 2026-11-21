@@ -167,13 +167,7 @@ const compareCoords = (start: CartesianCoord, end: CartesianCoord) => {
 const equalCoord = (a: CartesianCoord, b: CartesianCoord) =>
 	a[0] === b[0] && a[1] === b[1];
 
-interface CartesianNeighbors<T> {
-	up: T;
-	down: T;
-	left: T;
-	right: T;
-}
-export class Vertex implements CartesianNeighbors<Vertex | undefined> {
+export class Vertex {
 	#grid: CartesianGrid<unknown>;
 	constructor(
 		public readonly coord: CartesianCoord,
@@ -189,54 +183,34 @@ export class Vertex implements CartesianNeighbors<Vertex | undefined> {
 		return this.coord[1];
 	}
 
-	public get up(): Vertex | undefined {
-		if (this.y === 0) return undefined;
+	public get up(): Vertex {
 		return this.#grid.getVertex([this.x, this.y - 1]);
 	}
 
-	public get down(): Vertex | undefined {
-		if (this.y === this.#grid.height - 1) return undefined;
+	public get down(): Vertex {
 		return this.#grid.getVertex([this.x, this.y + 1]);
 	}
 
-	public get left(): Vertex | undefined {
-		if (this.x === 0) return undefined;
+	public get left(): Vertex {
 		return this.#grid.getVertex([this.x - 1, this.y]);
 	}
 
-	public get right(): Vertex | undefined {
-		if (this.x === this.#grid.width - 1) return undefined;
+	public get right(): Vertex {
 		return this.#grid.getVertex([this.x + 1, this.y]);
-	}
-
-	public get oobNeighbors(): CartesianNeighbors<Vertex> {
-		const grid = this.#grid;
-		const [x, y] = this.coord;
-		return {
-			get up() {
-				return grid.getVertex([x, y - 1]);
-			},
-			get down() {
-				return grid.getVertex([x, y + 1]);
-			},
-			get left() {
-				return grid.getVertex([x - 1, y]);
-			},
-			get right() {
-				return grid.getVertex([x + 1, y]);
-			},
-		};
 	}
 
 	public *neighbors(
 		optionsArg: { includeOutOfBounds?: boolean } = {}
 	): Iterable<Vertex> {
 		const options = { includeOutOfBounds: false, ...optionsArg };
-		const neighbors = options.includeOutOfBounds ? this.oobNeighbors : this;
-		if (neighbors.up) yield neighbors.up;
-		if (neighbors.down) yield neighbors.down;
-		if (neighbors.left) yield neighbors.left;
-		if (neighbors.right) yield neighbors.right;
+		const predicate = options.includeOutOfBounds
+			? () => true
+			: (v: Vertex) => v.isInBounds();
+
+		if (predicate(this.up)) yield this.up;
+		if (predicate(this.down)) yield this.down;
+		if (predicate(this.left)) yield this.left;
+		if (predicate(this.right)) yield this.right;
 	}
 
 	public toString(): string {
@@ -249,6 +223,10 @@ export class Vertex implements CartesianNeighbors<Vertex | undefined> {
 
 	public compare(other: Vertex): number {
 		return compareCoords(this.coord, other.coord);
+	}
+
+	public isInBounds(): boolean {
+		return this.#grid.inBounds(this.coord);
 	}
 }
 
@@ -293,13 +271,15 @@ export class Edge {
 		);
 	}
 
-	public *neighbors(): Iterable<Edge> {
-		for (const neighbor of this.#start.neighbors()) {
+	public *neighbors(
+		optionsArg: { includeOutOfBounds?: boolean } = {}
+	): Iterable<Edge> {
+		for (const neighbor of this.#start.neighbors(optionsArg)) {
 			if (!this.#end.equal(neighbor)) {
 				yield new Edge(neighbor, this.#start, this.#grid);
 			}
 		}
-		for (const neighbor of this.#end.neighbors()) {
+		for (const neighbor of this.#end.neighbors(optionsArg)) {
 			if (!this.#start.equal(neighbor)) {
 				yield new Edge(neighbor, this.#end, this.#grid);
 			}
