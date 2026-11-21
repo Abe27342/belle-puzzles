@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { MasyuPuzzle, renderMasyuSolution } from '../masyu.js';
 
 function expectEqualSolutionString(actual: string, expected: string) {

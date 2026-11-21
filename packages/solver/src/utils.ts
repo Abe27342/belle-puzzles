@@ -20,3 +20,11 @@ export function assertDefined<T>(value: T | undefined, message?: string): T {
 	}
 	return value;
 }
+
+export function fail(message?: string): never {
+	throw new Error(message ?? 'Failed');
+}
+
+export function oob(message?: string): never {
+	return fail(message ?? 'Out of bounds');
+}

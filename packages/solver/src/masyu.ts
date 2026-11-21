@@ -1,5 +1,7 @@
 import { CartesianCoord, CartesianGrid, Edge, Vertex } from './grid/index.js';
-import { Arith, Context, Solver, z3 } from './index.js';
+import type { Arith, Context, Model, Solver } from './z3.js';
+import { Puzzle } from './puzzle.js';
+import { oob } from './utils.js';
 
 const move = (
 	coord: CartesianCoord,
@@ -33,7 +35,9 @@ interface ConstructionPearl {
 	color: 'black' | 'white';
 }
 
-export class MasyuPuzzle {
+export type EdgeIndicator = [Edge, 1 | 0];
+
+export class MasyuPuzzle extends Puzzle<EdgeIndicator[]> {
 	#width: number;
 	#height: number;
 	/**
@@ -58,6 +62,7 @@ export class MasyuPuzzle {
 	}
 
 	constructor(props: MasyuPuzzleProps) {
+		super();
 		this.#width = props.width;
 		this.#height = props.height;
 		this.#grid = CartesianGrid.fromDimensions(
@@ -99,8 +104,7 @@ export class MasyuPuzzle {
 		return this.#grid.get(coord);
 	}
 
-	#edgeVariables: Record</* Edge.toString() */ string, Arith<string>> = {};
-
+	#edgeVariables: Map<Edge, Arith<string>> = new Map();
 	public *getConstraints(
 		context: Context<string>
 	): Iterable<Parameters<Solver<string>['add']>[0]> {
@@ -126,13 +130,14 @@ export class MasyuPuzzle {
 
 		const { Int, And, Or, Implies, Sum } = context;
 
+		this.#edgeVariables = createEdgeIndicatorVariables(this.#grid, context);
+
 		const bound = (a: Arith<string>, b: number, c: number) =>
 			And(a.ge(b), a.le(c));
 
 		for (const edge of edges) {
 			const strEdge = edge.toString();
-			const edgeVar = Int.const(strEdge);
-			this.#edgeVariables[strEdge] = edgeVar;
+			const edgeVar = this.#edgeVariables.get(edge) ?? oob();
 			const connectivityVar = Int.const(`connectivity_${strEdge}`);
 			connectivityVariables[strEdge] = connectivityVar;
 
@@ -150,7 +155,7 @@ export class MasyuPuzzle {
 
 		const getEdgeVar = (a: Vertex, b: Vertex) => {
 			const edge = this.#grid.getEdge(a, b);
-			return this.#edgeVariables[edge.toString()] ?? zeroVar;
+			return this.#edgeVariables.get(edge) ?? zeroVar;
 		};
 
 		// Some predicates that are helpful for defining constraints related to pearl colors.
@@ -201,7 +206,7 @@ export class MasyuPuzzle {
 		// https://www.cs.ru.nl/bachelors-theses/2021/Gerhard_van_der_Knijff___1006946___Solving_and_generating_puzzles_with_a_connectivity_constraint.pdf
 		{
 			for (const edge of edges) {
-				const edgeVar = this.#edgeVariables[edge.toString()];
+				const edgeVar = this.#edgeVariables.get(edge) ?? oob();
 				const connectivityEdgeVar =
 					connectivityVariables[edge.toString()];
 				yield Implies(edgeVar.eq(1), connectivityEdgeVar.ge(0));
@@ -235,25 +240,26 @@ export class MasyuPuzzle {
 		}
 	}
 
-	public async solve(): Promise<string | [Edge, string][]> {
-		const context = new z3.Context<string>('MasyuPuzzle');
-		const solver = new context.Solver();
-		solver.add(...this.getConstraints(context));
-		const edges = [...this.#grid.edges()];
-
-		const result = await solver.check();
-		if (result === 'sat') {
-			const model = solver.model();
-			const resolvedEdgeVars = edges.map((edge): [Edge, string] => [
-				edge,
-				model.eval(this.#edgeVariables[edge.toString()]).toString(),
-			]);
-
-			return resolvedEdgeVars;
-		}
-
-		return result;
+	public resolveSolution(model: Model<string>): EdgeIndicator[] {
+		return Array.from(this.#edgeVariables.entries(), ([edge, variable]) => {
+			const presence = Number(model.eval(variable).toString());
+			if (presence !== 0 && presence !== 1) {
+				throw new Error(`Invalid edge presence value: ${presence}`);
+			}
+			return [edge, presence] as const;
+		});
 	}
+}
+
+export function createEdgeIndicatorVariables(
+	grid: CartesianGrid<unknown>,
+	context: Context<string>
+): Map<Edge, Arith<string>> {
+	const edgeVariables = new Map<Edge, Arith<string>>();
+	for (const edge of grid.edges()) {
+		edgeVariables.set(edge, context.Int.const(edge.toString()));
+	}
+	return edgeVariables;
 }
 
 export async function renderMasyuSolution(
@@ -302,13 +308,13 @@ export async function renderMasyuSolution(
 			const rightEdgeAssignment = assignmentByEdge[rightEdge.toString()];
 			if (rightEdgeAssignment !== undefined) {
 				pearlLine +=
-					rightEdgeAssignment === '1' ? renderChars.horizontal : ' ';
+					rightEdgeAssignment === 1 ? renderChars.horizontal : ' ';
 			}
 
 			const downEdge = mockGrid.getEdge(current, down(current));
 			const downEdgeAssignment = assignmentByEdge[downEdge.toString()];
 			verticalEdgeLine +=
-				downEdgeAssignment === '1' ? renderChars.vertical + ' ' : '  ';
+				downEdgeAssignment === 1 ? renderChars.vertical + ' ' : '  ';
 		}
 
 		result += pearlLine + '\n';

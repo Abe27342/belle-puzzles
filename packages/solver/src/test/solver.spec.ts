@@ -1,5 +1,5 @@
 import { afterAll, expect, it } from 'vitest';
-import { killThreads, z3 } from '../index.js';
+import { killThreads, z3 } from '../z3.js';
 
 afterAll(async () => {
 	await killThreads(z3.em);
