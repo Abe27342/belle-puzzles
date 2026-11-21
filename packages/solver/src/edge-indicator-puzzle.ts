@@ -1,6 +1,7 @@
-import { Context, Arith } from 'z3-solver';
+import { Context, Arith, Solver } from 'z3-solver';
 import { Edge, CartesianGrid, CartesianCoord, Vertex } from './grid';
 import { Puzzle } from './puzzle';
+import { createConstraintExtensions } from './constraint-utils';
 
 export interface EdgeIndicatorPuzzleProps {
 	width: number;
@@ -54,15 +55,17 @@ export abstract class EdgeIndicatorPuzzle<TCell> extends Puzzle<Edge, 0 | 1> {
 		return this.grid.get(coord);
 	}
 
-	protected createEdgeVariables(
+	protected createEdgeIndicatorVariables(
 		context: Context<string>,
+		solver: Solver<string>,
 		prefix = ''
 	): Map<Edge, Arith<string>> {
 		const edgeVariables = new Map<Edge, Arith<string>>();
+		const { createIndicator } = createConstraintExtensions(context);
 		for (const edge of this.grid.edges()) {
 			edgeVariables.set(
 				edge,
-				context.Int.const(prefix + edge.toString())
+				createIndicator(solver, prefix + edge.toString())
 			);
 		}
 		return edgeVariables;
