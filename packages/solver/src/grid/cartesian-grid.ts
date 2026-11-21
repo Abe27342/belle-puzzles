@@ -107,11 +107,11 @@ export class CartesianGrid<T> implements Grid<CartesianCoord, T> {
 
 	public *edges(): Iterable<Edge> {
 		for (const vertex of this.vertices()) {
-			if (vertex.right) {
+			if (vertex.right.isInBounds()) {
 				yield this.getEdge(vertex, vertex.right);
 			}
 
-			if (vertex.down) {
+			if (vertex.down.isInBounds()) {
 				yield this.getEdge(vertex, vertex.down);
 			}
 		}
