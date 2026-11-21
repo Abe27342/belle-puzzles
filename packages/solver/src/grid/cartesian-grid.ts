@@ -209,7 +209,7 @@ export class Vertex implements CartesianNeighbors<Vertex | undefined> {
 		return this.#grid.getVertex([this.x + 1, this.y]);
 	}
 
-	public get cartesianNeighborsWithOutOfBounds(): CartesianNeighbors<Vertex> {
+	public get oobNeighbors(): CartesianNeighbors<Vertex> {
 		const grid = this.#grid;
 		const [x, y] = this.coord;
 		return {
@@ -232,9 +232,7 @@ export class Vertex implements CartesianNeighbors<Vertex | undefined> {
 		optionsArg: { includeOutOfBounds?: boolean } = {}
 	): Iterable<Vertex> {
 		const options = { includeOutOfBounds: false, ...optionsArg };
-		const neighbors = options.includeOutOfBounds
-			? this.cartesianNeighborsWithOutOfBounds
-			: this;
+		const neighbors = options.includeOutOfBounds ? this.oobNeighbors : this;
 		if (neighbors.up) yield neighbors.up;
 		if (neighbors.down) yield neighbors.down;
 		if (neighbors.left) yield neighbors.left;

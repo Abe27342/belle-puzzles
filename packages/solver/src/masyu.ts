@@ -1,4 +1,4 @@
-import { CartesianCoord, CartesianGrid, Edge, Grid } from './grid/index.js';
+import { CartesianCoord, CartesianGrid, Edge, Vertex } from './grid/index.js';
 import { Arith, z3 } from './index.js';
 
 const move = (
@@ -14,10 +14,21 @@ const right = (coord: CartesianCoord) => move(coord, [1, 0]);
 interface MasyuPuzzleProps {
 	width: number;
 	height: number;
-	pearls: Pearl[];
+	pearls: ConstructionPearl[];
 }
 
 interface Pearl {
+	coord: Vertex;
+	color: 'black' | 'white';
+}
+
+/**
+ * @remarks
+ * Used only prior to constructing a {@link MasyuPuzzle}.
+ *
+ * {@link Pearl} is more convenient to work with once the grid has been constructed.
+ */
+interface ConstructionPearl {
 	coord: CartesianCoord;
 	color: 'black' | 'white';
 }
@@ -49,18 +60,20 @@ export class MasyuPuzzle {
 	constructor(props: MasyuPuzzleProps) {
 		this.#width = props.width;
 		this.#height = props.height;
-		this.#pearls = props.pearls;
 		this.#grid = CartesianGrid.fromDimensions(
 			this.#width,
 			this.#height,
 			() => 'empty'
 		);
+		this.#pearls = props.pearls.map((p) => ({
+			coord: this.#grid.getVertex(p.coord),
+			color: p.color,
+		}));
 		for (const pearl of this.#pearls) {
-			const [x, y] = pearl.coord;
-			if (x < 0 || x >= this.#width || y < 0 || y >= this.#height) {
-				throw new Error(`Pearl at ${x},${y} is out of bounds`);
+			if (!this.#grid.inBounds(pearl.coord.coord)) {
+				throw new Error(`Pearl at ${pearl.coord} is out of bounds`);
 			}
-			this.#grid.set([x, y], pearl.color);
+			this.#grid.set(pearl.coord.coord, pearl.color);
 		}
 	}
 
@@ -68,7 +81,7 @@ export class MasyuPuzzle {
 		const lines = text.trim().split('\n');
 		const height = lines.length;
 		const width = lines[0].length;
-		const pearls: Pearl[] = [];
+		const pearls: ConstructionPearl[] = [];
 		for (let y = 0; y < height; y++) {
 			for (let x = 0; x < width; x++) {
 				const char = lines[y][x];
@@ -142,11 +155,7 @@ export class MasyuPuzzle {
 		const neverVar = Int.const('never');
 		solver.add(neverVar.eq(-42)); // xd
 
-		const getEdgeVar = (
-			a: CartesianCoord,
-			b: CartesianCoord,
-			defaultVar = neverVar
-		) =>
+		const getEdgeVar = (a: Vertex, b: Vertex, defaultVar = neverVar) =>
 			variables[this.#grid.getEdge(a, b).toString()] ??
 			variables[this.#grid.getEdge(b, a).toString()] ??
 			// Any constraint placed on an edge that does not exist will lead to a contradiction, so we use neverVar to represent such edges.
@@ -154,15 +163,19 @@ export class MasyuPuzzle {
 
 		for (const pearl of this.#pearls) {
 			const { coord, color } = pearl;
-			const down1 = getEdgeVar(coord, down(coord));
-			const up1 = getEdgeVar(coord, up(coord));
-			const left1 = getEdgeVar(coord, left(coord));
-			const right1 = getEdgeVar(coord, right(coord));
+			const adj = coord.oobNeighbors;
+			const down1 = getEdgeVar(coord, adj.down);
+			const up1 = getEdgeVar(coord, adj.up);
+			const left1 = getEdgeVar(coord, adj.left);
+			const right1 = getEdgeVar(coord, adj.right);
 			if (color === 'black') {
-				const down2 = getEdgeVar(down(coord), down(down(coord)));
-				const up2 = getEdgeVar(up(coord), up(up(coord)));
-				const left2 = getEdgeVar(left(coord), left(left(coord)));
-				const right2 = getEdgeVar(right(coord), right(right(coord)));
+				const down2 = getEdgeVar(adj.down, adj.down.oobNeighbors.down);
+				const up2 = getEdgeVar(adj.up, adj.up.oobNeighbors.up);
+				const left2 = getEdgeVar(adj.left, adj.left.oobNeighbors.left);
+				const right2 = getEdgeVar(
+					adj.right,
+					adj.right.oobNeighbors.right
+				);
 
 				const leftUsed = And(left1.eq(1), left2.eq(1));
 				const rightUsed = And(right1.eq(1), right2.eq(1));
@@ -176,15 +189,31 @@ export class MasyuPuzzle {
 					)
 				);
 			} else if (color === 'white') {
-				const downLeft = getEdgeVar(down(coord), left(down(coord)));
-				const downRight = getEdgeVar(down(coord), right(down(coord)));
-				const upLeft = getEdgeVar(up(coord), left(up(coord)));
-				const upRight = getEdgeVar(up(coord), right(up(coord)));
+				const adj = coord.oobNeighbors;
+				const downLeft = getEdgeVar(
+					adj.down,
+					adj.down.oobNeighbors.left
+				);
+				const downRight = getEdgeVar(
+					adj.down,
+					adj.down.oobNeighbors.right
+				);
+				const upLeft = getEdgeVar(adj.up, adj.up.oobNeighbors.left);
+				const upRight = getEdgeVar(adj.up, adj.up.oobNeighbors.right);
 
-				const leftUp = getEdgeVar(left(coord), up(left(coord)));
-				const leftDown = getEdgeVar(left(coord), down(left(coord)));
-				const rightUp = getEdgeVar(right(coord), up(right(coord)));
-				const rightDown = getEdgeVar(right(coord), down(right(coord)));
+				const leftUp = getEdgeVar(adj.left, adj.left.oobNeighbors.up);
+				const leftDown = getEdgeVar(
+					adj.left,
+					adj.left.oobNeighbors.down
+				);
+				const rightUp = getEdgeVar(
+					adj.right,
+					adj.right.oobNeighbors.up
+				);
+				const rightDown = getEdgeVar(
+					adj.right,
+					adj.right.oobNeighbors.down
+				);
 
 				solver.add(
 					Or(
@@ -246,12 +275,13 @@ export class MasyuPuzzle {
 				);
 			}
 
-			for (const [coord] of this.#grid.cells()) {
+			for (const vertex of this.#grid.vertices()) {
+				const adj = vertex.oobNeighbors;
 				const degree = Sum(
-					getEdgeVar(coord, up(coord), zeroVar),
-					getEdgeVar(coord, down(coord), zeroVar),
-					getEdgeVar(coord, left(coord), zeroVar),
-					getEdgeVar(coord, right(coord), zeroVar)
+					getEdgeVar(vertex, adj.up, zeroVar),
+					getEdgeVar(vertex, adj.down, zeroVar),
+					getEdgeVar(vertex, adj.left, zeroVar),
+					getEdgeVar(vertex, adj.right, zeroVar)
 				);
 				solver.add(Or(degree.eq(0), degree.eq(2)));
 			}
