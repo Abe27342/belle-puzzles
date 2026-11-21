@@ -87,19 +87,7 @@ export class MasyuPuzzle {
 	}
 
 	public async solve(): Promise<string | [Edge, string][]> {
-		const edges: Edge[] = [];
-		for (let x = 0; x < this.#width; x++) {
-			for (let y = 0; y < this.#height; y++) {
-				if (x < this.#width - 1) {
-					edges.push(new Edge([x, y], [x + 1, y], this.#grid));
-				}
-				if (y < this.#height - 1) {
-					edges.push(new Edge([x, y], [x, y + 1], this.#grid));
-				}
-			}
-		}
-
-		const stringifyCoord = (coord: CartesianCoord) => JSON.stringify(coord);
+		const edges = [...this.#grid.edges()];
 
 		// You will want:
 
@@ -159,8 +147,8 @@ export class MasyuPuzzle {
 			b: CartesianCoord,
 			defaultVar = neverVar
 		) =>
-			variables[new Edge(a, b, this.#grid).toString()] ??
-			variables[new Edge(b, a, this.#grid).toString()] ??
+			variables[this.#grid.getEdge(a, b).toString()] ??
+			variables[this.#grid.getEdge(b, a).toString()] ??
 			// Any constraint placed on an edge that does not exist will lead to a contradiction, so we use neverVar to represent such edges.
 			defaultVar;
 
@@ -316,13 +304,13 @@ export async function renderMasyuSolution(
 					break;
 			}
 
-			const rightEdge = new Edge(current, right(current), mockGrid);
+			const rightEdge = mockGrid.getEdge(current, right(current));
 			const rightEdgeAssignment = assignmentByEdge[rightEdge.toString()];
 			if (rightEdgeAssignment !== undefined) {
 				pearlLine += rightEdgeAssignment === '1' ? '━' : ' ';
 			}
 
-			const downEdge = new Edge(current, down(current), mockGrid);
+			const downEdge = mockGrid.getEdge(current, down(current));
 			const downEdgeAssignment = assignmentByEdge[downEdge.toString()];
 			verticalEdgeLine += downEdgeAssignment === '1' ? '┃ ' : '  ';
 		}

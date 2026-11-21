@@ -13,3 +13,10 @@ export function getOrCreate<K, V>(map: Map<K, V>, key: K, create: () => V): V {
 	}
 	return map.get(key)!;
 }
+
+export function assertDefined<T>(value: T | undefined, message?: string): T {
+	if (value === undefined) {
+		throw new Error(message ?? 'Value is undefined');
+	}
+	return value;
+}
