@@ -1,5 +1,5 @@
 import { CartesianCoord, CartesianGrid, Edge, Vertex } from './grid/index.js';
-import { Arith, z3 } from './index.js';
+import { Arith, Context, Solver, z3 } from './index.js';
 
 const move = (
 	coord: CartesianCoord,
@@ -99,7 +99,11 @@ export class MasyuPuzzle {
 		return this.#grid.get(coord);
 	}
 
-	public async solve(): Promise<string | [Edge, string][]> {
+	#edgeVariables: Record</* Edge.toString() */ string, Arith<string>> = {};
+
+	public *getConstraints(
+		context: Context<string>
+	): Iterable<Parameters<Solver<string>['add']>[0]> {
 		const edges = [...this.#grid.edges()];
 
 		// You will want:
@@ -115,106 +119,76 @@ export class MasyuPuzzle {
 		// The pearl constraints will require looking up variables for edges adjacent to other edges
 		// Should all be doable by mapping the str representation of an edge to their corresponding variable pretty simply.
 
-		const variables: Record<
-			/* Edge.toString() */ string,
-			Arith<string>
-		> = {};
-
 		const connectivityVariables: Record<
 			/* Edge.toString() */ string,
 			Arith<string>
 		> = {};
 
-		const context = new z3.Context<string>('MasyuPuzzle');
+		const { Int, And, Or, Implies, Sum } = context;
 
-		const { Solver, Int, And, Or, Implies, Sum } = context;
-
-		const solver = new Solver();
 		const bound = (a: Arith<string>, b: number, c: number) =>
 			And(a.ge(b), a.le(c));
 
 		for (const edge of edges) {
 			const strEdge = edge.toString();
 			const edgeVar = Int.const(strEdge);
-			variables[strEdge] = edgeVar;
+			this.#edgeVariables[strEdge] = edgeVar;
 			const connectivityVar = Int.const(`connectivity_${strEdge}`);
 			connectivityVariables[strEdge] = connectivityVar;
 
-			solver.add(
+			yield* [
 				bound(edgeVar, 0, 1),
 				bound(connectivityVar, -1, this.#width * this.#height),
 				Implies(edgeVar.eq(0), connectivityVar.eq(-1)),
-				Implies(edgeVar.eq(1), connectivityVar.ge(1))
-			);
+				Implies(edgeVar.eq(1), connectivityVar.ge(1)),
+			];
 		}
 
 		// Can be used for constraints that should never be satisfied as well as to represent "out-of-bounds" edges.
 		const zeroVar = Int.const('zero');
-		solver.add(zeroVar.eq(0));
+		yield zeroVar.eq(0);
 
 		const getEdgeVar = (a: Vertex, b: Vertex) => {
 			const edge = this.#grid.getEdge(a, b);
-			return variables[edge.toString()] ?? zeroVar;
+			return this.#edgeVariables[edge.toString()] ?? zeroVar;
 		};
+
+		// Some predicates that are helpful for defining constraints related to pearl colors.
+		const goesVerticallyThrough = (v: Vertex) =>
+			And(getEdgeVar(v, v.up).eq(1), getEdgeVar(v, v.down).eq(1));
+
+		const goesHorizontallyThrough = (v: Vertex) =>
+			And(getEdgeVar(v, v.left).eq(1), getEdgeVar(v, v.right).eq(1));
+
+		// Whether one of the horizontal edges adjacent to the vertex is used.
+		const hasHorizontalEdge = (v: Vertex) =>
+			Or(getEdgeVar(v, v.left).eq(1), getEdgeVar(v, v.right).eq(1));
+
+		// Whether one of the vertical edges adjacent to the vertex is used.
+		const hasVerticalEdge = (v: Vertex) =>
+			Or(getEdgeVar(v, v.up).eq(1), getEdgeVar(v, v.down).eq(1));
 
 		for (const pearl of this.#pearls) {
 			const { coord, color } = pearl;
 			const { up, down, left, right } = coord;
-			const down1 = getEdgeVar(coord, down);
-			const up1 = getEdgeVar(coord, up);
-			const left1 = getEdgeVar(coord, left);
-			const right1 = getEdgeVar(coord, right);
 			if (color === 'black') {
-				const down2 = getEdgeVar(down, down.down);
-				const up2 = getEdgeVar(up, up.up);
-				const left2 = getEdgeVar(left, left.left);
-				const right2 = getEdgeVar(right, right.right);
-
-				const leftUsed = And(left1.eq(1), left2.eq(1));
-				const rightUsed = And(right1.eq(1), right2.eq(1));
-				const downUsed = And(down1.eq(1), down2.eq(1));
-				const upUsed = And(up1.eq(1), up2.eq(1));
-
-				solver.add(
-					Or(
-						And(downUsed, Or(leftUsed, rightUsed)),
-						And(upUsed, Or(leftUsed, rightUsed))
-					)
+				const leftUsed = goesHorizontallyThrough(left);
+				const rightUsed = goesHorizontallyThrough(right);
+				const downUsed = goesVerticallyThrough(down);
+				const upUsed = goesVerticallyThrough(up);
+				yield Or(
+					And(downUsed, Or(leftUsed, rightUsed)),
+					And(upUsed, Or(leftUsed, rightUsed))
 				);
 			} else if (color === 'white') {
-				const downLeft = getEdgeVar(down, down.left);
-				const downRight = getEdgeVar(down, down.right);
-				const upLeft = getEdgeVar(up, up.left);
-				const upRight = getEdgeVar(up, up.right);
-				const leftUp = getEdgeVar(left, left.up);
-				const leftDown = getEdgeVar(left, left.down);
-				const rightUp = getEdgeVar(right, right.up);
-				const rightDown = getEdgeVar(right, right.down);
-
-				solver.add(
-					Or(
-						// Line goes through pearl vertically
-						And(
-							down1.eq(1),
-							up1.eq(1),
-							Or(
-								downLeft.eq(1),
-								downRight.eq(1),
-								upLeft.eq(1),
-								upRight.eq(1)
-							)
-						),
-						// Line goes through pearl horizontally
-						And(
-							left1.eq(1),
-							right1.eq(1),
-							Or(
-								leftUp.eq(1),
-								leftDown.eq(1),
-								rightUp.eq(1),
-								rightDown.eq(1)
-							)
-						)
+				yield Or(
+					And(
+						goesVerticallyThrough(coord),
+						Or(hasHorizontalEdge(up), hasHorizontalEdge(down))
+					),
+					And(
+						goesHorizontallyThrough(coord),
+						Or(hasVerticalEdge(left), hasVerticalEdge(right))
 					)
 				);
 			}
@@ -227,10 +201,10 @@ export class MasyuPuzzle {
 		// https://www.cs.ru.nl/bachelors-theses/2021/Gerhard_van_der_Knijff___1006946___Solving_and_generating_puzzles_with_a_connectivity_constraint.pdf
 		{
 			for (const edge of edges) {
-				const edgeVar = variables[edge.toString()];
+				const edgeVar = this.#edgeVariables[edge.toString()];
 				const connectivityEdgeVar =
 					connectivityVariables[edge.toString()];
-				solver.add(Implies(edgeVar.eq(1), connectivityEdgeVar.ge(0)));
+				yield Implies(edgeVar.eq(1), connectivityEdgeVar.ge(0));
 			}
 
 			for (const edge of edges) {
@@ -240,14 +214,10 @@ export class MasyuPuzzle {
 					edge.neighbors({ includeOutOfBounds: false })
 				).map((e) => connectivityVariables[e.toString()]);
 
-				solver.add(
-					Or(
-						edgeVar.eq(-1),
-						edgeVar.eq(1),
-						...adjacentEdges.map((e) =>
-							And(e.le(edgeVar), e.neq(-1))
-						)
-					)
+				yield Or(
+					edgeVar.eq(-1),
+					edgeVar.eq(1),
+					...adjacentEdges.map((e) => And(e.le(edgeVar), e.neq(-1)))
 				);
 			}
 
@@ -259,16 +229,24 @@ export class MasyuPuzzle {
 					getEdgeVar(vertex, left),
 					getEdgeVar(vertex, right)
 				);
-				solver.add(Or(degree.eq(0), degree.eq(2)));
+
+				yield Or(degree.eq(0), degree.eq(2));
 			}
 		}
+	}
+
+	public async solve(): Promise<string | [Edge, string][]> {
+		const context = new z3.Context<string>('MasyuPuzzle');
+		const solver = new context.Solver();
+		solver.add(...this.getConstraints(context));
+		const edges = [...this.#grid.edges()];
 
 		const result = await solver.check();
 		if (result === 'sat') {
 			const model = solver.model();
 			const resolvedEdgeVars = edges.map((edge): [Edge, string] => [
 				edge,
-				model.eval(variables[edge.toString()]).toString(),
+				model.eval(this.#edgeVariables[edge.toString()]).toString(),
 			]);
 
 			return resolvedEdgeVars;
