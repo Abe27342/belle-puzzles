@@ -9,6 +9,7 @@ import {
 	connectedLoopConstraints,
 	createCartesianGridConstraintUtils,
 } from './constraint-utils.js';
+import { mapIterable, oob } from './utils.js';
 
 export interface MasyuPuzzleProps extends EdgeIndicatorPuzzleProps {
 	pearls: ConstructionPearl[];
@@ -124,7 +125,15 @@ export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white'> {
 			}
 		}
 
-		solver.add(...connectedLoopConstraints(edgeVariables, context));
+		// Pick an arbitrary pearl to use for the minimalEnabledVariables.
+		const { coord } = this.#pearls[0];
+		solver.add(
+			...connectedLoopConstraints(
+				edgeVariables,
+				this.grid.edgesIncidentTo(coord),
+				context
+			)
+		);
 		return edgeVariables;
 	}
 

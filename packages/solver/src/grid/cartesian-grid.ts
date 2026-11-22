@@ -127,6 +127,14 @@ export class CartesianGrid<T> implements Grid<CartesianCoord, T> {
 		}
 	}
 
+	public *edgesIncidentTo(vertex: Vertex): Iterable<Edge> {
+		for (const neighbor of vertex.neighbors({
+			includeOutOfBounds: false,
+		})) {
+			yield this.getEdge(vertex, neighbor);
+		}
+	}
+
 	/**
 	 * @remarks
 	 * Caches edge objects to allow reuse based on object identity.

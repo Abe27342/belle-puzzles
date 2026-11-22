@@ -33,6 +33,14 @@ export interface ConstraintExtensions {
 	bound: (a: Arith<string>, b: number, c: number) => Bool<string>;
 
 	/**
+	 * Creates a constraint that represents logical equivalence between two boolean variables.
+	 * @param a The first boolean variable.
+	 * @param b The second boolean variable.
+	 * @returns A boolean expression representing the logical equivalence of `a` and `b`.
+	 */
+	iff: (a: Bool<string>, b: Bool<string>) => Bool<string>;
+
+	/**
 	 * Creates an indicator variable (0 or 1) with the provided name.
 	 */
 	createIndicator: (solver: Solver<string>, name: string) => Arith<string>;
@@ -41,7 +49,7 @@ export interface ConstraintExtensions {
 export function createConstraintExtensions(
 	context: Context<string>
 ): ConstraintExtensions {
-	const { And, Int } = context;
+	const { And, Int, Implies } = context;
 	const bound = (a: Arith<string>, b: number, c: number) =>
 		And(a.ge(b), a.le(c));
 
@@ -50,29 +58,34 @@ export function createConstraintExtensions(
 		solver.add(bound(variable, 0, 1));
 		return variable;
 	};
-	return { bound, createIndicator };
+
+	const iff = (a: Bool<string>, b: Bool<string>) =>
+		And(Implies(a, b), Implies(b, a));
+	return { bound, iff, createIndicator };
 }
 
 /**
  * Given a set of indicator variables with some underlying topology (expressed via {@link HasNeighbors}),
  * yields a set of constraints that enforce all enabled variables form a single connected component.
  *
- * The specific constraints used force the existence of a function f: V(G) => { -1, 1, 2, ..., |V(G)| } such that:
- * - f(v) = -1 if vertex v is disabled
- * - f(v) >= 1 if vertex v is enabled.
- * - For each vertex v with f(v) > 1, there exists an adjacent vertex u with f(u) < f(v) and f(u) != -1.
+ * The specific constraints used force the existence of a function f: V(G) => { -1, 0, 1, 2, ..., |V(G)| } such that:
+ * - f(v) >= 0 iff vertex v is enabled.
+ * - Exactly one vertex has f(v) = 0.
+ * - For each vertex v with f(v) > 0, there exists an adjacent vertex u with f(u) < f(v) and f(u) != -1.
  *
  * Intuitively, when a graph has a single connected component, this is possible to achieve by an algorithm like:
  * - Assign all disabled vertices -1
- * - Pick an arbitrary enabled vertex and assign it 1
+ * - Pick an arbitrary enabled vertex and assign it 0
  * - Flow outward from already assigned vertices via BFS, assign each newly reached vertex the next available smallest number
  *
- * And when a graph has more than one connected component, at least one of those components does not contain a vertex with f(v) = 1,
- * which means its minimum assignment from f will be greater than 1, and therefore cannot satisfy constraint 3.
+ * And when a graph has more than one connected component, at least one of those components does not contain a vertex with f(v) = 0,
+ * which means its minimum assignment from f will be greater than 0, and therefore cannot satisfy constraint 3.
  *
  * For details, see this paper:
  * https://www.cs.ru.nl/bachelors-theses/2021/Gerhard_van_der_Knijff___1006946___Solving_and_generating_puzzles_with_a_connectivity_constraint.pdf
  *
+ * @param indicatorVariables - A map from vertices to their corresponding indicator variables, which indicate whether the vertex is enabled.
+ * @param minimalEnabledVariables - An iterable of vertices such that at least one of them must be enabled. The smaller the set, the better.
  * @remarks
  * The graph these constraints operate on does not need to conceptually align with the graph the rest of the puzzle generally uses.
  *
@@ -81,24 +94,54 @@ export function createConstraintExtensions(
  */
 export function* connectedConstraints<T extends HasNeighbors<T>>(
 	indicatorVariables: Map<HasNeighbors<T>, Arith<string>>,
+	minimalEnabledVariables: Iterable<HasNeighbors<T>>,
 	context: Context<string>
 ) {
 	const vertices = Array.from(indicatorVariables.keys());
 	const connectivityVariables = new Map<HasNeighbors<T>, Arith<string>>();
 
-	const { bound } = createConstraintExtensions(context);
-
+	const { bound, iff } = createConstraintExtensions(context);
 	const { Int, Or, And, Implies } = context;
+	const possibleZeroVertices = new Set(minimalEnabledVariables);
+
 	for (const v of vertices) {
 		const conVar = Int.const(`connectivity_${v}`);
 		connectivityVariables.set(v, conVar);
 		const edgeVariable = indicatorVariables.get(v) ?? oob(v);
 		yield* [
-			// If all vertices are in one connected component, the assignment gives them values 1, 2, ..., up to the number of vertices.
 			bound(conVar, -1, vertices.length),
-			Implies(edgeVariable.eq(0), conVar.eq(-1)),
-			Implies(edgeVariable.eq(1), conVar.ge(1)),
+			iff(edgeVariable.eq(0), conVar.eq(-1)),
+			iff(edgeVariable.eq(1), conVar.ge(0)),
 		];
+	}
+
+	const varFor = (v: HasNeighbors<T>) =>
+		connectivityVariables.get(v) ?? oob(v);
+	// In this block, we enforce that exactly one of the minimal enabled variables is assigned 0, and all other vertices are non-zero.
+	// This would be expressible without `minimalEnabledVertices`, but the obvious way uses O(N^2) terms.
+	{
+		// Enforce that at least one of the minimal enabled variables is enabled.
+		yield Or(
+			...Array.from(possibleZeroVertices).map((v) => varFor(v).eq(0))
+		);
+		for (const variable of possibleZeroVertices) {
+			// Enforce that exactly one of the minimal enabled variables is 0.
+			yield Implies(
+				varFor(variable).eq(0),
+				And(
+					...Array.from(possibleZeroVertices)
+						.filter((v) => v !== variable)
+						.map((v) => varFor(v).neq(0))
+				)
+			);
+		}
+
+		for (const v of vertices) {
+			// Enforce that vertices not in `possibleZeroVertices` cannot be assigned 0.
+			if (!possibleZeroVertices.has(v)) {
+				yield varFor(v).neq(0);
+			}
+		}
 	}
 
 	// This constraint enforces connectivity.
@@ -111,15 +154,13 @@ export function* connectedConstraints<T extends HasNeighbors<T>>(
 
 		const adjacent = Array.from(
 			v.neighbors({ includeOutOfBounds: false })
-		).map((e) => connectivityVariables.get(e) ?? oob(e));
+		).map(varFor);
 
-		// Either this vertex is assigned -1 (not part of the connected component),
-		// 1 (the lowest part of the connected component),
-		// or it has an adjacent vertex with a lower connectivity value.
+		// Constraint 3 from the doc comment.
 		yield Or(
 			connectivityVar.eq(-1),
-			connectivityVar.eq(1),
-			...adjacent.map((e) => And(e.le(connectivityVar), e.neq(-1)))
+			connectivityVar.eq(0),
+			...adjacent.map((e) => And(e.lt(connectivityVar), e.neq(-1)))
 		);
 	}
 }
@@ -136,9 +177,14 @@ export function* connectedConstraints<T extends HasNeighbors<T>>(
  */
 export function* connectedLoopConstraints<T extends HasNeighbors<T>>(
 	indicatorVariables: Map<HasNeighbors<T>, Arith<string>>,
+	minimalEnabledVariables: Iterable<HasNeighbors<T>>,
 	context: Context<string>
 ) {
-	yield* connectedConstraints(indicatorVariables, context);
+	yield* connectedConstraints(
+		indicatorVariables,
+		minimalEnabledVariables,
+		context
+	);
 
 	const { Or, Int } = context;
 
@@ -159,7 +205,7 @@ export function* connectedLoopConstraints<T extends HasNeighbors<T>>(
  * Utility functions for defining constraints on a Cartesian grid in terms of indicator variables.
  */
 export interface CartesianGridConstraintUtils {
-	/** Constraints on edge incidence variables used to construct the utils */
+	/** Constraints and utility functions on edge incidence variables used to construct the utils */
 	edges: {
 		/**
 		 * Edges pass vertically through this vertex
@@ -177,11 +223,28 @@ export interface CartesianGridConstraintUtils {
 		 * At least one edge passes vertically through this vertex
 		 */
 		hasVerticalEdge: (v: Vertex) => Bool<string>;
+		/**
+		 * @returns an iterable of edge indicator variables corresponding to the run in the specified direction and length.
+		 * Out-of-bounds vertices use an always-zero indicator variable.
+		 *
+		 * @example
+		 * // yields the edge indicator variables for edges ([0, 1], [1, 1]), ([1, 1], [2, 1]), ([2, 1], [3, 1])
+		 * directionalRun([0, 1], 'right', 3);
+		 */
+		directionalRun: (
+			v: Vertex,
+			direction: 'up' | 'down' | 'left' | 'right',
+			length: number
+		) => Iterable<Arith<string>>;
 	};
 	/**
 	 * Masyu constraints on edge incidence variables used to construct the utils.
 	 */
 	masyu: MasyuConstraints;
+	/**
+	 * Shingoki constraints on edge incidence variables used to construct the utils.
+	 */
+	shingoki: ShingokiConstraints;
 }
 
 /**
@@ -194,6 +257,17 @@ export interface MasyuConstraints {
 	blackPearl: (v: Vertex) => Bool<string>;
 	/**
 	 * The loop goes straight through this vertex, but turns on at least one adjacent vertex.
+	 */
+	whitePearl: (v: Vertex) => Bool<string>;
+}
+
+export interface ShingokiConstraints {
+	/**
+	 * The loop turns 90 degrees at this vertex.
+	 */
+	blackPearl: (v: Vertex) => Bool<string>;
+	/**
+	 * The loop passes straight through this vertex.
 	 */
 	whitePearl: (v: Vertex) => Bool<string>;
 }
@@ -229,6 +303,19 @@ export function createCartesianGridConstraintUtils(
 	const hasVerticalEdge = (v: Vertex) =>
 		Or(getEdgeVar(v, v.up).eq(1), getEdgeVar(v, v.down).eq(1));
 
+	const directionalRun = function* (
+		v: Vertex,
+		direction: 'up' | 'down' | 'left' | 'right',
+		length: number
+	) {
+		let current = v;
+		for (let i = 0; i < length; i++) {
+			const next = current[direction];
+			yield getEdgeVar(current, next);
+			current = next;
+		}
+	};
+
 	const masyu = {
 		blackPearl: (v: Vertex) => {
 			const leftUsed = goesHorizontallyThrough(v.left);
@@ -254,13 +341,35 @@ export function createCartesianGridConstraintUtils(
 		},
 	};
 
+	const shingoki = {
+		blackPearl: (v: Vertex) => {
+			const leftUsed = getEdgeVar(v, v.left).eq(1);
+			const rightUsed = getEdgeVar(v, v.right).eq(1);
+			const downUsed = getEdgeVar(v, v.down).eq(1);
+			const upUsed = getEdgeVar(v, v.up).eq(1);
+			return Or(
+				And(downUsed, Or(leftUsed, rightUsed)),
+				And(upUsed, Or(leftUsed, rightUsed))
+			);
+		},
+		whitePearl: (v: Vertex) => {
+			const leftUsed = getEdgeVar(v, v.left).eq(1);
+			const rightUsed = getEdgeVar(v, v.right).eq(1);
+			const downUsed = getEdgeVar(v, v.down).eq(1);
+			const upUsed = getEdgeVar(v, v.up).eq(1);
+			return Or(And(downUsed, upUsed), And(leftUsed, rightUsed));
+		},
+	};
+
 	return {
 		edges: {
 			goesVerticallyThrough,
 			goesHorizontallyThrough,
 			hasHorizontalEdge,
 			hasVerticalEdge,
+			directionalRun,
 		},
 		masyu,
+		shingoki,
 	};
 }
