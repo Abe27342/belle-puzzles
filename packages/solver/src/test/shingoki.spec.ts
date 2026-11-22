@@ -1,49 +1,45 @@
-import { describe, it } from 'vitest';
-import { ShingokiPuzzle, ShingokiTextGrids } from '../shingoki.js';
-import { expectEqualSolutionString } from './utils.js';
+import { ShingokiPuzzle } from '../shingoki.js';
+import { describeSuiteFromTestData } from './utils.js';
 
-describe('Shingoki solver', () => {
-	const testCases: [string, ShingokiTextGrids, string][] = [
+// This set of characters renders better in VSCode editor.
+const renderChars = {
+	black: 'B',
+	white: 'W',
+	vertex: '·',
+	horizontal: '-',
+	vertical: '|',
+};
+
+describeSuiteFromTestData(
+	{
+		name: 'Shingoki',
+		fromText: (text) => ShingokiPuzzle.fromText(text, renderChars),
+	},
+	[
 		[
 			// https://puzzling.stackexchange.com/questions/104044/a-shingoki-puzzle
 			'complex 1',
-			{
-				colors: `
+			`
 .W....
 ..B...
 ......
 B....W
 WB..B.
 ......
-`,
-				lengths: `
+
 .3....
 ..2...
 ......
 6....5
 22..2.
 ......
-                `,
-			},
-			`
-·-W-·-· ·-·
-|     | | |
-· ·-B ·-· ·
-| | |     |
-·-· ·-·-· ·
-        | |
-B-·-·-·-· W
-|         |
-W B-· ·-B ·
-| | | | | |
-·-· ·-· ·-·
-            `,
+`,
 		],
 		[
 			// https://puzzling.stackexchange.com/questions/104786/shingoki-an-exploration-of-unicode
 			'complex 2',
-			{
-				colors: `
+
+			`
 ..........B
 ...WBW.....
 B....B.BB..
@@ -55,8 +51,7 @@ W..B......B
 ....W......
 ....B...BBW
 B..........
-            `,
-				lengths: `
+
 ..........5
 ...232.....
 3....3.33..
@@ -68,50 +63,7 @@ B..........
 ....5......
 ....3...222
 9..........
-                `,
-			},
-			`
-·-·-· ·-· · · ·-·-·-B
-|   | | |     |     |
-· · · W B-W-· · · · ·
-|   | |     | |     |
-B-· · ·-·-B ·-B B-·-·
-  | |     |     |    
-·-· W · ·-B · · ·-W-·
-|   |   |           |
-W ·-· B-· ·-·-· · ·-B
-| |   |   |   |   |  
-· · B-B · B-· · · ·-B
-| | |       | |     |
-· W ·-· B-· · W ·-·-·
-| |   | | | | | |    
-· · · ·-B B-B · W · ·
-| |           | |    
-· ·-·-·-W-·-· · ·-·-·
-|           | |     |
-· · ·-·-B · ·-· B-B W
-|   |   |       | | |
-B-·-· · ·-·-·-·-· ·-·
-`,
+            `,
 		],
-	];
-
-	// This set of characters renders better in VSCode editor.
-	const renderChars = {
-		black: 'B',
-		white: 'W',
-		vertex: '·',
-		horizontal: '-',
-		vertical: '|',
-	};
-	for (const [name, input, expected] of testCases) {
-		it(`should solve for input: ${name}`, { timeout: 20000 }, async () => {
-			const puzzle = ShingokiPuzzle.fromTextGrids(input, renderChars);
-			const assignment = await puzzle.solve();
-			expectEqualSolutionString(
-				await puzzle.renderSolution(assignment),
-				expected
-			);
-		});
-	}
-});
+	]
+);

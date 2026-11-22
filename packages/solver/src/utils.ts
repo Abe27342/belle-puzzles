@@ -28,3 +28,16 @@ export function fail(message?: string): never {
 export function oob(obj?: any): never {
 	return fail((obj ?? 'Out of bounds').toString());
 }
+
+/**
+ * @returns The same array, but with typing that enforces it is not empty.
+ * @remarks
+ * z3-solver's variadic typing has various functions (like Sum) which require at least one argument.
+ * This function is useful to satisfy those type requirements.
+ */
+export function ensureNonEmpty<T>(array: T[], message?: string): [T, ...T[]] {
+	if (array.length === 0) {
+		throw new Error(message ?? 'Array is empty');
+	}
+	return array as [T, ...T[]];
+}

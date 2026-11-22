@@ -1,4 +1,4 @@
-import { CartesianCoord, Edge, Vertex } from './grid/index.js';
+import { CartesianCoord, GridEdge, GridVertex } from './graph/index.js';
 import type { Arith, Context, Solver } from './z3.js';
 import {
 	EdgeIndicatorPuzzleProps,
@@ -17,7 +17,7 @@ export interface MasyuPuzzleProps extends EdgeIndicatorPuzzleProps {
 }
 
 interface Pearl {
-	coord: Vertex;
+	coord: GridVertex;
 	color: 'black' | 'white';
 }
 
@@ -37,7 +37,7 @@ interface ConstructionPearl {
 	color: 'black' | 'white';
 }
 
-export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white'> {
+export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white', never> {
 	/**
 	 * Note: the indexing model assumes pearls are placed go-style.
 	 *
@@ -66,17 +66,14 @@ export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white'> {
 			color: p.color,
 		}));
 		for (const pearl of this.#pearls) {
-			if (!this.grid.inBounds(pearl.coord.coord)) {
+			if (!pearl.coord.isInBounds()) {
 				throw new Error(`Pearl at ${pearl.coord} is out of bounds`);
 			}
-			this.grid.set(pearl.coord.coord, pearl.color);
+			this.vertexContents.set(pearl.coord.coord, pearl.color);
 		}
 	}
 
-	public static fromTextGrid(
-		text: string,
-		renderOptions?: PearlRenderOptions
-	) {
+	public static fromText(text: string, renderOptions?: PearlRenderOptions) {
 		const lines = text.trim().split('\n');
 		const height = lines.length;
 		const width = lines[0].length;
@@ -94,14 +91,10 @@ export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white'> {
 		return new MasyuPuzzle({ width, height, pearls, renderOptions });
 	}
 
-	public getCell(coord: CartesianCoord): 'black' | 'white' | 'empty' {
-		return this.grid.get(coord);
-	}
-
 	public override addConstraints(
 		context: Context<string>,
 		solver: Solver<string>
-	): Map<Edge, Arith<string>> {
+	): Map<GridEdge, Arith<string>> {
 		const edgeVariables = this.createEdgeIndicatorVariables(
 			context,
 			solver
@@ -130,7 +123,7 @@ export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white'> {
 		solver.add(
 			...connectedLoopConstraints(
 				edgeVariables,
-				this.grid.edgesIncidentTo(coord),
+				coord.incidentEdges(),
 				context
 			)
 		);
@@ -145,7 +138,7 @@ export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white'> {
 		return value;
 	}
 
-	public override renderT(t: 'black' | 'white'): string {
+	protected override renderVertexData(t: 'black' | 'white'): string {
 		return this.#renderChars[t];
 	}
 }

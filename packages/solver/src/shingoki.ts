@@ -1,4 +1,4 @@
-import { CartesianCoord, Edge, Vertex } from './grid/index.js';
+import { CartesianCoord, GridEdge, GridVertex } from './graph/index.js';
 import type { Arith, Context, Solver } from './z3.js';
 import {
 	EdgeIndicatorPuzzleProps,
@@ -17,7 +17,7 @@ export interface ShingokiPuzzleProps extends EdgeIndicatorPuzzleProps {
 }
 
 interface Pearl {
-	coord: Vertex;
+	coord: GridVertex;
 	color: 'black' | 'white';
 	length: number;
 }
@@ -51,7 +51,10 @@ interface ConstructionPearl {
 	color: 'black' | 'white';
 }
 
-export class ShingokiPuzzle extends EdgeIndicatorPuzzle<'black' | 'white'> {
+export class ShingokiPuzzle extends EdgeIndicatorPuzzle<
+	'black' | 'white',
+	never
+> {
 	/**
 	 * Note: the indexing model assumes pearls are placed go-style.
 	 *
@@ -81,18 +84,23 @@ export class ShingokiPuzzle extends EdgeIndicatorPuzzle<'black' | 'white'> {
 			length: p.length,
 		}));
 		for (const pearl of this.#pearls) {
-			if (!this.grid.inBounds(pearl.coord.coord)) {
+			if (!pearl.coord.isInBounds()) {
 				throw new Error(`Pearl at ${pearl.coord} is out of bounds`);
 			}
-			this.grid.set(pearl.coord.coord, pearl.color);
+			this.vertexContents.set(pearl.coord.coord, pearl.color);
 		}
 	}
 
-	public static fromTextGrids(
-		grids: ShingokiTextGrids,
-		renderOptions?: PearlRenderOptions
-	) {
-		const { colors, lengths } = grids;
+	/**
+	 * @param text Text representation of the Shingoki puzzle grid.
+	 * This should come in the form of two grids: first, the colors grid (B/W), then the lengths (digits) grid.
+	 * The grids should be separated by 2 newlines.
+	 * The parser does not currently support multi-digit lengths for pearls.
+	 * @param renderOptions
+	 * @returns
+	 */
+	public static fromText(text: string, renderOptions?: PearlRenderOptions) {
+		const [colors, lengths] = text.split('\n\n');
 		const colorsLines = colors.trim().split('\n');
 		const lengthsLines = lengths.trim().split('\n');
 		const height = colorsLines.length;
@@ -140,14 +148,10 @@ export class ShingokiPuzzle extends EdgeIndicatorPuzzle<'black' | 'white'> {
 		return new ShingokiPuzzle({ width, height, pearls, renderOptions });
 	}
 
-	public getCell(coord: CartesianCoord): 'black' | 'white' | 'empty' {
-		return this.grid.get(coord);
-	}
-
 	public override addConstraints(
 		context: Context<string>,
 		solver: Solver<string>
-	): Map<Edge, Arith<string>> {
+	): Map<GridEdge, Arith<string>> {
 		const edgeVariables = this.createEdgeIndicatorVariables(
 			context,
 			solver
@@ -229,7 +233,7 @@ export class ShingokiPuzzle extends EdgeIndicatorPuzzle<'black' | 'white'> {
 		solver.add(
 			...connectedLoopConstraints(
 				edgeVariables,
-				this.grid.edgesIncidentTo(coord),
+				coord.incidentEdges(),
 				context
 			)
 		);
@@ -244,7 +248,7 @@ export class ShingokiPuzzle extends EdgeIndicatorPuzzle<'black' | 'white'> {
 		return value;
 	}
 
-	public override renderT(t: 'black' | 'white'): string {
+	protected override renderVertexData(t: 'black' | 'white'): string {
 		return this.#renderChars[t];
 	}
 }

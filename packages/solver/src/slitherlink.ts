@@ -1,4 +1,4 @@
-import { CartesianCoord, Edge, Vertex } from './grid/index.js';
+import { CartesianCoord, GridEdge, GridFace } from './graph/index.js';
 import type { Arith, Context, Solver } from './z3.js';
 import {
 	EdgeIndicatorPuzzleProps,
@@ -6,7 +6,7 @@ import {
 	EdgeIndicatorRenderOptions,
 } from './edge-indicator-puzzle.js';
 import { connectedLoopConstraints } from './constraint-utils.js';
-import { oob } from './utils.js';
+import { ensureNonEmpty, oob } from './utils.js';
 
 export interface SlitherlinkPuzzleProps extends EdgeIndicatorPuzzleProps {
 	givens: ConstructionGivens[];
@@ -14,9 +14,9 @@ export interface SlitherlinkPuzzleProps extends EdgeIndicatorPuzzleProps {
 }
 
 interface Given {
-	coord: Vertex;
+	face: GridFace;
 	/**
-	 * Number of adjacent edges to this vertex
+	 * Number of adjacent edges to this face
 	 */
 	count: number;
 }
@@ -30,40 +30,30 @@ interface Given {
 interface ConstructionGivens {
 	coord: CartesianCoord;
 	/**
-	 * Number of adjacent edges to this vertex
+	 * Number of adjacent edges to this face
 	 */
 	count: number;
 }
 
-export class SlitherlinkPuzzle extends EdgeIndicatorPuzzle<never> {
-	/**
-	 * Note that the givens' coordinates are in terms of the face grid, not the vertex grid.
-	 *
-	 * Thus edges surrounding a given coordinate (v) are:
-	 *
-	 * [v, v.right]
-	 * [v, v.down]
-	 * [v.right, v.right.down]
-	 * [v.down, v.down.right]
-	 */
+export class SlitherlinkPuzzle extends EdgeIndicatorPuzzle<never, string> {
 	#givens: Given[];
 
 	constructor(props: SlitherlinkPuzzleProps) {
 		super(props);
 
 		this.#givens = props.givens.map((p) => ({
-			coord: this.grid.getVertex(p.coord),
+			face: this.grid.getFace(p.coord),
 			count: p.count,
 		}));
 		for (const given of this.#givens) {
-			if (!this.grid.inBounds(given.coord.coord)) {
-				throw new Error(`Pearl at ${given.coord} is out of bounds`);
+			if (!given.face.isInBounds()) {
+				throw new Error(`Given at ${given.face} is out of bounds`);
 			}
-			this.faceGrid.set(given.coord.coord, given.count.toString());
+			this.faceContents.set(given.face.coord, given.count.toString());
 		}
 	}
 
-	public static fromTextGrid(
+	public static fromText(
 		text: string,
 		renderOptions?: EdgeIndicatorRenderOptions
 	) {
@@ -91,7 +81,7 @@ export class SlitherlinkPuzzle extends EdgeIndicatorPuzzle<never> {
 	public override addConstraints(
 		context: Context<string>,
 		solver: Solver<string>
-	): Map<Edge, Arith<string>> {
+	): Map<GridEdge, Arith<string>> {
 		const edgeVariables = this.createEdgeIndicatorVariables(
 			context,
 			solver
@@ -99,32 +89,20 @@ export class SlitherlinkPuzzle extends EdgeIndicatorPuzzle<never> {
 
 		const { Sum } = context;
 
-		for (const { count, coord } of this.#givens) {
-			const { top, left, bottom, right } =
-				this.edgesAdjacentToFace(coord);
-			const [topVar, leftVar, bottomVar, rightVar] = [
-				top,
-				left,
-				bottom,
-				right,
-			].map((e) => edgeVariables.get(e) ?? oob(e));
-			solver.add(Sum(topVar, leftVar, bottomVar, rightVar).eq(count));
+		for (const { count, face } of this.#givens) {
+			const adjacentFaceVariables = Array.from(
+				face.incidentEdges(),
+				(e) => edgeVariables.get(e) ?? oob(e)
+			);
+			solver.add(Sum(...ensureNonEmpty(adjacentFaceVariables)).eq(count));
 		}
 
-		// Pick an arbitrary pearl to use for the minimalEnabledVariables.
+		// Pick an arbitrary nonzero constraint to use for the minimalEnabledVariables.
 		const given = this.#givens.find((g) => g.count > 0);
-		if (!given) {
-			// ...one could write a slitherlink with only 0 clues, but it would be trivial to solve.
-			// No use handling that robustly.
-			throw new Error('No given with count > 0 found');
-		}
-		const { top, left, bottom, right } = this.edgesAdjacentToFace(
-			given.coord
-		);
 		solver.add(
 			...connectedLoopConstraints(
 				edgeVariables,
-				[top, left, bottom, right],
+				given?.face.incidentEdges() ?? this.grid.edges(),
 				context
 			)
 		);
@@ -137,9 +115,5 @@ export class SlitherlinkPuzzle extends EdgeIndicatorPuzzle<never> {
 			throw new Error(`Invalid assignment value: ${value}`);
 		}
 		return value;
-	}
-
-	public override renderT(_: never): string {
-		throw new Error('Should not be called');
 	}
 }
