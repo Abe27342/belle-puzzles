@@ -10,6 +10,8 @@ import {
 	createCartesianGridConstraintUtils,
 	createConstraintExtensions,
 } from './constraint-utils.js';
+import { parseTextGrids } from './text-grid.js';
+import type { TextGridVisitor } from './text-grid.js';
 
 export interface ShingokiPuzzleProps extends EdgeIndicatorPuzzleProps {
 	pearls: ConstructionPearl[];
@@ -94,57 +96,31 @@ export class ShingokiPuzzle extends EdgeIndicatorPuzzle<
 	/**
 	 * @param text Text representation of the Shingoki puzzle grid.
 	 * This should come in the form of two grids: first, the colors grid (B/W), then the lengths (digits) grid.
-	 * The grids should be separated by 2 newlines.
+	 * The grids should be separated by one or more blank lines.
 	 * The parser does not currently support multi-digit lengths for pearls.
 	 * @param renderOptions
 	 * @returns
 	 */
 	public static fromText(text: string, renderOptions?: PearlRenderOptions) {
-		const [colors, lengths] = text.split('\n\n');
-		const colorsLines = colors.trim().split('\n');
-		const lengthsLines = lengths.trim().split('\n');
-		const height = colorsLines.length;
-		const width = colorsLines[0].length;
-
-		if (colorsLines.length !== lengthsLines.length) {
-			throw new Error(
-				`Colors and lengths grids must have the same number of lines`
-			);
-		}
-
-		if (
-			colorsLines.some(
-				(line, index) => line.length !== lengthsLines[index].length
-			)
-		) {
-			throw new Error(
-				`Colors and lengths grids must have the same number of columns in each line`
-			);
-		}
-
 		const pearls: ConstructionPearl[] = [];
-		for (let y = 0; y < height; y++) {
-			for (let x = 0; x < width; x++) {
-				const char = colorsLines[y][x];
-				if (['B', 'b'].includes(char)) {
-					const length = Number.parseInt(lengthsLines[y][x]);
-					if (Number.isNaN(length)) {
-						throw new Error(`Invalid length at ${x},${y}`);
-					}
-					pearls.push({ coord: [x, y], color: 'black', length });
-				} else if (['W', 'w'].includes(char)) {
-					const length = Number.parseInt(lengthsLines[y][x]);
-					if (Number.isNaN(length)) {
-						throw new Error(`Invalid length at ${x},${y}`);
-					}
-					pearls.push({ coord: [x, y], color: 'white', length });
-				} else {
-					if (lengthsLines[y][x] !== '.') {
-						throw new Error(`Grids do not match at ${x},${y}`);
-					}
+		const visitor: TextGridVisitor = ([char, lengthChar], coord) => {
+			if (['B', 'b', 'W', 'w'].includes(char)) {
+				const length = Number.parseInt(lengthChar);
+				if (Number.isNaN(length)) {
+					throw new Error(`Invalid length at ${coord}`);
 				}
+				pearls.push({
+					coord,
+					color: ['B', 'b'].includes(char) ? 'black' : 'white',
+					length,
+				});
+			} else if (lengthChar !== '.') {
+				throw new Error(`Grids do not match at ${coord}`);
 			}
-		}
+		};
+		const { width, height } = parseTextGrids(text, visitor, {
+			gridCount: 2,
+		});
 		return new ShingokiPuzzle({ width, height, pearls, renderOptions });
 	}
 
@@ -238,14 +214,6 @@ export class ShingokiPuzzle extends EdgeIndicatorPuzzle<
 			)
 		);
 		return edgeVariables;
-	}
-
-	public override parseAssignment(assignment: string): 0 | 1 {
-		const value = Number(assignment);
-		if (value !== 0 && value !== 1) {
-			throw new Error(`Invalid assignment value: ${value}`);
-		}
-		return value;
 	}
 
 	protected override renderVertexData(t: 'black' | 'white'): string {
