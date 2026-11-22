@@ -1,7 +1,7 @@
 import { Context, Arith, Solver } from 'z3-solver';
-import { Edge, CartesianGrid, CartesianCoord, Vertex } from './grid';
-import { Puzzle } from './puzzle';
-import { createConstraintExtensions } from './constraint-utils';
+import { Edge, CartesianGrid, CartesianCoord, Vertex } from './grid/index.js';
+import { Puzzle } from './puzzle.js';
+import { createConstraintExtensions } from './constraint-utils.js';
 
 export interface EdgeIndicatorPuzzleProps {
 	width: number;

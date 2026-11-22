@@ -4,8 +4,8 @@
  */
 
 import { Arith, Bool, Context, Solver } from 'z3-solver';
-import { oob } from './utils';
-import { Vertex, CartesianGrid, Edge } from './grid';
+import { oob } from './utils.js';
+import { Vertex, CartesianGrid, Edge } from './grid/index.js';
 
 /**
  * Abstract representation of a vertex in a graph that can provide its neighboring vertices.
@@ -376,7 +376,6 @@ export function createCartesianGridConstraintUtils(
 			hasHorizontalEdge,
 			hasVerticalEdge,
 			directionalRun,
-			adjacentToFaceCoordinate,
 		},
 		masyu,
 		shingoki,
