@@ -25,6 +25,19 @@ export abstract class EdgeIndicatorPuzzle<TCell> extends Puzzle<Edge, 0 | 1> {
 
 	protected grid: CartesianGrid<TCell | 'empty'>;
 
+	/**
+	 * Grid representing the face contents of the puzzle.
+	 *
+	 * This grid has dimensions (width - 1) x (height - 1).
+	 *
+	 * This grid is used when rendering the puzzle with {@link renderSolution}.
+	 * Classes extending {@link EdgeIndicatorPuzzle} can place length-1 content in cells of the grid
+	 * to improve that rendering.
+	 *
+	 * This is useful for puzzles which indicate clues in cells, e.g. slitherlink.
+	 */
+	protected faceGrid: CartesianGrid<string>;
+
 	#renderOptions: EdgeIndicatorRenderOptions;
 
 	public get width() {
@@ -43,6 +56,12 @@ export abstract class EdgeIndicatorPuzzle<TCell> extends Puzzle<Edge, 0 | 1> {
 			this.#width,
 			this.#height,
 			() => 'empty'
+		);
+
+		this.faceGrid = CartesianGrid.fromDimensions(
+			this.#width - 1,
+			this.#height - 1,
+			() => ' '
 		);
 		this.#renderOptions = props.renderOptions ?? {
 			vertex: '·',
@@ -112,8 +131,12 @@ export abstract class EdgeIndicatorPuzzle<TCell> extends Puzzle<Edge, 0 | 1> {
 				const downEdgeAssignment = assignment.get(downEdge);
 				verticalEdgeLine +=
 					downEdgeAssignment === 1
-						? this.#renderOptions.vertical + ' '
-						: '  ';
+						? this.#renderOptions.vertical
+						: ' ';
+
+				if (x < this.width - 1 && y < this.height - 1) {
+					verticalEdgeLine += this.faceGrid.get([x, y]);
+				}
 			}
 
 			result += contentLine + '\n';
