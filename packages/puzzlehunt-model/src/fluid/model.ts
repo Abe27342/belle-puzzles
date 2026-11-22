@@ -1,124 +1,212 @@
 import { SharedTree } from '@fluid-experimental/tree';
+import { SharedMap } from 'fluid-framework';
 import type { IFluidContainer } from '@fluidframework/fluid-static';
+import type { Puzzlehunt } from '../puzzlehunt.js';
 import { HuntCommandError } from '../document.js';
 import type {
-	DocumentDiscordAssociation,
 	DocumentNode,
 	DocumentPuzzle,
+	DocumentRound,
 } from '../document.js';
-import type { IPuzzlehunt, Puzzle, Round } from '../puzzlehunt.js';
-import { projectPuzzlehuntView } from '../model/types.js';
 import type {
+	DiscordPuzzleInfo,
+	DiscordRoundInfo,
 	IPuzzlehuntModel,
+	IPuzzlehuntSession,
+	LoggingChannelIds,
 	PuzzlehuntRound,
 	PuzzlehuntView,
+	PuzzlehuntChangeEvent,
+	PuzzlehuntSessionState,
 } from '../model/types.js';
 
 /** Adapt the existing Fluid model; preserve its existing domain behavior. */
-export class FluidPuzzlehuntModel implements IPuzzlehuntModel {
-	private readonly tree: SharedTree;
+export class FluidPuzzlehuntSession
+	implements IPuzzlehuntModel, IPuzzlehuntSession
+{
+	readonly puzzlehunt: IPuzzlehuntModel = this;
+	private readonly guildInfo: SharedMap;
+	private currentState: PuzzlehuntSessionState = { status: 'open' };
+	private readonly lifecycleListeners = new Set<
+		(state: PuzzlehuntSessionState) => void
+	>();
+	private readonly subscriptions = new Set<() => void>();
+	private readonly flushWaiters = new Set<{
+		resolve: () => void;
+		reject: (error: Error) => void;
+	}>();
+	private readonly unsubscribeErrors: () => void;
 
 	constructor(
-		private readonly hunt: IPuzzlehunt,
+		private readonly hunt: Puzzlehunt,
 		private readonly container: IFluidContainer
 	) {
 		const tree = container.initialObjects.hunt;
 		if (!(tree instanceof SharedTree)) {
 			throw new Error('Fluid puzzlehunt container has no SharedTree.');
 		}
-		this.tree = tree;
+		const guildInfo = container.initialObjects.guildInfo;
+		if (!(guildInfo instanceof SharedMap)) {
+			throw new Error(
+				'Fluid puzzlehunt container has no guild metadata.'
+			);
+		}
+		this.guildInfo = guildInfo;
+		this.unsubscribeErrors = hunt.subscribeErrors((error) =>
+			this.fail(error)
+		);
+		container.on('saved', this.saved);
+		container.on('disposed', this.disposed);
+		if (container.disposed) {
+			this.disposed();
+		}
 	}
 
-	get view(): PuzzlehuntView {
-		const nodes: Record<string, DocumentNode> = {};
-		const visit = (
-			round: Round,
-			parentId: string | null,
-			position: number
-		) => {
-			const id = this.tree.convertToStableNodeId(round.id);
-			nodes[id] = {
-				id,
-				type: 'round',
-				name: round.name,
-				url: round.url,
-				parentId,
-				position,
-				...(round.discordInfo
-					? {
-							// TODO: Cast here is because discord association types are currently duplicated with only one copy being branded.
-							discord:
-								round.discordInfo as DocumentDiscordAssociation,
-					  }
-					: {}),
-			};
-			round.children.forEach((child, index) => {
-				if (child.type === 'round') {
-					visit(child, id, index);
-				} else {
-					const puzzleId = this.tree.convertToStableNodeId(child.id);
-					nodes[puzzleId] = {
-						id: puzzleId,
-						type: 'puzzle',
-						name: child.name,
-						url: child.url,
-						parentId: id,
-						position: index,
-						...(child.answer === undefined
-							? {}
-							: { answer: child.answer }),
-						...(child.status === undefined
-							? {}
-							: { status: child.status }),
-						...(child.lastStatusUpdate === undefined
-							? {}
-							: { lastStatusUpdate: child.lastStatusUpdate }),
-						...(child.sheetId === undefined
-							? {}
-							: { sheetId: child.sheetId }),
-						...(child.discordInfo
-							? {
-									// TODO: Cast here is because discord association types are currently duplicated with only one copy being branded.
-									discord:
-										child.discordInfo as DocumentDiscordAssociation,
-							  }
-							: {}),
-					};
-				}
-			});
+	get state(): PuzzlehuntSessionState {
+		return this.currentState;
+	}
+
+	subscribeLifecycle(
+		listener: (state: PuzzlehuntSessionState) => void
+	): () => void {
+		if (this.state.status === 'closed' || this.state.status === 'failed') {
+			return () => {};
+		}
+		this.lifecycleListeners.add(listener);
+		return () => {
+			this.lifecycleListeners.delete(listener);
 		};
-		Array.from(this.hunt.rounds)
-			.filter((round) => round.roundId === undefined)
-			.forEach((round, position) => visit(round, null, position));
-		return projectPuzzlehuntView({ nodes });
+	}
+
+	close(): void {
+		try {
+			this.finish({ status: 'closed' });
+		} finally {
+			if (!this.container.disposed) {
+				this.container.dispose();
+			}
+		}
+	}
+
+	private assertWritable(): void {
+		if (this.state.status === 'failed') {
+			throw this.state.error;
+		}
+		if (this.state.status !== 'open') {
+			throw new Error('Puzzlehunt session is closed.');
+		}
+	}
+
+	private publishLifecycle(): void {
+		for (const listener of this.lifecycleListeners) {
+			listener(this.state);
+		}
+	}
+
+	private finish(state: PuzzlehuntSessionState): void {
+		if (this.state.status === 'closed' || this.state.status === 'failed') {
+			return;
+		}
+		this.currentState = state;
+		const error =
+			state.status === 'failed'
+				? state.error
+				: new Error('Puzzlehunt session is closed.');
+		for (const waiter of this.flushWaiters) {
+			waiter.reject(error);
+		}
+		this.flushWaiters.clear();
+		this.container.off('saved', this.saved);
+		this.container.off('disposed', this.disposed);
+		this.unsubscribeErrors();
+		try {
+			this.publishLifecycle();
+		} finally {
+			for (const unsubscribe of this.subscriptions) {
+				unsubscribe();
+			}
+			this.lifecycleListeners.clear();
+		}
+	}
+
+	private fail(error: unknown): Error {
+		const failure =
+			this.state.status === 'failed'
+				? this.state.error
+				: error instanceof Error
+				? error
+				: new Error('Puzzlehunt session failed.', { cause: error });
+		try {
+			this.finish({ status: 'failed', error: failure });
+		} finally {
+			if (!this.container.disposed) {
+				this.container.dispose();
+			}
+		}
+		return failure;
+	}
+
+	private readonly disposed = (error?: unknown): void => {
+		this.finish(
+			error !== undefined || this.container.isDirty
+				? {
+						status: 'failed',
+						error:
+							error instanceof Error
+								? error
+								: new Error(
+										'Puzzlehunt closed before acknowledgement.',
+										{ cause: error }
+								  ),
+				  }
+				: { status: 'closed' }
+		);
+	};
+
+	private readonly saved = (): void => {
+		if (!this.container.isDirty) {
+			for (const waiter of this.flushWaiters) {
+				waiter.resolve();
+			}
+			this.flushWaiters.clear();
+		}
+	};
+
+	get view(): PuzzlehuntView {
+		return this.hunt.view;
 	}
 
 	get rounds(): readonly PuzzlehuntRound[] {
-		return this.view.rounds;
+		return Array.from(this.hunt.rounds);
 	}
 
 	get puzzles(): readonly DocumentPuzzle[] {
-		return this.view.puzzles;
+		return Array.from(this.hunt.puzzles);
 	}
 
 	get isPending(): boolean {
 		return this.container.isDirty;
 	}
 
+	get guildId(): string {
+		return this.hunt.guildId;
+	}
+
+	get loggingChannelIds(): LoggingChannelIds | undefined {
+		return this.hunt.loggingChannelIds;
+	}
+
+	setLoggingChannelIds(ids: LoggingChannelIds): void {
+		this.assertWritable();
+		this.hunt.setLoggingChannelIds(ids);
+	}
+
 	getRound(id: string): PuzzlehuntRound {
-		const round = this.rounds.find((node) => node.id === id);
-		if (!round) {
-			throw new HuntCommandError('not-found', 'Round not found.');
-		}
-		return round;
+		return this.hunt.getRound(id);
 	}
 
 	getPuzzle(id: string): DocumentPuzzle {
-		const puzzle = this.puzzles.find((node) => node.id === id);
-		if (!puzzle) {
-			throw new HuntCommandError('not-found', 'Puzzle not found.');
-		}
-		return puzzle;
+		return this.hunt.getPuzzle(id);
 	}
 
 	addRound(
@@ -126,19 +214,16 @@ export class FluidPuzzlehuntModel implements IPuzzlehuntModel {
 		url: string,
 		parent?: PuzzlehuntRound
 	): PuzzlehuntRound {
-		const round = this.hunt.addRound(
-			name,
-			url,
-			parent ? this.nativeRound(parent.id) : undefined
-		);
-		return this.getRound(this.tree.convertToStableNodeId(round.id));
+		this.assertWritable();
+		return this.hunt.addRound(name, url, parent);
 	}
 
 	addRounds(
 		rounds: { name: string; url: string }[],
 		parent: PuzzlehuntRound
 	): void {
-		this.hunt.addRounds(rounds, this.nativeRound(parent.id));
+		this.assertWritable();
+		this.hunt.addRounds(rounds, parent);
 	}
 
 	addPuzzle(
@@ -146,131 +231,154 @@ export class FluidPuzzlehuntModel implements IPuzzlehuntModel {
 		url: string,
 		round: PuzzlehuntRound
 	): DocumentPuzzle {
-		const puzzle = this.hunt.addPuzzle(
-			name,
-			url,
-			this.nativeRound(round.id)
-		);
-		return this.getPuzzle(this.tree.convertToStableNodeId(puzzle.id));
+		this.assertWritable();
+		return this.hunt.addPuzzle(name, url, round);
 	}
 
 	addPuzzles(
 		puzzles: { name: string; url: string }[],
 		round: PuzzlehuntRound
 	): void {
-		this.hunt.addPuzzles(puzzles, this.nativeRound(round.id));
+		this.assertWritable();
+		this.hunt.addPuzzles(puzzles, round);
 	}
 
 	delete(node: DocumentNode): void {
-		this.hunt.delete(this.nativeNode(node.id));
+		this.assertWritable();
+		this.hunt.delete(node);
 	}
 
 	changeName(node: DocumentNode, name: string): void {
-		this.hunt.changeName(this.nativeNode(node.id), name);
+		this.assertWritable();
+		this.hunt.changeName(node, name);
 	}
 
 	changeUrl(node: DocumentNode, url: string): void {
-		this.hunt.changeUrl(this.nativeNode(node.id), url);
+		this.assertWritable();
+		this.hunt.changeUrl(node, url);
 	}
 
 	move(node: DocumentNode, parent: PuzzlehuntRound): void {
-		this.hunt.move(this.nativeNode(node.id), this.nativeRound(parent.id));
+		this.assertWritable();
+		this.hunt.move(node, parent);
 	}
 
 	solve(id: string, answer: string): DocumentPuzzle {
-		this.hunt.solve(this.nativePuzzle(id).id, answer);
-		return this.getPuzzle(id);
+		this.assertWritable();
+		return this.hunt.solve(id, answer);
 	}
 
 	unsolve(id: string): DocumentPuzzle {
-		this.hunt.unsolve(this.nativePuzzle(id).id);
-		return this.getPuzzle(id);
+		this.assertWritable();
+		return this.hunt.unsolve(id);
 	}
 
 	updateStatus(puzzle: DocumentPuzzle, status: string): void {
-		this.hunt.updateStatus(this.nativePuzzle(puzzle.id), status);
+		this.assertWritable();
+		this.hunt.updateStatus(puzzle, status);
 	}
 
 	clearStatus(puzzle: DocumentPuzzle): void {
-		this.hunt.clearStatus(this.nativePuzzle(puzzle.id));
+		this.assertWritable();
+		this.hunt.clearStatus(puzzle);
 	}
 
-	augmentWithGoogleSheet(puzzle: DocumentPuzzle, sheetId: string): void {
-		this.hunt.augmentWithGoogleSheet(this.nativePuzzle(puzzle.id), sheetId);
+	augmentWithDiscord(
+		puzzle: DocumentPuzzle,
+		discordInfo: DiscordPuzzleInfo,
+		durableTaskId?: string
+	): void;
+	augmentWithDiscord(
+		round: DocumentRound,
+		discordInfo: DiscordRoundInfo,
+		durableTaskId?: string
+	): void;
+	augmentWithDiscord(
+		node: DocumentNode,
+		discordInfo: DiscordPuzzleInfo | DiscordRoundInfo,
+		durableTaskId?: string
+	): void {
+		this.assertWritable();
+		if (node.type === 'puzzle') {
+			this.hunt.augmentWithDiscord(node, discordInfo, durableTaskId);
+		} else if ('indexChannel' in discordInfo) {
+			this.hunt.augmentWithDiscord(node, discordInfo, durableTaskId);
+		} else {
+			throw new HuntCommandError(
+				'invalid-command',
+				'A round Discord association requires an index channel.'
+			);
+		}
+	}
+
+	augmentWithGoogleSheet(
+		puzzle: DocumentPuzzle,
+		sheetId: string,
+		durableTaskId?: string
+	): void {
+		this.assertWritable();
+		this.hunt.augmentWithGoogleSheet(puzzle, sheetId, durableTaskId);
 	}
 
 	subscribe(listener: () => void): () => void {
+		if (this.state.status === 'closed' || this.state.status === 'failed') {
+			listener();
+			return () => {};
+		}
 		const notify = () => listener();
-		this.hunt.on('viewChange', notify);
+		const unsubscribe = this.hunt.subscribeChanges(notify);
+		const unsubscribeLifecycle = this.subscribeLifecycle(notify);
+		this.guildInfo.on('valueChanged', notify);
 		this.container.on('dirty', notify);
 		this.container.on('saved', notify);
-		return () => {
-			this.hunt.off('viewChange', notify);
+		const cleanup = () => {
+			unsubscribe();
+			unsubscribeLifecycle();
+			this.guildInfo.off('valueChanged', notify);
 			this.container.off('dirty', notify);
 			this.container.off('saved', notify);
+			this.subscriptions.delete(cleanup);
 		};
+		this.subscriptions.add(cleanup);
+		return cleanup;
+	}
+
+	subscribeChanges(
+		listener: (event: PuzzlehuntChangeEvent) => void
+	): () => void {
+		if (this.state.status === 'closed' || this.state.status === 'failed') {
+			return () => {};
+		}
+		const unsubscribe = this.hunt.subscribeChanges(listener);
+		const cleanup = () => {
+			unsubscribe();
+			this.subscriptions.delete(cleanup);
+		};
+		this.subscriptions.add(cleanup);
+		return cleanup;
 	}
 
 	flush(): Promise<void> {
-		if (this.container.disposed) {
-			return Promise.reject(
-				new Error('Fluid puzzlehunt container is disposed.')
-			);
+		if (this.container.disposed && this.state.status !== 'failed') {
+			this.disposed();
+		}
+		if (this.state.status === 'failed') {
+			return Promise.reject(this.state.error);
+		}
+		if (this.state.status === 'closed') {
+			return Promise.reject(new Error('Puzzlehunt session is closed.'));
 		}
 		if (!this.container.isDirty) {
 			return Promise.resolve();
 		}
 		return new Promise<void>((resolve, reject) => {
-			const cleanup = () => {
-				this.container.off('saved', saved);
-				this.container.off('disposed', disposed);
-			};
-			const saved = () => {
-				cleanup();
-				resolve();
-			};
-			const disposed = (error?: unknown) => {
-				cleanup();
-				reject(
-					error ??
-						new Error(
-							'Fluid puzzlehunt closed before acknowledgement.'
-						)
-				);
-			};
-			this.container.on('saved', saved);
-			this.container.on('disposed', disposed);
+			this.flushWaiters.add({ resolve, reject });
+			this.saved();
 		});
 	}
 
 	/** Fluid streams remote edits continuously; only local acknowledgement needs flushing. */
 	refresh(): Promise<void> {
 		return this.flush();
-	}
-
-	private nativeNode(id: string): Puzzle | Round {
-		const node = [...this.hunt.rounds, ...this.hunt.puzzles].find(
-			(node) => this.tree.convertToStableNodeId(node.id) === id
-		);
-		if (!node) {
-			throw new HuntCommandError('not-found', 'Node not found.');
-		}
-		return node;
-	}
-
-	private nativeRound(id: string): Round {
-		const node = this.nativeNode(id);
-		if (node.type !== 'round') {
-			throw new HuntCommandError('invalid-command', 'Expected a round.');
-		}
-		return node;
-	}
-
-	private nativePuzzle(id: string): Puzzle {
-		const node = this.nativeNode(id);
-		if (node.type !== 'puzzle') {
-			throw new HuntCommandError('invalid-command', 'Expected a puzzle.');
-		}
-		return node;
 	}
 }

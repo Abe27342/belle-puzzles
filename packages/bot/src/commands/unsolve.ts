@@ -4,8 +4,8 @@ import {
 	MessageFlags,
 	SlashCommandBuilder,
 } from 'discord.js';
-import { PuzzlehuntContext } from '../puzzlehunt-context';
-import { Command } from './types';
+import { PuzzlehuntContext } from '../puzzlehunt-context.js';
+import { Command } from './types.js';
 
 export const unsolve: Command = {
 	data: new SlashCommandBuilder()
@@ -22,7 +22,7 @@ export const unsolve: Command = {
 		}
 
 		const matchingPuzzles = Array.from(puzzlehunt.puzzles).filter(
-			(puzzle) => puzzle.discordInfo?.channelId === interaction.channelId
+			(puzzle) => puzzle.discord?.channelId === interaction.channelId
 		);
 
 		if (matchingPuzzles.length === 0) {

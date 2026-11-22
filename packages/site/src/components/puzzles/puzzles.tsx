@@ -1,6 +1,5 @@
 import * as React from 'react';
 import '../css/puzzles.css';
-import type { NodeId } from '@fluid-experimental/tree';
 import { useParams } from 'react-router-dom';
 import {
 	Anchor,
@@ -13,12 +12,8 @@ import {
 	MenuItem,
 	Button,
 } from '../../fast';
-import {
-	IPuzzlehunt,
-	loadExistingPuzzlehunt,
-	Puzzle,
-	Round,
-} from '@belle-puzzles/puzzlehunt-model';
+import { IPuzzlehunt, Puzzle, Round } from '@belle-puzzles/puzzlehunt-model';
+import { loadExistingPuzzlehunt } from '@belle-puzzles/puzzlehunt-model/fluid';
 import {
 	AddModal,
 	DeleteModal,
@@ -37,6 +32,7 @@ import { SolveModal } from './modals/solveModal';
 
 export const Puzzles: React.FC = () => {
 	const [puzzlehunt, setPuzzlehunt] = React.useState<IPuzzlehunt>();
+	const [sessionError, setSessionError] = React.useState<string>();
 	const forceRerender = useForceRerender();
 
 	const { guildId } = useParams() as { guildId: string };
@@ -62,27 +58,61 @@ export const Puzzles: React.FC = () => {
 	React.useEffect(() => {
 		let isActive = true;
 		let disposeFn: () => void;
+		setPuzzlehunt(undefined);
+		setSessionError(undefined);
 		const loadPuzzlehunt = async (fileId: string) => {
 			const authInfo = store.getState().auth.aad;
 			const client = await createClient({
 				userId: authInfo.userId,
 				userName: authInfo.userDetails,
 			});
-			const { puzzlehunt, disposer } = await loadExistingPuzzlehunt(
-				client,
-				fileId
-			);
-			disposeFn = () => disposer.dispose();
+			const session = await loadExistingPuzzlehunt(client, fileId);
+			let unsubscribe: (() => void) | undefined;
+			let unsubscribeLifecycle: (() => void) | undefined;
+			disposeFn = () => {
+				unsubscribe?.();
+				unsubscribeLifecycle?.();
+				void session.puzzlehunt
+					.flush()
+					.finally(() => session.close())
+					.catch((error) => {
+						console.error('Failed to save puzzlehunt.', error);
+					});
+			};
 			if (isActive) {
-				puzzlehunt.on('viewChange', forceRerender);
-				setPuzzlehunt(puzzlehunt);
+				unsubscribe = session.puzzlehunt.subscribe(forceRerender);
+				setPuzzlehunt(session.puzzlehunt);
+				const updateLifecycle = () => {
+					const { state } = session;
+					if (
+						state.status === 'closed' ||
+						state.status === 'failed'
+					) {
+						setPuzzlehunt(undefined);
+						setSessionError(
+							state.status === 'failed'
+								? state.error.message
+								: 'Puzzlehunt session closed.'
+						);
+					}
+				};
+				unsubscribeLifecycle =
+					session.subscribeLifecycle(updateLifecycle);
+				updateLifecycle();
 			} else {
-				disposeFn();
+				session.close();
 			}
 		};
 
 		if (fluidFileId) {
-			loadPuzzlehunt(fluidFileId).catch((err) => console.log(err));
+			loadPuzzlehunt(fluidFileId).catch((error: unknown) => {
+				console.error('Failed to load puzzlehunt.', error);
+				if (isActive) {
+					setSessionError(
+						error instanceof Error ? error.message : String(error)
+					);
+				}
+			});
 		}
 		return () => {
 			isActive = false;
@@ -100,7 +130,10 @@ export const Puzzles: React.FC = () => {
 			<div id="puzzles" className="page-body">
 				<Card>
 					<img id="libralogo" src={libraLogoUrl} />
-					{!puzzlehunt && !isError && <LoadingSkeleton />}
+					{!puzzlehunt && !isError && !sessionError && (
+						<LoadingSkeleton />
+					)}
+					{sessionError && <div role="alert">{sessionError}</div>}
 					{isError && (
 						<div>
 							{(error as any).status === 404
@@ -195,12 +228,11 @@ function useEditingUI(puzzlehunt: IPuzzlehunt): {
 					node: HTMLElement
 				): Puzzle | Round | undefined => {
 					const [, type, strId] =
-						node.id.match(/(puzzle|round)\-obj\-(\-?\d*)/) ?? [];
+						node.id.match(/^(puzzle|round)-obj-(.+)$/) ?? [];
 					if (strId) {
-						const id = Number.parseInt(strId) as unknown as NodeId;
 						return type === 'round'
-							? puzzlehunt.getRound(id)
-							: puzzlehunt.getPuzzle(id);
+							? puzzlehunt.getRound(strId)
+							: puzzlehunt.getPuzzle(strId);
 					}
 					return undefined;
 				};
@@ -454,7 +486,7 @@ const PuzzleObjCommonListItems: React.FC<{
 	puzzleObj: Puzzle | Round;
 	guildId: string;
 }> = ({ puzzleObj, guildId }) => {
-	const { name, url, type, discordInfo } = puzzleObj;
+	const { name, url, type, discord: discordInfo } = puzzleObj;
 	return (
 		<>
 			<div className="puzzle-or-round-info" />

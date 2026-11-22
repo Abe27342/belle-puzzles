@@ -1,7 +1,6 @@
-import { NodeId } from '@fluid-experimental/tree';
 import { MessageFlags, SelectMenuInteraction } from 'discord.js';
 import { PuzzlehuntContext } from '../puzzlehunt-context.js';
-import { InteractionHandler } from './types';
+import { InteractionHandler } from './types.js';
 
 export const makePuzzleVisible: InteractionHandler = {
 	name: 'makePuzzleVisible',
@@ -17,13 +16,11 @@ export const makePuzzleVisible: InteractionHandler = {
 			interaction.user.id
 		);
 
-		const puzzleIds = interaction.values.map(
-			(strPuzzleId) => Number.parseInt(strPuzzleId) as NodeId
-		);
+		const puzzleIds = interaction.values;
 
 		const roles = puzzleIds.map((puzzleId) => {
 			const puzzle = puzzlehunt.getPuzzle(puzzleId);
-			return interaction.guild.roles.cache.get(puzzle.discordInfo.roleId);
+			return interaction.guild.roles.cache.get(puzzle.discord.roleId);
 		});
 
 		await member.roles.add(roles);

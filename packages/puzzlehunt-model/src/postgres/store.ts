@@ -1,5 +1,6 @@
 import {
 	applyHuntCommand,
+	createHuntDocument,
 	validateHuntDocument,
 	HuntCommandError,
 	isUuid,
@@ -11,10 +12,13 @@ import type {
 	HuntCommand,
 	HuntCommandRequest,
 	HuntCommandResult,
+	HuntCollectionClient,
 	HuntConfiguration,
+	HuntCreateRequest,
 	HuntDocument,
 	HuntDocumentClient,
 	HuntIntegrationCommand,
+	HuntListing,
 	HuntScope,
 	HuntSnapshot,
 	HuntStateUpdate,
@@ -78,7 +82,11 @@ function nodeFromRow(row: HuntNodeRow): DocumentNode {
 		...(discord === undefined ? {} : { discord }),
 	};
 	if (row.type === 'round') {
-		return { ...common, type: 'round', parentId: row.parent_id };
+		return {
+			...common,
+			type: 'round',
+			parentId: row.parent_id ?? undefined,
+		};
 	}
 	if (row.parent_id === null) {
 		throw new Error('Stored puzzle has no parent round.');
@@ -190,7 +198,7 @@ async function writeDocumentChanges(
 		type: node.type,
 		name: node.name,
 		url: node.url,
-		parent_id: node.parentId,
+		parent_id: node.parentId ?? null,
 		position: node.position,
 		answer: node.type === 'puzzle' ? node.answer ?? null : null,
 		status: node.type === 'puzzle' ? node.status ?? null : null,
@@ -235,8 +243,98 @@ function validateRevision(revision: number): void {
 	}
 }
 
-export class PostgresPuzzlehuntStore implements HuntDocumentClient {
+export class PostgresPuzzlehuntStore
+	implements HuntDocumentClient, HuntCollectionClient
+{
 	constructor(private readonly pool: HuntDatabasePool) {}
+
+	public async create(
+		guildId: string,
+		request: HuntCreateRequest
+	): Promise<HuntSnapshot> {
+		if (!guildId) {
+			throw new HuntCommandError('invalid-command', 'Invalid guild ID.');
+		}
+		const document = createHuntDocument(request);
+		const huntId = crypto.randomUUID();
+		// One statement commits both the new document and its active selection, or neither.
+		await withConnection(this.pool, async (connection) => {
+			await connection.query(
+				`WITH created AS (
+					INSERT INTO hunts (id, guild_id, name, schema_version, configuration)
+					VALUES ($1, $2, $3, 1, $4::jsonb)
+					RETURNING id, guild_id
+				 )
+				 INSERT INTO active_hunts (guild_id, hunt_id)
+				 SELECT guild_id, id FROM created
+				 ON CONFLICT (guild_id) DO UPDATE SET hunt_id = EXCLUDED.hunt_id`,
+				[
+					huntId,
+					guildId,
+					document.name,
+					JSON.stringify(document.configuration),
+				]
+			);
+		});
+		return {
+			huntId,
+			guildId: snowflake(guildId),
+			schemaVersion: 1,
+			revision: 0,
+			document,
+		};
+	}
+
+	public async list(guildId: string): Promise<HuntListing> {
+		if (!guildId) {
+			throw new HuntCommandError('invalid-command', 'Invalid guild ID.');
+		}
+		return await withConnection(this.pool, async (connection) => {
+			const { rows } = await connection.query<{
+				id: string;
+				name: string;
+				active: boolean;
+			}>(
+				`SELECT h.id, h.name, a.hunt_id IS NOT NULL AS active
+				 FROM hunts h LEFT JOIN active_hunts a
+				 ON a.hunt_id = h.id AND a.guild_id = h.guild_id
+				 WHERE h.guild_id = $1 ORDER BY h.created_at, h.id`,
+				[guildId]
+			);
+			return {
+				guildId: snowflake(guildId),
+				hunts: rows.map(({ id, name, active }) => ({
+					huntId: id,
+					name,
+					active,
+				})),
+			};
+		});
+	}
+
+	public async selectActive(scope: HuntScope): Promise<HuntSnapshot> {
+		validateScope(scope);
+		return await withConnection(this.pool, async (connection) => {
+			const { rows } = await connection.query<HuntRow>(
+				`WITH selected AS (
+					INSERT INTO active_hunts (guild_id, hunt_id)
+					SELECT guild_id, id FROM hunts WHERE id = $1 AND guild_id = $2
+					ON CONFLICT (guild_id) DO UPDATE SET hunt_id = EXCLUDED.hunt_id
+					RETURNING hunt_id, guild_id
+				 )
+				 ${snapshotQuery}
+				 JOIN selected a ON a.hunt_id = h.id AND a.guild_id = h.guild_id`,
+				[scope.huntId, scope.guildId]
+			);
+			if (rows.length === 0) {
+				throw new HuntCommandError(
+					'not-found',
+					'Hunt not found in this guild.'
+				);
+			}
+			return snapshotFromRow(rows[0]);
+		});
+	}
 
 	/** Resolve selection and document in one MVCC snapshot, after guild authorization. */
 	public async readActive(guildId: string): Promise<HuntSnapshot> {
@@ -503,9 +601,14 @@ export async function commitHuntCommand(
 				[scope.huntId, committed.revision - retainedChangeRevisions]
 			);
 			await connection.query(
-				`UPDATE hunts SET revision = $3, updated_at = clock_timestamp()
+				`UPDATE hunts SET revision = $3, configuration = $4::jsonb, updated_at = clock_timestamp()
 				 WHERE id = $1 AND guild_id = $2`,
-				[scope.huntId, scope.guildId, committed.revision]
+				[
+					scope.huntId,
+					scope.guildId,
+					committed.revision,
+					JSON.stringify(committed.document.configuration),
+				]
 			);
 		}
 		await connection.query(

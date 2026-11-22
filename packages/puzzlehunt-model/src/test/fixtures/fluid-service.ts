@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 import type { TestProject } from 'vitest/node';
-import { availablePort } from './utils';
+import { availablePort } from './utils.js';
 
 declare module 'vitest' {
 	export interface ProvidedContext {

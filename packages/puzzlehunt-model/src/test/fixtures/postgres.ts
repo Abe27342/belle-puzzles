@@ -5,7 +5,6 @@ import { join } from 'node:path';
 import EmbeddedPostgres from 'embedded-postgres';
 import { Pool } from 'pg';
 import { PostgresPuzzlehuntStore } from '../../postgres/store.js';
-import type { HuntScope } from '../../document.js';
 import { availablePort } from './utils.js';
 
 /**
@@ -23,12 +22,11 @@ export interface LocalPostgres {
 	 */
 	store: PostgresPuzzlehuntStore;
 	/**
-	 * Resets the database to a state with a single hunt with the supplied scope.
+	 * Resets the database to an empty state.
 	 * @remarks
-	 * Specifically, removes all existing hunts, then inserts a hunt with the provided scope.
-	 * @param scope
+	 * Specifically, removes all existing hunts and their associated data.
 	 */
-	reset(scope: HuntScope): Promise<void>;
+	reset(): Promise<void>;
 	/**
 	 * Close the database and clean up all associated resources. This deletes all underlying data.
 	 */
@@ -64,6 +62,21 @@ export async function startLocalPostgres(): Promise<LocalPostgres> {
 		max: 5,
 		connectionTimeoutMillis: 10000,
 	});
+	const connections = new Set<Promise<void>>();
+	pool.on('connect', (client) => {
+		const closed = new Promise<void>((resolve) => {
+			client.once('end', () => {
+				connections.delete(closed);
+				resolve();
+			});
+		});
+		connections.add(closed);
+	});
+	async function closePool() {
+		// pool.end() can resolve before its clients have actually disconnected.
+		await pool.end();
+		await Promise.all(connections);
+	}
 	try {
 		await cluster.initialise();
 		await cluster.start();
@@ -77,7 +90,7 @@ export async function startLocalPostgres(): Promise<LocalPostgres> {
 			)
 		);
 	} catch (error) {
-		await pool.end();
+		await closePool();
 		if (started) {
 			await cluster.stop();
 		} else {
@@ -88,17 +101,12 @@ export async function startLocalPostgres(): Promise<LocalPostgres> {
 	return {
 		pool,
 		store: new PostgresPuzzlehuntStore(pool),
-		async reset(scope: HuntScope) {
+		async reset() {
 			await pool.query('TRUNCATE hunts CASCADE');
-			await pool.query(
-				`INSERT INTO hunts (id, guild_id, name, schema_version)
-				 VALUES ($1, $2, 'Contract test hunt', 1)`,
-				[scope.huntId, scope.guildId]
-			);
 		},
 		async close() {
 			try {
-				await pool.end();
+				await closePool();
 			} finally {
 				await cluster.stop();
 			}

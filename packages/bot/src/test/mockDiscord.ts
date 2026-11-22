@@ -21,7 +21,7 @@ import {
 	TextChannel,
 	OverwriteType,
 } from 'discord.js';
-import { BELLE_USER_ID } from '../utils';
+import { BELLE_USER_ID } from '../utils/index.js';
 
 export interface HasId {
 	id: string;
@@ -386,6 +386,13 @@ export class MockDiscord {
 					);
 					const channel = serverState.findChannelBy('id', channelId);
 					channel.name = (options.body as any).name ?? channel.name;
+					if ((options.body as any).permission_overwrites) {
+						channel.permission_overwrites = JSON.parse(
+							JSON.stringify(
+								(options.body as any).permission_overwrites
+							)
+						);
+					}
 					return channel;
 				} else {
 					expect.fail(
@@ -394,6 +401,20 @@ export class MockDiscord {
 				}
 			}
 		);
+		this.client.rest.delete = vi.fn(async (fullRoute: `/${string}`) => {
+			const role = fullRoute.match(/^\/guilds\/[^/]+\/roles\/([^/]+)$/);
+			const channel = fullRoute.match(/^\/channels\/([^/]+)$/);
+			if (role || channel) {
+				const values = role ? serverState.roles : serverState.channels;
+				const id = (role ?? channel)[1];
+				const index = values.findIndex((value) => value.id === id);
+				expect(index).toBeGreaterThanOrEqual(0);
+				return values.splice(index, 1)[0];
+			}
+			expect.fail(
+				`Unexpected DELETE request: ${fullRoute}. Mock fidelity must be increased.`
+			);
+		});
 		this.client.user = Reflect.construct(ClientUser, [
 			this.client,
 			{
