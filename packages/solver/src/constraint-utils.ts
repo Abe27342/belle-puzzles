@@ -316,6 +316,14 @@ export function createCartesianGridConstraintUtils(
 		}
 	};
 
+	const adjacentToFaceCoordinate = (v: Vertex) => {
+		const top = getEdgeVar(v, v.right);
+		const left = getEdgeVar(v, v.down);
+		const bottom = getEdgeVar(v.down, v.down.right);
+		const right = getEdgeVar(v.right, v.right.down);
+		return { top, left, bottom, right };
+	};
+
 	const masyu = {
 		blackPearl: (v: Vertex) => {
 			const leftUsed = goesHorizontallyThrough(v.left);
@@ -368,6 +376,7 @@ export function createCartesianGridConstraintUtils(
 			hasHorizontalEdge,
 			hasVerticalEdge,
 			directionalRun,
+			adjacentToFaceCoordinate,
 		},
 		masyu,
 		shingoki,

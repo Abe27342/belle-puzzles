@@ -1,4 +1,4 @@
-import type { Solver, Model, Context, Expr } from './z3.js';
+import type { Solver, Context, Expr } from './z3.js';
 import { z3 } from './z3.js';
 
 export abstract class Puzzle<TVariableKey, TOutputDomain> {

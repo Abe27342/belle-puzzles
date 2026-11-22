@@ -38,6 +38,27 @@ export abstract class EdgeIndicatorPuzzle<TCell> extends Puzzle<Edge, 0 | 1> {
 	 */
 	protected faceGrid: CartesianGrid<string>;
 
+	/**
+	 * Given a face coordinate, returns all edge variables that border this face.
+	 *
+	 * This is the kind of thing you want to use for grid puzzles that express constraints "inside the boxes" which affect the surrounding edges
+	 * (e.g. slitherlink).
+	 * @param v The vertex corresponding to the face coordinate.
+	 * @returns An object containing the edge indicator variables for the edges adjacent to the face coordinate.
+	 */
+	public edgesAdjacentToFace(v: Vertex): {
+		top: Edge;
+		left: Edge;
+		bottom: Edge;
+		right: Edge;
+	} {
+		const top = this.grid.getEdge(v, v.right);
+		const left = this.grid.getEdge(v, v.down);
+		const bottom = this.grid.getEdge(v.down, v.down.right);
+		const right = this.grid.getEdge(v.right, v.right.down);
+		return { top, left, bottom, right };
+	}
+
 	#renderOptions: EdgeIndicatorRenderOptions;
 
 	public get width() {
