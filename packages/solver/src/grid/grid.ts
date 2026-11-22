@@ -1,15 +1,18 @@
+/**
+ * Map-like interface for a grid structure storing values, keyed on some coordinate.
+ *
+ * @remarks
+ * Not clear this is a particularly useful abstraction.
+ */
 export interface Grid<TCoord, T> {
 	get(coord: TCoord): T;
 
 	set(coord: TCoord, value: T): void;
 
-	neighbors(coord: TCoord): Iterable<TCoord>;
+	entries(): Iterable<[TCoord, T]>;
 
-	cells(): Iterable<[TCoord, T]>;
-
-	cellValues(): Iterable<T>;
+	values(): Iterable<T>;
 }
-
 /**
  * Materialized representation of a planar graph whose vertices, edges, and faces are expressed in some coordinate system.
  *

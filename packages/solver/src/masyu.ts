@@ -130,7 +130,7 @@ export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white'> {
 		solver.add(
 			...connectedLoopConstraints(
 				edgeVariables,
-				this.grid.edgesIncidentTo(coord),
+				coord.incidentEdges(),
 				context
 			)
 		);

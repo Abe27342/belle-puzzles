@@ -1,4 +1,3 @@
-import { Context } from 'z3-solver';
 import { getOrCreate } from '../utils.js';
 import type { Edge, Grid, PlanarGraph, Vertex } from './grid.js';
 
@@ -67,39 +66,37 @@ export class CartesianGrid<T>
 		return this.#grid[y][x];
 	}
 
-	static #up = [0, -1];
-	static #down = [0, 1];
-	static #left = [-1, 0];
-	static #right = [1, 0];
+	// static #up = [0, -1];
+	// static #down = [0, 1];
+	// static #left = [-1, 0];
+	// static #right = [1, 0];
 
-	static #deltas = [
-		CartesianGrid.#up,
-		CartesianGrid.#down,
-		CartesianGrid.#left,
-		CartesianGrid.#right,
-	];
+	// static #deltas = [
+	// 	CartesianGrid.#up,
+	// 	CartesianGrid.#down,
+	// 	CartesianGrid.#left,
+	// 	CartesianGrid.#right,
+	// ];
 
-	public neighbors(coord: CartesianCoord): CartesianCoord[] {
-		const [x, y] = coord;
-		return CartesianGrid.#deltas
-			.map(([dx, dy]) => [x + dx, y + dy] as CartesianCoord)
-			.filter(
-				([nx, ny]) =>
-					nx >= 0 && nx < this.width && ny >= 0 && ny < this.height
-			);
-	}
+	// public neighbors(coord: CartesianCoord): CartesianCoord[] {
+	// 	const [x, y] = coord;
+	// 	return CartesianGrid.#deltas
+	// 		.map(([dx, dy]) => [x + dx, y + dy] as CartesianCoord)
+	// 		.filter(
+	// 			([nx, ny]) =>
+	// 				nx >= 0 && nx < this.width && ny >= 0 && ny < this.height
+	// 		);
+	// }
 
-	public cells(): Iterable<[CartesianCoord, T]> {
-		const result: [CartesianCoord, T][] = [];
+	public *entries(): Iterable<[CartesianCoord, T]> {
 		for (let y = 0; y < this.height; y++) {
 			for (let x = 0; x < this.width; x++) {
-				result.push([[x, y], this.#grid[y][x]]);
+				yield [[x, y], this.#grid[y][x]];
 			}
 		}
-		return result;
 	}
 
-	public cellValues(): Iterable<T> {
+	public values(): Iterable<T> {
 		return this.#grid.flat();
 	}
 
@@ -112,7 +109,7 @@ export class CartesianGrid<T>
 	}
 
 	public *vertices(): Iterable<GridVertex> {
-		for (const [coord] of this.cells()) {
+		for (const [coord] of this.entries()) {
 			yield this.getVertex(coord);
 		}
 	}
@@ -126,12 +123,6 @@ export class CartesianGrid<T>
 			if (vertex.down.isInBounds()) {
 				yield this.getEdge(vertex, vertex.down);
 			}
-		}
-	}
-
-	public *edgesIncidentTo(vertex: GridVertex): Iterable<GridEdge> {
-		for (const neighbor of vertex.neighbors()) {
-			yield this.getEdge(vertex, neighbor.coord);
 		}
 	}
 
@@ -237,13 +228,8 @@ class GridVertexImpl implements GridVertex {
 		return this.#grid.getVertex([this.x + 1, this.y]);
 	}
 
-	public *neighbors(
-		optionsArg: { includeOutOfBounds?: boolean } = {}
-	): Iterable<GridVertex> {
-		const options = { includeOutOfBounds: false, ...optionsArg };
-		const predicate = options.includeOutOfBounds
-			? () => true
-			: (v: GridVertex) => v.isInBounds();
+	public *neighbors(): Iterable<GridVertex> {
+		const predicate = (v: GridVertex) => v.isInBounds();
 
 		if (predicate(this.up)) yield this.up;
 		if (predicate(this.down)) yield this.down;
