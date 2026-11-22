@@ -16,7 +16,7 @@ export interface SlitherlinkPuzzleProps extends EdgeIndicatorPuzzleProps {
 interface Given {
 	face: GridFace;
 	/**
-	 * Number of adjacent edges to this vertex
+	 * Number of adjacent edges to this face
 	 */
 	count: number;
 }
@@ -30,22 +30,12 @@ interface Given {
 interface ConstructionGivens {
 	coord: CartesianCoord;
 	/**
-	 * Number of adjacent edges to this vertex
+	 * Number of adjacent edges to this face
 	 */
 	count: number;
 }
 
 export class SlitherlinkPuzzle extends EdgeIndicatorPuzzle<never, string> {
-	/**
-	 * Note that the givens' coordinates are in terms of the face grid, not the vertex grid.
-	 *
-	 * Thus edges surrounding a given coordinate (v) are:
-	 *
-	 * [v, v.right]
-	 * [v, v.down]
-	 * [v.right, v.right.down]
-	 * [v.down, v.down.right]
-	 */
 	#givens: Given[];
 
 	constructor(props: SlitherlinkPuzzleProps) {
@@ -107,18 +97,12 @@ export class SlitherlinkPuzzle extends EdgeIndicatorPuzzle<never, string> {
 			solver.add(Sum(...ensureNonEmpty(adjacentFaceVariables)).eq(count));
 		}
 
-		// Pick an arbitrary pearl to use for the minimalEnabledVariables.
+		// Pick an arbitrary nonzero constraint to use for the minimalEnabledVariables.
 		const given = this.#givens.find((g) => g.count > 0);
-		if (!given) {
-			// ...one could write a slitherlink with only 0 clues, but it would be trivial to solve.
-			// No use handling that robustly.
-			throw new Error('No given with count > 0 found');
-		}
-
 		solver.add(
 			...connectedLoopConstraints(
 				edgeVariables,
-				given.face.incidentEdges(),
+				given?.face.incidentEdges() ?? this.grid.edges(),
 				context
 			)
 		);
