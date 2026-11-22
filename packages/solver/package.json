@@ -21,6 +21,8 @@
 		"build": "tsc",
 		"format": "prettier --write src",
 		"test": "vitest run",
+		"test:update": "vitest run -u",
+		"test:watch-and-update": "vitest -u",
 		"start": "node dist/masyu.js"
 	},
 	"dependencies": {

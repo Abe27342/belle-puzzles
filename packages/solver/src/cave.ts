@@ -10,7 +10,7 @@ import {
 	createCartesianGridConstraintUtils,
 	createConstraintExtensions,
 } from './constraint-utils.js';
-import { ensureNonEmpty, oob } from './utils.js';
+import { ensureNonEmpty } from './utils.js';
 
 export interface CavePuzzleProps extends EdgeIndicatorPuzzleProps {
 	givens: ConstructionGivens[];
@@ -59,7 +59,7 @@ export class CavePuzzle extends EdgeIndicatorPuzzle<never, string> {
 
 	// ... might be worth adding a csv parser (comma-separated cell values).
 	// then we could also abstract out a generic text grid parser for similar puzzles.
-	public static fromTextGrid(
+	public static fromText(
 		text: string,
 		renderOptions?: EdgeIndicatorRenderOptions
 	) {

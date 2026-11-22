@@ -91,11 +91,16 @@ export class ShingokiPuzzle extends EdgeIndicatorPuzzle<
 		}
 	}
 
-	public static fromTextGrids(
-		grids: ShingokiTextGrids,
-		renderOptions?: PearlRenderOptions
-	) {
-		const { colors, lengths } = grids;
+	/**
+	 * @param text Text representation of the Shingoki puzzle grid.
+	 * This should come in the form of two grids: first, the colors grid (B/W), then the lengths (digits) grid.
+	 * The grids should be separated by 2 newlines.
+	 * The parser does not currently support multi-digit lengths for pearls.
+	 * @param renderOptions
+	 * @returns
+	 */
+	public static fromText(text: string, renderOptions?: PearlRenderOptions) {
+		const [colors, lengths] = text.split('\n\n');
 		const colorsLines = colors.trim().split('\n');
 		const lengthsLines = lengths.trim().split('\n');
 		const height = colorsLines.length;

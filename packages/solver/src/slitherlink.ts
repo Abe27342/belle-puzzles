@@ -53,7 +53,7 @@ export class SlitherlinkPuzzle extends EdgeIndicatorPuzzle<never, string> {
 		}
 	}
 
-	public static fromTextGrid(
+	public static fromText(
 		text: string,
 		renderOptions?: EdgeIndicatorRenderOptions
 	) {

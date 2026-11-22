@@ -1,0 +1,81 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Shingoki solver > should solve for input: complex 1 1`] = `
+".W....
+..B...
+......
+B....W
+WB..B.
+......
+
+.3....
+..2...
+......
+6....5
+22..2.
+......"
+`;
+
+exports[`Shingoki solver > should solve for input: complex 1 2`] = `
+"·-W-·-· ·-·
+|     | | |
+· ·-B ·-· ·
+| | |     |
+·-· ·-·-· ·
+        | |
+B-·-·-·-· W
+|         |
+W B-· ·-B ·
+| | | | | |
+·-· ·-· ·-·"
+`;
+
+exports[`Shingoki solver > should solve for input: complex 2 1`] = `
+"..........B
+...WBW.....
+B....B.BB..
+..W..B...W.
+W..B......B
+..BB.B....B
+.W..B..W...
+....BBB.W..
+....W......
+....B...BBW
+B..........
+
+..........5
+...232.....
+3....3.33..
+..4..2...2.
+7..2......2
+..22.2....2
+.4..2..5...
+....223.2..
+....5......
+....3...222
+9.........."
+`;
+
+exports[`Shingoki solver > should solve for input: complex 2 2`] = `
+"·-·-· ·-· · · ·-·-·-B
+|   | | |     |     |
+· · · W B-W-· · · · ·
+|   | |     | |     |
+B-· · ·-·-B ·-B B-·-·
+  | |     |     |    
+·-· W · ·-B · · ·-W-·
+|   |   |           |
+W ·-· B-· ·-·-· · ·-B
+| |   |   |   |   |  
+· · B-B · B-· · · ·-B
+| | |       | |     |
+· W ·-· B-· · W ·-·-·
+| |   | | | | | |    
+· · · ·-B B-B · W · ·
+| |           | |    
+· ·-·-·-W-·-· · ·-·-·
+|           | |     |
+· · ·-·-B · ·-· B-B W
+|   |   |       | | |
+B-·-· · ·-·-·-·-· ·-·"
+`;

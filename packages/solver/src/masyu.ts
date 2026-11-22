@@ -73,10 +73,7 @@ export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white', never> {
 		}
 	}
 
-	public static fromTextGrid(
-		text: string,
-		renderOptions?: PearlRenderOptions
-	) {
+	public static fromText(text: string, renderOptions?: PearlRenderOptions) {
 		const lines = text.trim().split('\n');
 		const height = lines.length;
 		const width = lines[0].length;
