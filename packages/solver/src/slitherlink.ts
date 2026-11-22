@@ -7,6 +7,8 @@ import {
 } from './edge-indicator-puzzle.js';
 import { connectedLoopConstraints } from './constraint-utils.js';
 import { ensureNonEmpty, oob } from './utils.js';
+import { parseDigit, parseTextGrids } from './text-grid.js';
+import type { TextGridVisitor } from './text-grid.js';
 
 export interface SlitherlinkPuzzleProps extends EdgeIndicatorPuzzleProps {
 	givens: ConstructionGivens[];
@@ -57,19 +59,17 @@ export class SlitherlinkPuzzle extends EdgeIndicatorPuzzle<never, string> {
 		text: string,
 		renderOptions?: EdgeIndicatorRenderOptions
 	) {
-		const lines = text.trim().split('\n');
-		const height = lines.length;
-		const width = lines[0].length;
 		const givens: ConstructionGivens[] = [];
-		for (let y = 0; y < height; y++) {
-			for (let x = 0; x < width; x++) {
-				const char = lines[y][x];
-				const digit = Number.parseInt(char);
-				if (!Number.isNaN(digit) && 0 <= digit && digit <= 4) {
-					givens.push({ coord: [x, y], count: digit });
-				}
+		const visitor: TextGridVisitor = ([char], coord) => {
+			const digit = parseDigit(char, coord);
+			if (digit > 4) {
+				throw new Error(`Slitherlink clue at ${coord} must be 0-4`);
 			}
-		}
+			givens.push({ coord, count: digit });
+		};
+		const { width, height } = parseTextGrids(text, visitor, {
+			gridCount: 1,
+		});
 		return new SlitherlinkPuzzle({
 			width: width + 1,
 			height: height + 1,
@@ -107,13 +107,5 @@ export class SlitherlinkPuzzle extends EdgeIndicatorPuzzle<never, string> {
 			)
 		);
 		return edgeVariables;
-	}
-
-	public override parseAssignment(assignment: string): 0 | 1 {
-		const value = Number(assignment);
-		if (value !== 0 && value !== 1) {
-			throw new Error(`Invalid assignment value: ${value}`);
-		}
-		return value;
 	}
 }

@@ -9,7 +9,8 @@ import {
 	connectedLoopConstraints,
 	createCartesianGridConstraintUtils,
 } from './constraint-utils.js';
-import { mapIterable, oob } from './utils.js';
+import { parsePearlColor, parseTextGrids } from './text-grid.js';
+import type { TextGridVisitor } from './text-grid.js';
 
 export interface MasyuPuzzleProps extends EdgeIndicatorPuzzleProps {
 	pearls: ConstructionPearl[];
@@ -74,20 +75,13 @@ export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white', never> {
 	}
 
 	public static fromText(text: string, renderOptions?: PearlRenderOptions) {
-		const lines = text.trim().split('\n');
-		const height = lines.length;
-		const width = lines[0].length;
 		const pearls: ConstructionPearl[] = [];
-		for (let y = 0; y < height; y++) {
-			for (let x = 0; x < width; x++) {
-				const char = lines[y][x];
-				if (['B', 'b'].includes(char)) {
-					pearls.push({ coord: [x, y], color: 'black' });
-				} else if (['W', 'w'].includes(char)) {
-					pearls.push({ coord: [x, y], color: 'white' });
-				}
-			}
-		}
+		const visitor: TextGridVisitor = ([char], coord) => {
+			pearls.push({ coord, color: parsePearlColor(char, coord) });
+		};
+		const { width, height } = parseTextGrids(text, visitor, {
+			gridCount: 1,
+		});
 		return new MasyuPuzzle({ width, height, pearls, renderOptions });
 	}
 
@@ -128,14 +122,6 @@ export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white', never> {
 			)
 		);
 		return edgeVariables;
-	}
-
-	public override parseAssignment(assignment: string): 0 | 1 {
-		const value = Number(assignment);
-		if (value !== 0 && value !== 1) {
-			throw new Error(`Invalid assignment value: ${value}`);
-		}
-		return value;
 	}
 
 	protected override renderVertexData(t: 'black' | 'white'): string {
