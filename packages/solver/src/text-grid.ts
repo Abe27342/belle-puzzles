@@ -10,6 +10,38 @@ export interface TextGridParseOptions {
 	gridCount?: number;
 }
 
+/** Whether a grid character is an empty placeholder. */
+export function isEmptyGridCharacter(value: string): boolean {
+	return value === '.' || /^\s$/.test(value);
+}
+
+/** Parse exactly one ASCII digit, throwing with its grid coordinate otherwise. */
+export function parseDigit(value: string, coord: CartesianCoord): number {
+	if (!/^[0-9]$/.test(value)) {
+		throw new Error(`Invalid digit at ${coord}: ${JSON.stringify(value)}`);
+	}
+	return Number(value);
+}
+
+/** Parse a B/W pearl color, case-insensitively, or throw with its coordinate. */
+export function parsePearlColor(
+	value: string,
+	coord: CartesianCoord
+): 'black' | 'white' {
+	switch (value) {
+		case 'B':
+		case 'b':
+			return 'black';
+		case 'W':
+		case 'w':
+			return 'white';
+		default:
+			throw new Error(
+				`Invalid pearl color at ${coord}: ${JSON.stringify(value)}`
+			);
+	}
+}
+
 /**
  * Parse rectangular character grids separated by one or more blank lines.
  * Surrounding whitespace is ignored; LF and CRLF line endings are supported.
@@ -60,7 +92,7 @@ export function parseTextGrids(
 	for (let y = 0; y < height; y++) {
 		for (let x = 0; x < width; x++) {
 			const values = grids.map((grid) => grid[y][x]);
-			if (values.some((value) => value !== '.' && !/\s/.test(value))) {
+			if (values.some((value) => !isEmptyGridCharacter(value))) {
 				visitor(values, [x, y]);
 			}
 		}

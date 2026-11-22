@@ -9,8 +9,7 @@ import {
 	connectedLoopConstraints,
 	createCartesianGridConstraintUtils,
 } from './constraint-utils.js';
-import { mapIterable, oob } from './utils.js';
-import { parseTextGrids } from './text-grid.js';
+import { parsePearlColor, parseTextGrids } from './text-grid.js';
 import type { TextGridVisitor } from './text-grid.js';
 
 export interface MasyuPuzzleProps extends EdgeIndicatorPuzzleProps {
@@ -78,11 +77,7 @@ export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white', never> {
 	public static fromText(text: string, renderOptions?: PearlRenderOptions) {
 		const pearls: ConstructionPearl[] = [];
 		const visitor: TextGridVisitor = ([char], coord) => {
-			if (['B', 'b'].includes(char)) {
-				pearls.push({ coord, color: 'black' });
-			} else if (['W', 'w'].includes(char)) {
-				pearls.push({ coord, color: 'white' });
-			}
+			pearls.push({ coord, color: parsePearlColor(char, coord) });
 		};
 		const { width, height } = parseTextGrids(text, visitor, {
 			gridCount: 1,

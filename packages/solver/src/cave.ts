@@ -11,7 +11,7 @@ import {
 	createConstraintExtensions,
 } from './constraint-utils.js';
 import { ensureNonEmpty } from './utils.js';
-import { parseTextGrids } from './text-grid.js';
+import { parseDigit, parseTextGrids } from './text-grid.js';
 import type { TextGridVisitor } from './text-grid.js';
 
 export interface CavePuzzleProps extends EdgeIndicatorPuzzleProps {
@@ -65,10 +65,7 @@ export class CavePuzzle extends EdgeIndicatorPuzzle<never, string> {
 	) {
 		const givens: ConstructionGivens[] = [];
 		const visitor: TextGridVisitor = ([char], coord) => {
-			const digit = Number.parseInt(char);
-			if (!Number.isNaN(digit)) {
-				givens.push({ coord, count: digit });
-			}
+			givens.push({ coord, count: parseDigit(char, coord) });
 		};
 		const { width, height } = parseTextGrids(text, visitor, {
 			gridCount: 1,

@@ -52,9 +52,80 @@ describe('puzzle text parsing', () => {
 
 	it('Shingoki rejects pearls without lengths and lengths without pearls', () => {
 		expect(() => ShingokiPuzzle.fromText('.B\n\n..')).toThrow(
-			'Invalid length at 1,0'
+			'Grids do not match at 1,0'
 		);
 		expect(() => ShingokiPuzzle.fromText('..\n\n.2')).toThrow(
+			'Grids do not match at 1,0'
+		);
+	});
+
+	it.each([CavePuzzle, SlitherlinkPuzzle])(
+		'%s rejects non-empty non-digit clues',
+		(Puzzle) => {
+			expect(() => Puzzle.fromText('..\n.X')).toThrow(
+				'Invalid digit at 1,1'
+			);
+		}
+	);
+
+	it.each(['5', '6', '7', '8', '9'])(
+		'Slitherlink rejects out-of-range clue %s',
+		(digit) => {
+			expect(() => SlitherlinkPuzzle.fromText(`..${digit}`)).toThrow(
+				'Slitherlink clue at 2,0 must be 0-4'
+			);
+		}
+	);
+
+	it('preserves existing valid numeric ranges', () => {
+		expect(() => SlitherlinkPuzzle.fromText('01234')).not.toThrow();
+		expect(() => CavePuzzle.fromText('0123456789')).not.toThrow();
+	});
+
+	it('ignores empty characters in numeric grids', () => {
+		for (const Puzzle of [CavePuzzle, SlitherlinkPuzzle]) {
+			expect(() => Puzzle.fromText('. .\n.2.')).not.toThrow();
+		}
+	});
+
+	it('Masyu rejects unknown pearl colors', () => {
+		expect(() => MasyuPuzzle.fromText('.X')).toThrow(
+			'Invalid pearl color at 1,0'
+		);
+	});
+
+	it('Shingoki rejects unknown pearl colors with a matching length', () => {
+		expect(() => ShingokiPuzzle.fromText('.X\n\n.2')).toThrow(
+			'Invalid pearl color at 1,0'
+		);
+	});
+
+	it('Shingoki rejects mismatched grids before parsing pearl colors', () => {
+		expect(() => ShingokiPuzzle.fromText('.X\n\n..')).toThrow(
+			'Grids do not match at 1,0'
+		);
+	});
+
+	it('Shingoki rejects non-digit lengths', () => {
+		expect(() => ShingokiPuzzle.fromText('.W\n\n.X')).toThrow(
+			'Invalid digit at 1,0'
+		);
+	});
+
+	it('Shingoki accepts whitespace and dots when both grids are empty at a position', () => {
+		expect(() =>
+			ShingokiPuzzle.fromText('. .\n.B.\n\n...\n.2.')
+		).not.toThrow();
+		expect(() =>
+			ShingokiPuzzle.fromText('...\n.B.\n\n. .\n.2.')
+		).not.toThrow();
+	});
+
+	it('Shingoki rejects whitespace paired with a non-empty value in either grid', () => {
+		expect(() => ShingokiPuzzle.fromText('.B.\n\n. .')).toThrow(
+			'Grids do not match at 1,0'
+		);
+		expect(() => ShingokiPuzzle.fromText('. .\n\n.2.')).toThrow(
 			'Grids do not match at 1,0'
 		);
 	});

@@ -7,7 +7,7 @@ import {
 } from './edge-indicator-puzzle.js';
 import { connectedLoopConstraints } from './constraint-utils.js';
 import { ensureNonEmpty, oob } from './utils.js';
-import { parseTextGrids } from './text-grid.js';
+import { parseDigit, parseTextGrids } from './text-grid.js';
 import type { TextGridVisitor } from './text-grid.js';
 
 export interface SlitherlinkPuzzleProps extends EdgeIndicatorPuzzleProps {
@@ -61,10 +61,11 @@ export class SlitherlinkPuzzle extends EdgeIndicatorPuzzle<never, string> {
 	) {
 		const givens: ConstructionGivens[] = [];
 		const visitor: TextGridVisitor = ([char], coord) => {
-			const digit = Number.parseInt(char);
-			if (!Number.isNaN(digit) && 0 <= digit && digit <= 4) {
-				givens.push({ coord, count: digit });
+			const digit = parseDigit(char, coord);
+			if (digit > 4) {
+				throw new Error(`Slitherlink clue at ${coord} must be 0-4`);
 			}
+			givens.push({ coord, count: digit });
 		};
 		const { width, height } = parseTextGrids(text, visitor, {
 			gridCount: 1,

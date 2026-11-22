@@ -1,5 +1,60 @@
 import { describe, expect, it, vi } from 'vitest';
-import { parseTextGrids } from '../text-grid.js';
+import {
+	isEmptyGridCharacter,
+	parseDigit,
+	parsePearlColor,
+	parseTextGrids,
+} from '../text-grid.js';
+
+describe('grid character parsing', () => {
+	it.each(['.', ' ', '\t', '\n', '\r'])(
+		'recognizes the empty placeholder %j',
+		(value) => {
+			expect(isEmptyGridCharacter(value)).toBe(true);
+		}
+	);
+
+	it.each(['0', 'B', '?', '', '  '])(
+		'does not treat %j as an empty character',
+		(value) => {
+			expect(isEmptyGridCharacter(value)).toBe(false);
+		}
+	);
+
+	it.each(Array.from({ length: 10 }, (_, digit) => digit))(
+		'parses digit %i',
+		(digit) => {
+			expect(parseDigit(String(digit), [2, 3])).toBe(digit);
+		}
+	);
+
+	it.each(['.', ' ', 'A', '', '12', '1x', '-1', '1.0'])(
+		'rejects non-digit %j with its coordinate',
+		(value) => {
+			expect(() => parseDigit(value, [2, 3])).toThrow(
+				'Invalid digit at 2,3'
+			);
+		}
+	);
+
+	it.each([
+		['B', 'black'],
+		['b', 'black'],
+		['W', 'white'],
+		['w', 'white'],
+	])('parses pearl color %s', (value, color) => {
+		expect(parsePearlColor(value, [2, 3])).toBe(color);
+	});
+
+	it.each(['.', ' ', '?', '1', '', 'BW'])(
+		'rejects invalid pearl color %j with its coordinate',
+		(value) => {
+			expect(() => parsePearlColor(value, [2, 3])).toThrow(
+				'Invalid pearl color at 2,3'
+			);
+		}
+	);
+});
 
 describe('parseTextGrids', () => {
 	it('visits non-empty positions in row-major order with zero-based coordinates', () => {

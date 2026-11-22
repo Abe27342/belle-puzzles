@@ -10,7 +10,12 @@ import {
 	createCartesianGridConstraintUtils,
 	createConstraintExtensions,
 } from './constraint-utils.js';
-import { parseTextGrids } from './text-grid.js';
+import {
+	isEmptyGridCharacter,
+	parseDigit,
+	parsePearlColor,
+	parseTextGrids,
+} from './text-grid.js';
 import type { TextGridVisitor } from './text-grid.js';
 
 export interface ShingokiPuzzleProps extends EdgeIndicatorPuzzleProps {
@@ -104,19 +109,17 @@ export class ShingokiPuzzle extends EdgeIndicatorPuzzle<
 	public static fromText(text: string, renderOptions?: PearlRenderOptions) {
 		const pearls: ConstructionPearl[] = [];
 		const visitor: TextGridVisitor = ([char, lengthChar], coord) => {
-			if (['B', 'b', 'W', 'w'].includes(char)) {
-				const length = Number.parseInt(lengthChar);
-				if (Number.isNaN(length)) {
-					throw new Error(`Invalid length at ${coord}`);
-				}
-				pearls.push({
-					coord,
-					color: ['B', 'b'].includes(char) ? 'black' : 'white',
-					length,
-				});
-			} else if (lengthChar !== '.') {
+			if (
+				isEmptyGridCharacter(char) ||
+				isEmptyGridCharacter(lengthChar)
+			) {
 				throw new Error(`Grids do not match at ${coord}`);
 			}
+			pearls.push({
+				coord,
+				color: parsePearlColor(char, coord),
+				length: parseDigit(lengthChar, coord),
+			});
 		};
 		const { width, height } = parseTextGrids(text, visitor, {
 			gridCount: 2,
