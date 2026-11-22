@@ -1,4 +1,4 @@
-import { CartesianCoord, GridEdge, GridVertex } from './graph/index.js';
+import { CartesianCoord, GridEdge, GridFace } from './graph/index.js';
 import type { Arith, Context, Solver } from './z3.js';
 import {
 	EdgeIndicatorPuzzleProps,
@@ -6,7 +6,7 @@ import {
 	EdgeIndicatorRenderOptions,
 } from './edge-indicator-puzzle.js';
 import { connectedLoopConstraints } from './constraint-utils.js';
-import { oob } from './utils.js';
+import { ensureNonEmpty, oob } from './utils.js';
 
 export interface SlitherlinkPuzzleProps extends EdgeIndicatorPuzzleProps {
 	givens: ConstructionGivens[];
@@ -14,7 +14,7 @@ export interface SlitherlinkPuzzleProps extends EdgeIndicatorPuzzleProps {
 }
 
 interface Given {
-	coord: GridVertex;
+	face: GridFace;
 	/**
 	 * Number of adjacent edges to this vertex
 	 */
@@ -52,14 +52,14 @@ export class SlitherlinkPuzzle extends EdgeIndicatorPuzzle<never, string> {
 		super(props);
 
 		this.#givens = props.givens.map((p) => ({
-			coord: this.grid.getVertex(p.coord),
+			face: this.grid.getFace(p.coord),
 			count: p.count,
 		}));
 		for (const given of this.#givens) {
-			if (!given.coord.isInBounds()) {
-				throw new Error(`Given at ${given.coord} is out of bounds`);
+			if (!given.face.isInBounds()) {
+				throw new Error(`Given at ${given.face} is out of bounds`);
 			}
-			this.faceContents.set(given.coord.coord, given.count.toString());
+			this.faceContents.set(given.face.coord, given.count.toString());
 		}
 	}
 
@@ -99,16 +99,12 @@ export class SlitherlinkPuzzle extends EdgeIndicatorPuzzle<never, string> {
 
 		const { Sum } = context;
 
-		for (const { count, coord } of this.#givens) {
-			const { top, left, bottom, right } =
-				this.edgesAdjacentToFace(coord);
-			const [topVar, leftVar, bottomVar, rightVar] = [
-				top,
-				left,
-				bottom,
-				right,
-			].map((e) => edgeVariables.get(e) ?? oob(e));
-			solver.add(Sum(topVar, leftVar, bottomVar, rightVar).eq(count));
+		for (const { count, face } of this.#givens) {
+			const adjacentFaceVariables = Array.from(
+				face.incidentEdges(),
+				(e) => edgeVariables.get(e) ?? oob(e)
+			);
+			solver.add(Sum(...ensureNonEmpty(adjacentFaceVariables)).eq(count));
 		}
 
 		// Pick an arbitrary pearl to use for the minimalEnabledVariables.
@@ -118,13 +114,11 @@ export class SlitherlinkPuzzle extends EdgeIndicatorPuzzle<never, string> {
 			// No use handling that robustly.
 			throw new Error('No given with count > 0 found');
 		}
-		const { top, left, bottom, right } = this.edgesAdjacentToFace(
-			given.coord
-		);
+
 		solver.add(
 			...connectedLoopConstraints(
 				edgeVariables,
-				[top, left, bottom, right],
+				given.face.incidentEdges(),
 				context
 			)
 		);
