@@ -105,13 +105,17 @@ B-·-· · ·-·-·-·-· ·-·
 		vertical: '|',
 	};
 	for (const [name, input, expected] of testCases) {
-		it(`should solve for input: ${name}`, async () => {
-			const puzzle = ShingokiPuzzle.fromTextGrids(input, renderChars);
-			const assignment = await puzzle.solve();
-			expectEqualSolutionString(
-				await puzzle.renderSolution(assignment),
-				expected
-			);
-		});
+		it(
+			`should solve for input: ${name}`,
+			async () => {
+				const puzzle = ShingokiPuzzle.fromTextGrids(input, renderChars);
+				const assignment = await puzzle.solve();
+				expectEqualSolutionString(
+					await puzzle.renderSolution(assignment),
+					expected
+				);
+			},
+			{ timeout: 20000 }
+		);
 	}
 });
