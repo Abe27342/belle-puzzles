@@ -1,4 +1,4 @@
-import { CartesianCoord, Edge, Vertex } from './grid/index.js';
+import { CartesianCoord, GridEdge, GridVertex } from './grid/index.js';
 import type { Arith, Context, Solver } from './z3.js';
 import {
 	EdgeIndicatorPuzzleProps,
@@ -17,7 +17,7 @@ export interface MasyuPuzzleProps extends EdgeIndicatorPuzzleProps {
 }
 
 interface Pearl {
-	coord: Vertex;
+	coord: GridVertex;
 	color: 'black' | 'white';
 }
 
@@ -101,7 +101,7 @@ export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white'> {
 	public override addConstraints(
 		context: Context<string>,
 		solver: Solver<string>
-	): Map<Edge, Arith<string>> {
+	): Map<GridEdge, Arith<string>> {
 		const edgeVariables = this.createEdgeIndicatorVariables(
 			context,
 			solver

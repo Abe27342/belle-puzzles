@@ -1,6 +1,6 @@
 import { Context } from 'z3-solver';
 import { getOrCreate } from '../utils.js';
-import type { Grid } from './grid.js';
+import type { Edge, Grid, PlanarGraph, Vertex } from './grid.js';
 
 export type CartesianCoord = [x: number, y: number];
 
@@ -10,13 +10,15 @@ export type CartesianCoord = [x: number, y: number];
  * The implementation takes some pain to allocate exactly one edge/vertex object per unique edge/vertex, which
  * allows constraint problem representations to safely use these objects as keys.
  */
-export class CartesianGrid<T> implements Grid<CartesianCoord, T> {
+export class CartesianGrid<T>
+	implements PlanarGraph<CartesianCoord>, Grid<CartesianCoord, T>
+{
 	#grid: T[][];
 	public readonly width: number;
 	public readonly height: number;
 
-	#vertexCache = new Map<string, Vertex>();
-	#edgeCache = new Map<string, Edge>();
+	#vertexCache = new Map<string, GridVertex>();
+	#edgeCache = new Map<string, GridEdge>();
 
 	constructor(grid: T[][]) {
 		this.height = grid.length;
@@ -55,13 +57,13 @@ export class CartesianGrid<T> implements Grid<CartesianCoord, T> {
 		this.#grid[y][x] = value;
 	}
 
-	public get(coord: CartesianCoord | Vertex): T {
-		if (coord instanceof Vertex) {
+	public get(coord: CartesianCoord | GridVertex): T {
+		if (coord instanceof GridVertexImpl) {
 			return this.get(coord.coord);
 		}
 
-		this.#validateCoord(coord);
-		const [x, y] = coord;
+		this.#validateCoord(coord as CartesianCoord);
+		const [x, y] = coord as CartesianCoord;
 		return this.#grid[y][x];
 	}
 
@@ -101,21 +103,21 @@ export class CartesianGrid<T> implements Grid<CartesianCoord, T> {
 		return this.#grid.flat();
 	}
 
-	public getVertex(coord: CartesianCoord): Vertex {
+	public getVertex(coord: CartesianCoord): GridVertex {
 		return getOrCreate(
 			this.#vertexCache,
 			coord.toString(),
-			() => new Vertex(coord, this)
+			() => new GridVertexImpl(coord, this)
 		);
 	}
 
-	public *vertices(): Iterable<Vertex> {
+	public *vertices(): Iterable<GridVertex> {
 		for (const [coord] of this.cells()) {
 			yield this.getVertex(coord);
 		}
 	}
 
-	public *edges(): Iterable<Edge> {
+	public *edges(): Iterable<GridEdge> {
 		for (const vertex of this.vertices()) {
 			if (vertex.right.isInBounds()) {
 				yield this.getEdge(vertex, vertex.right);
@@ -127,11 +129,9 @@ export class CartesianGrid<T> implements Grid<CartesianCoord, T> {
 		}
 	}
 
-	public *edgesIncidentTo(vertex: Vertex): Iterable<Edge> {
-		for (const neighbor of vertex.neighbors({
-			includeOutOfBounds: false,
-		})) {
-			yield this.getEdge(vertex, neighbor);
+	public *edgesIncidentTo(vertex: GridVertex): Iterable<GridEdge> {
+		for (const neighbor of vertex.neighbors()) {
+			yield this.getEdge(vertex, neighbor.coord);
 		}
 	}
 
@@ -140,21 +140,27 @@ export class CartesianGrid<T> implements Grid<CartesianCoord, T> {
 	 * Caches edge objects to allow reuse based on object identity.
 	 */
 	public getEdge(
-		start: CartesianCoord | Vertex,
-		end: CartesianCoord | Vertex
-	): Edge {
-		let normalizedStart = start instanceof Vertex ? start.coord : start;
-		let normalizedEnd = end instanceof Vertex ? end.coord : end;
+		start: CartesianCoord | GridVertex,
+		end: CartesianCoord | GridVertex
+	): GridEdge {
+		let normalizedStart: CartesianCoord = this.#normalizeToCoord(start);
+		let normalizedEnd: CartesianCoord = this.#normalizeToCoord(end);
 		return getOrCreate(
 			this.#edgeCache,
 			this.#getEdgeKey(normalizedStart, normalizedEnd),
 			() =>
-				new Edge(
+				new GridEdgeImpl(
 					this.getVertex(normalizedStart),
 					this.getVertex(normalizedEnd),
 					this
 				)
 		);
+	}
+
+	#normalizeToCoord(input: CartesianCoord | GridVertex): CartesianCoord {
+		return input instanceof GridVertexImpl
+			? input.coord
+			: (input as CartesianCoord);
 	}
 
 	#getEdgeKey(start: CartesianCoord, end: CartesianCoord) {
@@ -185,7 +191,21 @@ const compareCoords = (start: CartesianCoord, end: CartesianCoord) => {
 const equalCoord = (a: CartesianCoord, b: CartesianCoord) =>
 	a[0] === b[0] && a[1] === b[1];
 
-export class Vertex {
+export interface GridVertex extends Vertex<CartesianCoord> {
+	x: number;
+	y: number;
+	up: GridVertex;
+	down: GridVertex;
+	left: GridVertex;
+	right: GridVertex;
+
+	compare(other: GridVertex): number;
+	isInBounds(): boolean;
+}
+
+export interface GridEdge extends Edge<CartesianCoord> {}
+
+class GridVertexImpl implements GridVertex {
 	#grid: CartesianGrid<unknown>;
 	constructor(
 		public readonly coord: CartesianCoord,
@@ -201,29 +221,29 @@ export class Vertex {
 		return this.coord[1];
 	}
 
-	public get up(): Vertex {
+	public get up(): GridVertex {
 		return this.#grid.getVertex([this.x, this.y - 1]);
 	}
 
-	public get down(): Vertex {
+	public get down(): GridVertex {
 		return this.#grid.getVertex([this.x, this.y + 1]);
 	}
 
-	public get left(): Vertex {
+	public get left(): GridVertex {
 		return this.#grid.getVertex([this.x - 1, this.y]);
 	}
 
-	public get right(): Vertex {
+	public get right(): GridVertex {
 		return this.#grid.getVertex([this.x + 1, this.y]);
 	}
 
 	public *neighbors(
 		optionsArg: { includeOutOfBounds?: boolean } = {}
-	): Iterable<Vertex> {
+	): Iterable<GridVertex> {
 		const options = { includeOutOfBounds: false, ...optionsArg };
 		const predicate = options.includeOutOfBounds
 			? () => true
-			: (v: Vertex) => v.isInBounds();
+			: (v: GridVertex) => v.isInBounds();
 
 		if (predicate(this.up)) yield this.up;
 		if (predicate(this.down)) yield this.down;
@@ -231,15 +251,21 @@ export class Vertex {
 		if (predicate(this.right)) yield this.right;
 	}
 
+	public *incidentEdges() {
+		for (const neighbor of this.neighbors()) {
+			yield this.#grid.getEdge(this, neighbor);
+		}
+	}
+
 	public toString(): string {
 		return `(${this.x}, ${this.y})`;
 	}
 
-	public equal(other: Vertex): boolean {
+	public equal(other: GridVertex): boolean {
 		return equalCoord(this.coord, other.coord);
 	}
 
-	public compare(other: Vertex): number {
+	public compare(other: GridVertex): number {
 		return compareCoords(this.coord, other.coord);
 	}
 
@@ -248,12 +274,16 @@ export class Vertex {
 	}
 }
 
-export class Edge {
-	#start: Vertex;
-	#end: Vertex;
+class GridEdgeImpl implements GridEdge {
+	#start: GridVertex;
+	#end: GridVertex;
 	#grid: CartesianGrid<unknown>;
 
-	constructor(start: Vertex, end: Vertex, grid: CartesianGrid<unknown>) {
+	constructor(
+		start: GridVertex,
+		end: GridVertex,
+		grid: CartesianGrid<unknown>
+	) {
 		if (start.compare(end) < 0) {
 			this.#start = start;
 			this.#end = end;
@@ -263,11 +293,11 @@ export class Edge {
 		}
 		this.#grid = grid;
 
-		if (
-			![...this.#start.neighbors({ includeOutOfBounds: true })].some(
-				(v) => v.equal(this.#end)
-			)
-		) {
+		// Cannot use neighbors() as it does not yield out-of-bounds neighbors,
+		// and we generally allow constructing out-of-bounds edges/vertices as it allows
+		// simpler handling of boundary conditions
+		const { up, left, down, right } = this.#start;
+		if (![up, down, left, right].some((v) => v === this.#end)) {
 			throw new Error(
 				`Invalid edge: vertices are not neighbors: ${this.#start} - ${
 					this.#end
@@ -276,30 +306,23 @@ export class Edge {
 		}
 	}
 
+	public get vertices(): [GridVertex, GridVertex] {
+		return [this.#start, this.#end];
+	}
+
 	public toString(): string {
 		return `(${JSON.stringify(this.#start)}, ${JSON.stringify(this.#end)})`;
 	}
 
-	public overlaps(other: Edge): boolean {
-		return (
-			this.#start.equal(other.#start) ||
-			this.#start.equal(other.#end) ||
-			this.#end.equal(other.#start) ||
-			this.#end.equal(other.#end)
-		);
-	}
-
-	public *neighbors(
-		optionsArg: { includeOutOfBounds?: boolean } = {}
-	): Iterable<Edge> {
-		for (const neighbor of this.#start.neighbors(optionsArg)) {
-			if (!this.#end.equal(neighbor)) {
-				yield this.#grid.getEdge(neighbor, this.#start);
-			}
-		}
-		for (const neighbor of this.#end.neighbors(optionsArg)) {
-			if (!this.#start.equal(neighbor)) {
-				yield this.#grid.getEdge(neighbor, this.#end);
+	public *neighbors(): Iterable<GridEdge> {
+		for (const [current, other] of [
+			[this.#start, this.#end],
+			[this.#end, this.#start],
+		]) {
+			for (const neighbor of current.neighbors()) {
+				if (neighbor !== other) {
+					yield this.#grid.getEdge(current.coord, neighbor.coord);
+				}
 			}
 		}
 	}

@@ -1,4 +1,4 @@
-import { CartesianCoord, Edge, Vertex } from './grid/index.js';
+import { CartesianCoord, GridEdge, GridVertex } from './grid/index.js';
 import type { Arith, Context, Solver } from './z3.js';
 import {
 	EdgeIndicatorPuzzleProps,
@@ -14,7 +14,7 @@ export interface SlitherlinkPuzzleProps extends EdgeIndicatorPuzzleProps {
 }
 
 interface Given {
-	coord: Vertex;
+	coord: GridVertex;
 	/**
 	 * Number of adjacent edges to this vertex
 	 */
@@ -91,7 +91,7 @@ export class SlitherlinkPuzzle extends EdgeIndicatorPuzzle<never> {
 	public override addConstraints(
 		context: Context<string>,
 		solver: Solver<string>
-	): Map<Edge, Arith<string>> {
+	): Map<GridEdge, Arith<string>> {
 		const edgeVariables = this.createEdgeIndicatorVariables(
 			context,
 			solver

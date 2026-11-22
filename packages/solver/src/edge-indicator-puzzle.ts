@@ -1,5 +1,10 @@
 import { Context, Arith, Solver } from 'z3-solver';
-import { Edge, CartesianGrid, CartesianCoord, Vertex } from './grid/index.js';
+import {
+	GridEdge,
+	CartesianGrid,
+	CartesianCoord,
+	GridVertex,
+} from './grid/index.js';
 import { Puzzle } from './puzzle.js';
 import { createConstraintExtensions } from './constraint-utils.js';
 
@@ -19,7 +24,10 @@ export type EdgeIndicatorRenderOptions = Record<
  *
  * Ex: slitherlink, masyu
  */
-export abstract class EdgeIndicatorPuzzle<TCell> extends Puzzle<Edge, 0 | 1> {
+export abstract class EdgeIndicatorPuzzle<TCell> extends Puzzle<
+	GridEdge,
+	0 | 1
+> {
 	#width: number;
 	#height: number;
 
@@ -46,11 +54,11 @@ export abstract class EdgeIndicatorPuzzle<TCell> extends Puzzle<Edge, 0 | 1> {
 	 * @param v The vertex corresponding to the face coordinate.
 	 * @returns An object containing the edge indicator variables for the edges adjacent to the face coordinate.
 	 */
-	public edgesAdjacentToFace(v: Vertex): {
-		top: Edge;
-		left: Edge;
-		bottom: Edge;
-		right: Edge;
+	public edgesAdjacentToFace(v: GridVertex): {
+		top: GridEdge;
+		left: GridEdge;
+		bottom: GridEdge;
+		right: GridEdge;
 	} {
 		const top = this.grid.getEdge(v, v.right);
 		const left = this.grid.getEdge(v, v.down);
@@ -91,7 +99,7 @@ export abstract class EdgeIndicatorPuzzle<TCell> extends Puzzle<Edge, 0 | 1> {
 		};
 	}
 
-	public getCell(coord: CartesianCoord | Vertex): TCell | 'empty' {
+	public getCell(coord: CartesianCoord | GridVertex): TCell | 'empty' {
 		return this.grid.get(coord);
 	}
 
@@ -99,8 +107,8 @@ export abstract class EdgeIndicatorPuzzle<TCell> extends Puzzle<Edge, 0 | 1> {
 		context: Context<string>,
 		solver: Solver<string>,
 		prefix = ''
-	): Map<Edge, Arith<string>> {
-		const edgeVariables = new Map<Edge, Arith<string>>();
+	): Map<GridEdge, Arith<string>> {
+		const edgeVariables = new Map<GridEdge, Arith<string>>();
 		const { createIndicator } = createConstraintExtensions(context);
 		for (const edge of this.grid.edges()) {
 			edgeVariables.set(
@@ -122,7 +130,7 @@ export abstract class EdgeIndicatorPuzzle<TCell> extends Puzzle<Edge, 0 | 1> {
 	public abstract renderT(t: TCell): string;
 
 	public renderSolution(
-		assignment: 'unsat' | 'unknown' | Map<Edge, 0 | 1>
+		assignment: 'unsat' | 'unknown' | Map<GridEdge, 0 | 1>
 	): string {
 		if (typeof assignment === 'string') {
 			return assignment;

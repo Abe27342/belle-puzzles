@@ -5,18 +5,14 @@
 
 import { Arith, Bool, Context, Solver } from 'z3-solver';
 import { oob } from './utils.js';
-import { Vertex, CartesianGrid, Edge } from './grid/index.js';
-
-/**
- * Abstract representation of a vertex in a graph that can provide its neighboring vertices.
- *
- * Constraint utilities that only depend on connectivity information are conveniently agnostic to
- * the underlying grid structure, allowing reuse of constraint representations across different grid types
- * (cartesian, hexagonal, etc).
- */
-export interface HasNeighbors<T extends HasNeighbors<T>> {
-	neighbors(options: { includeOutOfBounds: boolean }): Iterable<T>;
-}
+import {
+	Vertex,
+	CartesianGrid,
+	Edge,
+	HasNeighbors,
+	GridVertex,
+	GridEdge,
+} from './grid/index.js';
 
 /**
  * Ergonomic helpers for expressing common constraints.
@@ -152,9 +148,7 @@ export function* connectedConstraints<T extends HasNeighbors<T>>(
 	for (const v of vertices) {
 		const connectivityVar = connectivityVariables.get(v) ?? oob(v);
 
-		const adjacent = Array.from(
-			v.neighbors({ includeOutOfBounds: false })
-		).map(varFor);
+		const adjacent = Array.from(v.neighbors()).map(varFor);
 
 		// Constraint 3 from the doc comment.
 		yield Or(
@@ -193,7 +187,7 @@ export function* connectedLoopConstraints<T extends HasNeighbors<T>>(
 
 	for (const [edge, edgeVar] of indicatorVariables) {
 		const degree = Array.from(
-			edge.neighbors({ includeOutOfBounds: false }),
+			edge.neighbors(),
 			(e) => indicatorVariables.get(e) ?? oob(e)
 		).reduce((acc, curr) => acc.add(curr), zeroVar);
 
@@ -210,19 +204,19 @@ export interface CartesianGridConstraintUtils {
 		/**
 		 * Edges pass vertically through this vertex
 		 */
-		goesVerticallyThrough: (v: Vertex) => Bool<string>;
+		goesVerticallyThrough: (v: GridVertex) => Bool<string>;
 		/**
 		 * Edges pass horizontally through this vertex
 		 */
-		goesHorizontallyThrough: (v: Vertex) => Bool<string>;
+		goesHorizontallyThrough: (v: GridVertex) => Bool<string>;
 		/**
 		 * At least one edge passes horizontally through this vertex
 		 */
-		hasHorizontalEdge: (v: Vertex) => Bool<string>;
+		hasHorizontalEdge: (v: GridVertex) => Bool<string>;
 		/**
 		 * At least one edge passes vertically through this vertex
 		 */
-		hasVerticalEdge: (v: Vertex) => Bool<string>;
+		hasVerticalEdge: (v: GridVertex) => Bool<string>;
 		/**
 		 * @returns an iterable of edge indicator variables corresponding to the run in the specified direction and length.
 		 * Out-of-bounds vertices use an always-zero indicator variable.
@@ -232,7 +226,7 @@ export interface CartesianGridConstraintUtils {
 		 * directionalRun([0, 1], 'right', 3);
 		 */
 		directionalRun: (
-			v: Vertex,
+			v: GridVertex,
 			direction: 'up' | 'down' | 'left' | 'right',
 			length: number
 		) => Iterable<Arith<string>>;
@@ -254,57 +248,57 @@ export interface MasyuConstraints {
 	/**
 	 * The loop turns 90 degrees at this vertex, and continues straight on either side.
 	 */
-	blackPearl: (v: Vertex) => Bool<string>;
+	blackPearl: (v: GridVertex) => Bool<string>;
 	/**
 	 * The loop goes straight through this vertex, but turns on at least one adjacent vertex.
 	 */
-	whitePearl: (v: Vertex) => Bool<string>;
+	whitePearl: (v: GridVertex) => Bool<string>;
 }
 
 export interface ShingokiConstraints {
 	/**
 	 * The loop turns 90 degrees at this vertex.
 	 */
-	blackPearl: (v: Vertex) => Bool<string>;
+	blackPearl: (v: GridVertex) => Bool<string>;
 	/**
 	 * The loop passes straight through this vertex.
 	 */
-	whitePearl: (v: Vertex) => Bool<string>;
+	whitePearl: (v: GridVertex) => Bool<string>;
 }
 
 export function createCartesianGridConstraintUtils(
 	context: Context<string>,
 	solver: Solver<string>,
 	grid: CartesianGrid<unknown>,
-	edgeIndicators: Map<Edge, Arith<string>>
+	edgeIndicators: Map<GridEdge, Arith<string>>
 ): CartesianGridConstraintUtils {
 	const { Int, And, Or } = context;
 
 	const zeroVar = Int.const('zero');
 	solver.add(zeroVar.eq(0));
 
-	const getEdgeVar = (a: Vertex, b: Vertex) => {
+	const getEdgeVar = (a: GridVertex, b: GridVertex) => {
 		const edge = grid.getEdge(a, b);
 		return edgeIndicators.get(edge) ?? zeroVar;
 	};
 
 	// Some predicates that are helpful for defining constraints related to pearl colors.
-	const goesVerticallyThrough = (v: Vertex) =>
+	const goesVerticallyThrough = (v: GridVertex) =>
 		And(getEdgeVar(v, v.up).eq(1), getEdgeVar(v, v.down).eq(1));
 
-	const goesHorizontallyThrough = (v: Vertex) =>
+	const goesHorizontallyThrough = (v: GridVertex) =>
 		And(getEdgeVar(v, v.left).eq(1), getEdgeVar(v, v.right).eq(1));
 
 	// Whether one of the horizontal edges adjacent to the vertex is used.
-	const hasHorizontalEdge = (v: Vertex) =>
+	const hasHorizontalEdge = (v: GridVertex) =>
 		Or(getEdgeVar(v, v.left).eq(1), getEdgeVar(v, v.right).eq(1));
 
 	// Whether one of the vertical edges adjacent to the vertex is used.
-	const hasVerticalEdge = (v: Vertex) =>
+	const hasVerticalEdge = (v: GridVertex) =>
 		Or(getEdgeVar(v, v.up).eq(1), getEdgeVar(v, v.down).eq(1));
 
 	const directionalRun = function* (
-		v: Vertex,
+		v: GridVertex,
 		direction: 'up' | 'down' | 'left' | 'right',
 		length: number
 	) {
@@ -316,7 +310,7 @@ export function createCartesianGridConstraintUtils(
 		}
 	};
 
-	const adjacentToFaceCoordinate = (v: Vertex) => {
+	const adjacentToFaceCoordinate = (v: GridVertex) => {
 		const top = getEdgeVar(v, v.right);
 		const left = getEdgeVar(v, v.down);
 		const bottom = getEdgeVar(v.down, v.down.right);
@@ -325,7 +319,7 @@ export function createCartesianGridConstraintUtils(
 	};
 
 	const masyu = {
-		blackPearl: (v: Vertex) => {
+		blackPearl: (v: GridVertex) => {
 			const leftUsed = goesHorizontallyThrough(v.left);
 			const rightUsed = goesHorizontallyThrough(v.right);
 			const downUsed = goesVerticallyThrough(v.down);
@@ -335,7 +329,7 @@ export function createCartesianGridConstraintUtils(
 				And(upUsed, Or(leftUsed, rightUsed))
 			);
 		},
-		whitePearl: (v: Vertex) => {
+		whitePearl: (v: GridVertex) => {
 			return Or(
 				And(
 					goesVerticallyThrough(v),
@@ -350,7 +344,7 @@ export function createCartesianGridConstraintUtils(
 	};
 
 	const shingoki = {
-		blackPearl: (v: Vertex) => {
+		blackPearl: (v: GridVertex) => {
 			const leftUsed = getEdgeVar(v, v.left).eq(1);
 			const rightUsed = getEdgeVar(v, v.right).eq(1);
 			const downUsed = getEdgeVar(v, v.down).eq(1);
@@ -360,7 +354,7 @@ export function createCartesianGridConstraintUtils(
 				And(upUsed, Or(leftUsed, rightUsed))
 			);
 		},
-		whitePearl: (v: Vertex) => {
+		whitePearl: (v: GridVertex) => {
 			const leftUsed = getEdgeVar(v, v.left).eq(1);
 			const rightUsed = getEdgeVar(v, v.right).eq(1);
 			const downUsed = getEdgeVar(v, v.down).eq(1);
