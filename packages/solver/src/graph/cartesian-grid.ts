@@ -3,6 +3,15 @@ import type { Edge, GridData, PlanarGraph, Vertex, Face } from './grid.js';
 
 export type CartesianCoord = [x: number, y: number];
 
+export type Vector = [dx: number, dy: number];
+
+export class Direction {
+	public static readonly Up: Vector = [0, -1];
+	public static readonly Down: Vector = [0, 1];
+	public static readonly Left: Vector = [-1, 0];
+	public static readonly Right: Vector = [1, 0];
+}
+
 export class CartesianGridData<T> implements GridData<CartesianCoord, T> {
 	#grid: T[][];
 	public readonly width: number;
@@ -218,14 +227,40 @@ export interface GridVertex extends Vertex<CartesianCoord> {
 	 * Whether this vertex is within the bounds of the {@link CartesianGridGraph} it is part of.
 	 */
 	isInBounds(): boolean;
+
+	translate(vector: Vector): GridVertex;
 }
 
-class GridVertexImpl implements GridVertex {
+abstract class CartesianTranslatable<T> {
+	abstract translate(vector: Vector): T;
+
+	public get up() {
+		return this.translate(Direction.Up);
+	}
+
+	public get down() {
+		return this.translate(Direction.Down);
+	}
+
+	public get left() {
+		return this.translate(Direction.Left);
+	}
+
+	public get right() {
+		return this.translate(Direction.Right);
+	}
+}
+
+class GridVertexImpl
+	extends CartesianTranslatable<GridVertex>
+	implements GridVertex
+{
 	#grid: CartesianGridGraph;
 	constructor(
 		public readonly coord: CartesianCoord,
 		grid: CartesianGridGraph
 	) {
+		super();
 		this.#grid = grid;
 	}
 
@@ -234,22 +269,6 @@ class GridVertexImpl implements GridVertex {
 	}
 	public get y() {
 		return this.coord[1];
-	}
-
-	public get up(): GridVertex {
-		return this.#grid.getVertex([this.x, this.y - 1]);
-	}
-
-	public get down(): GridVertex {
-		return this.#grid.getVertex([this.x, this.y + 1]);
-	}
-
-	public get left(): GridVertex {
-		return this.#grid.getVertex([this.x - 1, this.y]);
-	}
-
-	public get right(): GridVertex {
-		return this.#grid.getVertex([this.x + 1, this.y]);
 	}
 
 	public *neighbors(): Iterable<GridVertex> {
@@ -285,6 +304,11 @@ class GridVertexImpl implements GridVertex {
 			x >= 0 && x < this.#grid.width && y >= 0 && y < this.#grid.height
 		);
 	}
+
+	public translate(vector: Vector): GridVertex {
+		const [dx, dy] = vector;
+		return this.#grid.getVertex([this.x + dx, this.y + dy]);
+	}
 }
 
 export interface GridFace extends Face<CartesianCoord> {
@@ -292,6 +316,12 @@ export interface GridFace extends Face<CartesianCoord> {
 	 * The top-left coordinate of this face.
 	 */
 	coord: CartesianCoord;
+	namedEdges: {
+		top: GridEdge;
+		bottom: GridEdge;
+		left: GridEdge;
+		right: GridEdge;
+	};
 	/**
 	 * The face above this face. Can return out-of-bounds faces.
 	 */
@@ -320,14 +350,17 @@ export interface GridFace extends Face<CartesianCoord> {
 	 * Whether this face is within the bounds of the {@link CartesianGridGraph} it is part of.
 	 */
 	isInBounds(): boolean;
+
+	translate(vector: Vector): GridFace;
 }
 
-class GridFaceImpl implements GridFace {
+class GridFaceImpl extends CartesianTranslatable<GridFace> implements GridFace {
 	#grid: CartesianGridGraph;
 	constructor(
 		public readonly coord: CartesianCoord,
 		grid: CartesianGridGraph
 	) {
+		super();
 		this.#grid = grid;
 	}
 
@@ -338,20 +371,18 @@ class GridFaceImpl implements GridFace {
 		return this.coord[1];
 	}
 
-	public get up(): GridFace {
-		return this.#grid.getFace([this.x, this.y - 1]);
-	}
+	public get namedEdges() {
+		const topLeft = this.#grid.getVertex(this.coord);
+		const topRight = topLeft.right;
+		const bottomLeft = topLeft.down;
+		const bottomRight = topRight.down;
 
-	public get down(): GridFace {
-		return this.#grid.getFace([this.x, this.y + 1]);
-	}
+		const top = this.#grid.getEdge(topLeft, topRight);
+		const bottom = this.#grid.getEdge(bottomLeft, bottomRight);
+		const left = this.#grid.getEdge(topLeft, bottomLeft);
+		const right = this.#grid.getEdge(topRight, bottomRight);
 
-	public get left(): GridFace {
-		return this.#grid.getFace([this.x - 1, this.y]);
-	}
-
-	public get right(): GridFace {
-		return this.#grid.getFace([this.x + 1, this.y]);
+		return { top, bottom, left, right };
 	}
 
 	public *neighbors(): Iterable<GridFace> {
@@ -376,15 +407,7 @@ class GridFaceImpl implements GridFace {
 	}
 
 	public *incidentEdges() {
-		const topLeft = this.#grid.getVertex(this.coord);
-		const topRight = topLeft.right;
-		const bottomLeft = topLeft.down;
-		const bottomRight = topRight.down;
-
-		yield this.#grid.getEdge(topLeft, topRight);
-		yield this.#grid.getEdge(topLeft, bottomLeft);
-		yield this.#grid.getEdge(bottomLeft, bottomRight);
-		yield this.#grid.getEdge(topRight, bottomRight);
+		yield* Object.values(this.namedEdges);
 	}
 
 	public toString(): string {
@@ -408,9 +431,16 @@ class GridFaceImpl implements GridFace {
 			y < this.#grid.height - 1
 		);
 	}
+
+	public translate(vector: Vector): GridFace {
+		const [dx, dy] = vector;
+		return this.#grid.getFace([this.x + dx, this.y + dy]);
+	}
 }
 
-export interface GridEdge extends Edge<CartesianCoord> {}
+export interface GridEdge extends Edge<CartesianCoord> {
+	translate(vector: Vector): GridEdge;
+}
 
 class GridEdgeImpl implements GridEdge {
 	#start: GridVertex;
@@ -459,5 +489,10 @@ class GridEdgeImpl implements GridEdge {
 				}
 			}
 		}
+	}
+	public translate(vector: Vector): GridEdge {
+		const newStart = this.#start.translate(vector);
+		const newEnd = this.#end.translate(vector);
+		return this.#grid.getEdge(newStart.coord, newEnd.coord);
 	}
 }
