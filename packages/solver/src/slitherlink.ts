@@ -56,8 +56,8 @@ export class SlitherlinkPuzzle extends EdgeIndicatorPuzzle<never, string> {
 			count: p.count,
 		}));
 		for (const given of this.#givens) {
-			if (!this.grid.inBounds(given.coord.coord)) {
-				throw new Error(`Pearl at ${given.coord} is out of bounds`);
+			if (!given.coord.isInBounds()) {
+				throw new Error(`Given at ${given.coord} is out of bounds`);
 			}
 			this.faceContents.set(given.coord.coord, given.count.toString());
 		}

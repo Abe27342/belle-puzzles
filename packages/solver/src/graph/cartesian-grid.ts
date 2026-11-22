@@ -1,5 +1,5 @@
 import { getOrCreate } from '../utils.js';
-import type { Edge, GridData, PlanarGraph, Vertex } from './grid.js';
+import type { Edge, GridData, PlanarGraph, Vertex, Face } from './grid.js';
 
 export type CartesianCoord = [x: number, y: number];
 
@@ -66,12 +66,22 @@ export class CartesianGridData<T> implements GridData<CartesianCoord, T> {
 
 /**
  * A {@link PlanarGraph} representation of a 2D cartesian grid.
+ *
+ * Width/height is expressed in terms of number of vertices, which is in line with an m-by-n grid
+ * representing the cartesian product of two paths P_m and P_n (see https://en.wikipedia.org/wiki/Path_graph)
  */
 export class CartesianGridGraph implements PlanarGraph<CartesianCoord> {
 	#vertexCache = new Map<string, GridVertex>();
 	#edgeCache = new Map<string, GridEdge>();
+	#faceCache = new Map<string, GridFace>();
 
+	/**
+	 * Width of the grid in number of vertices
+	 */
 	public readonly width: number;
+	/**
+	 * Height of the grid in number of vertices
+	 */
 	public readonly height: number;
 
 	public constructor(dimensions: { width: number; height: number }) {
@@ -79,18 +89,18 @@ export class CartesianGridGraph implements PlanarGraph<CartesianCoord> {
 		this.height = dimensions.height;
 	}
 
-	public getVertex(coord: CartesianCoord): GridVertex {
-		return getOrCreate(
-			this.#vertexCache,
-			coord.toString(),
-			() => new GridVertexImpl(coord, this)
-		);
-	}
-
 	public *vertices(): Iterable<GridVertex> {
 		for (let y = 0; y < this.height; y++) {
 			for (let x = 0; x < this.width; x++) {
 				yield this.getVertex([x, y]);
+			}
+		}
+	}
+
+	public *faces(): Iterable<GridFace> {
+		for (let y = 0; y < this.height - 1; y++) {
+			for (let x = 0; x < this.width - 1; x++) {
+				yield this.getFace([x, y]);
 			}
 		}
 	}
@@ -105,6 +115,14 @@ export class CartesianGridGraph implements PlanarGraph<CartesianCoord> {
 				yield this.getEdge(vertex, vertex.down);
 			}
 		}
+	}
+
+	public getVertex(coord: CartesianCoord): GridVertex {
+		return getOrCreate(
+			this.#vertexCache,
+			coord.toString(),
+			() => new GridVertexImpl(coord, this)
+		);
 	}
 
 	/**
@@ -129,6 +147,17 @@ export class CartesianGridGraph implements PlanarGraph<CartesianCoord> {
 		);
 	}
 
+	/**
+	 * @returns The face whose top-left corner is at the given coordinate.
+	 */
+	public getFace(coord: CartesianCoord): GridFace {
+		return getOrCreate(
+			this.#faceCache,
+			coord.toString(),
+			() => new GridFaceImpl(coord, this)
+		);
+	}
+
 	#normalizeToCoord(input: CartesianCoord | GridVertex): CartesianCoord {
 		return input instanceof GridVertexImpl
 			? input.coord
@@ -144,11 +173,6 @@ export class CartesianGridGraph implements PlanarGraph<CartesianCoord> {
 		return `${JSON.stringify(normalizedStart)}-${JSON.stringify(
 			normalizedEnd
 		)}`;
-	}
-
-	public inBounds(coord: CartesianCoord): boolean {
-		const [x, y] = coord;
-		return x >= 0 && x < this.width && y >= 0 && y < this.height;
 	}
 }
 
@@ -195,8 +219,6 @@ export interface GridVertex extends Vertex<CartesianCoord> {
 	 */
 	isInBounds(): boolean;
 }
-
-export interface GridEdge extends Edge<CartesianCoord> {}
 
 class GridVertexImpl implements GridVertex {
 	#grid: CartesianGridGraph;
@@ -258,9 +280,137 @@ class GridVertexImpl implements GridVertex {
 	}
 
 	public isInBounds(): boolean {
-		return this.#grid.inBounds(this.coord);
+		const [x, y] = this.coord;
+		return (
+			x >= 0 && x < this.#grid.width && y >= 0 && y < this.#grid.height
+		);
 	}
 }
+
+export interface GridFace extends Face<CartesianCoord> {
+	/**
+	 * The top-left coordinate of this face.
+	 */
+	coord: CartesianCoord;
+	/**
+	 * The face above this face. Can return out-of-bounds faces.
+	 */
+	up: GridFace;
+	/**
+	 * The face below this face. Can return out-of-bounds faces.
+	 */
+	down: GridFace;
+	/**
+	 * The face to the left of this face. Can return out-of-bounds faces.
+	 */
+	left: GridFace;
+	/**
+	 * The face to the right of this face. Can return out-of-bounds faces.
+	 */
+	right: GridFace;
+
+	/**
+	 * Compares this face with another face.
+	 * @param other The other face to compare with.
+	 * @returns A negative number if this face is less than the other, a positive number if greater, or 0 if equal.
+	 */
+	compare(other: GridFace): number;
+
+	/**
+	 * Whether this face is within the bounds of the {@link CartesianGridGraph} it is part of.
+	 */
+	isInBounds(): boolean;
+}
+
+class GridFaceImpl implements GridFace {
+	#grid: CartesianGridGraph;
+	constructor(
+		public readonly coord: CartesianCoord,
+		grid: CartesianGridGraph
+	) {
+		this.#grid = grid;
+	}
+
+	public get x() {
+		return this.coord[0];
+	}
+	public get y() {
+		return this.coord[1];
+	}
+
+	public get up(): GridFace {
+		return this.#grid.getFace([this.x, this.y - 1]);
+	}
+
+	public get down(): GridFace {
+		return this.#grid.getFace([this.x, this.y + 1]);
+	}
+
+	public get left(): GridFace {
+		return this.#grid.getFace([this.x - 1, this.y]);
+	}
+
+	public get right(): GridFace {
+		return this.#grid.getFace([this.x + 1, this.y]);
+	}
+
+	public *neighbors(): Iterable<GridFace> {
+		const predicate = (v: GridFace) => v.isInBounds();
+
+		if (predicate(this.up)) yield this.up;
+		if (predicate(this.down)) yield this.down;
+		if (predicate(this.left)) yield this.left;
+		if (predicate(this.right)) yield this.right;
+	}
+
+	public *incidentVertices(): Iterable<GridVertex> {
+		const topLeft = this.#grid.getVertex(this.coord);
+		const topRight = topLeft.right;
+		const bottomLeft = topLeft.down;
+		const bottomRight = topRight.down;
+
+		yield topLeft;
+		yield topRight;
+		yield bottomLeft;
+		yield bottomRight;
+	}
+
+	public *incidentEdges() {
+		const topLeft = this.#grid.getVertex(this.coord);
+		const topRight = topLeft.right;
+		const bottomLeft = topLeft.down;
+		const bottomRight = topRight.down;
+
+		yield this.#grid.getEdge(topLeft, topRight);
+		yield this.#grid.getEdge(topLeft, bottomLeft);
+		yield this.#grid.getEdge(bottomLeft, bottomRight);
+		yield this.#grid.getEdge(topRight, bottomRight);
+	}
+
+	public toString(): string {
+		return `(${this.x}, ${this.y})`;
+	}
+
+	public equal(other: GridFaceImpl): boolean {
+		return equalCoord(this.coord, other.coord);
+	}
+
+	public compare(other: GridFace): number {
+		return compareCoords(this.coord, other.coord);
+	}
+
+	public isInBounds(): boolean {
+		const [x, y] = this.coord;
+		return (
+			x >= 0 &&
+			x < this.#grid.width - 1 &&
+			y >= 0 &&
+			y < this.#grid.height - 1
+		);
+	}
+}
+
+export interface GridEdge extends Edge<CartesianCoord> {}
 
 class GridEdgeImpl implements GridEdge {
 	#start: GridVertex;

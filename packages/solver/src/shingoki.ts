@@ -84,7 +84,7 @@ export class ShingokiPuzzle extends EdgeIndicatorPuzzle<
 			length: p.length,
 		}));
 		for (const pearl of this.#pearls) {
-			if (!this.grid.inBounds(pearl.coord.coord)) {
+			if (!pearl.coord.isInBounds()) {
 				throw new Error(`Pearl at ${pearl.coord} is out of bounds`);
 			}
 			this.vertexContents.set(pearl.coord.coord, pearl.color);

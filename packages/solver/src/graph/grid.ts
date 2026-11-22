@@ -19,7 +19,7 @@ export interface PlanarGraph<TCoord> {
 	vertices(): Iterable<Vertex<TCoord>>;
 	edges(): Iterable<Edge<TCoord>>;
 	// directedEdges: Iterable<DirectedEdge<TCoord>>;
-	// faces: Iterable<Face<TCoord>>;
+	faces(): Iterable<Face<TCoord>>;
 }
 
 export interface HasNeighbors<T extends HasNeighbors<T>> {
