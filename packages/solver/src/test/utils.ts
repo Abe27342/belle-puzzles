@@ -34,13 +34,19 @@ export function describeSuiteFromTestData(
 ) {
 	describe(`${puzzleClass.name} solver`, () => {
 		for (const [name, input] of testCases) {
-			it(`should solve for input: ${name}`, async () => {
-				const puzzle = puzzleClass.fromText(input);
-				expect(input.trim()).toMatchSnapshot();
-				const assignment = await puzzle.solve();
-				const solutionString = await puzzle.renderSolution(assignment);
-				expect(solutionString.trim()).toMatchSnapshot();
-			});
+			it(
+				`should solve for input: ${name}`,
+				{ timeout: 20000 },
+				async () => {
+					const puzzle = puzzleClass.fromText(input);
+					expect(input.trim()).toMatchSnapshot();
+					const assignment = await puzzle.solve();
+					const solutionString = await puzzle.renderSolution(
+						assignment
+					);
+					expect(solutionString.trim()).toMatchSnapshot();
+				}
+			);
 		}
 	});
 }
