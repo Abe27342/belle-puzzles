@@ -12,6 +12,13 @@ export class Direction {
 	public static readonly Right: Vector = [1, 0];
 }
 
+interface CartesianGraphTypes {
+	coord: CartesianCoord;
+	vertex: GridVertex;
+	edge: GridEdge;
+	face: GridFace;
+}
+
 export class CartesianGridData<T> implements GridData<CartesianCoord, T> {
 	#grid: T[][];
 	public readonly width: number;
@@ -79,7 +86,7 @@ export class CartesianGridData<T> implements GridData<CartesianCoord, T> {
  * Width/height is expressed in terms of number of vertices, which is in line with an m-by-n grid
  * representing the cartesian product of two paths P_m and P_n (see https://en.wikipedia.org/wiki/Path_graph)
  */
-export class CartesianGridGraph implements PlanarGraph<CartesianCoord> {
+export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 	#vertexCache = new Map<string, GridVertex>();
 	#edgeCache = new Map<string, GridEdge>();
 	#faceCache = new Map<string, GridFace>();
@@ -196,7 +203,7 @@ const compareCoords = (start: CartesianCoord, end: CartesianCoord) => {
 const equalCoord = (a: CartesianCoord, b: CartesianCoord) =>
 	a[0] === b[0] && a[1] === b[1];
 
-export interface GridVertex extends Vertex<CartesianCoord> {
+export interface GridVertex extends Vertex<CartesianGraphTypes> {
 	x: number;
 	y: number;
 	/**
@@ -311,7 +318,7 @@ class GridVertexImpl
 	}
 }
 
-export interface GridFace extends Face<CartesianCoord> {
+export interface GridFace extends Face<CartesianGraphTypes> {
 	/**
 	 * The top-left coordinate of this face.
 	 */
@@ -438,8 +445,10 @@ class GridFaceImpl extends CartesianTranslatable<GridFace> implements GridFace {
 	}
 }
 
-export interface GridEdge extends Edge<CartesianCoord> {
+export interface GridEdge extends Edge<CartesianGraphTypes> {
 	translate(vector: Vector): GridEdge;
+
+	bearingFrom(incident: GridVertex | GridFace): Vector;
 }
 
 class GridEdgeImpl implements GridEdge {
@@ -494,5 +503,29 @@ class GridEdgeImpl implements GridEdge {
 		const newStart = this.#start.translate(vector);
 		const newEnd = this.#end.translate(vector);
 		return this.#grid.getEdge(newStart.coord, newEnd.coord);
+	}
+
+	public bearingFrom(incident: GridVertex | GridFace): Vector {
+		if (![...incident.incidentEdges()].includes(this)) {
+			throw new Error(
+				`Edge is not incident to the given vertex/face: ${incident}`
+			);
+		}
+		if (incident instanceof GridVertexImpl) {
+			const [x1, y1] = incident.coord;
+			const other = this.#start === incident ? this.#end : this.#start;
+			const [x2, y2] = other.coord;
+			return [x2 - x1, y2 - y1];
+		} else if (incident instanceof GridFaceImpl) {
+			const { top, bottom, left, right } = incident.namedEdges;
+			if (this === top) return Direction.Up;
+			if (this === bottom) return Direction.Down;
+			if (this === left) return Direction.Left;
+			if (this === right) return Direction.Right;
+			throw new Error(
+				`Edge is not incident to the given face: ${incident}`
+			);
+		}
+		throw new Error(`Unsupported incident type: ${incident}`);
 	}
 }

@@ -202,6 +202,10 @@ export interface CartesianGridConstraintUtils {
 	/** Constraints and utility functions on edge incidence variables used to construct the utils */
 	edges: {
 		/**
+		 * @returns The edge indicator variable, or an always-zero indicator variable if the edge is out-of-bounds.
+		 */
+		getEdgeVar: (e: GridEdge) => Arith<string>;
+		/**
 		 * Edges pass vertically through this vertex
 		 */
 		goesVerticallyThrough: (v: GridVertex) => Bool<string>;
@@ -277,25 +281,38 @@ export function createCartesianGridConstraintUtils(
 	const zeroVar = Int.const('zero');
 	solver.add(zeroVar.eq(0));
 
-	const getEdgeVar = (a: GridVertex, b: GridVertex) => {
+	const getEdgeVar = (edge: GridEdge) => edgeIndicators.get(edge) ?? zeroVar;
+	const getEdgeVarFromEndpoints = (a: GridVertex, b: GridVertex) => {
 		const edge = grid.getEdge(a, b);
-		return edgeIndicators.get(edge) ?? zeroVar;
+		return getEdgeVar(edge);
 	};
 
 	// Some predicates that are helpful for defining constraints related to pearl colors.
 	const goesVerticallyThrough = (v: GridVertex) =>
-		And(getEdgeVar(v, v.up).eq(1), getEdgeVar(v, v.down).eq(1));
+		And(
+			getEdgeVarFromEndpoints(v, v.up).eq(1),
+			getEdgeVarFromEndpoints(v, v.down).eq(1)
+		);
 
 	const goesHorizontallyThrough = (v: GridVertex) =>
-		And(getEdgeVar(v, v.left).eq(1), getEdgeVar(v, v.right).eq(1));
+		And(
+			getEdgeVarFromEndpoints(v, v.left).eq(1),
+			getEdgeVarFromEndpoints(v, v.right).eq(1)
+		);
 
 	// Whether one of the horizontal edges adjacent to the vertex is used.
 	const hasHorizontalEdge = (v: GridVertex) =>
-		Or(getEdgeVar(v, v.left).eq(1), getEdgeVar(v, v.right).eq(1));
+		Or(
+			getEdgeVarFromEndpoints(v, v.left).eq(1),
+			getEdgeVarFromEndpoints(v, v.right).eq(1)
+		);
 
 	// Whether one of the vertical edges adjacent to the vertex is used.
 	const hasVerticalEdge = (v: GridVertex) =>
-		Or(getEdgeVar(v, v.up).eq(1), getEdgeVar(v, v.down).eq(1));
+		Or(
+			getEdgeVarFromEndpoints(v, v.up).eq(1),
+			getEdgeVarFromEndpoints(v, v.down).eq(1)
+		);
 
 	const directionalRun = function* (
 		v: GridVertex,
@@ -305,16 +322,16 @@ export function createCartesianGridConstraintUtils(
 		let current = v;
 		for (let i = 0; i < length; i++) {
 			const next = current[direction];
-			yield getEdgeVar(current, next);
+			yield getEdgeVarFromEndpoints(current, next);
 			current = next;
 		}
 	};
 
 	const adjacentToFaceCoordinate = (v: GridVertex) => {
-		const top = getEdgeVar(v, v.right);
-		const left = getEdgeVar(v, v.down);
-		const bottom = getEdgeVar(v.down, v.down.right);
-		const right = getEdgeVar(v.right, v.right.down);
+		const top = getEdgeVarFromEndpoints(v, v.right);
+		const left = getEdgeVarFromEndpoints(v, v.down);
+		const bottom = getEdgeVarFromEndpoints(v.down, v.down.right);
+		const right = getEdgeVarFromEndpoints(v.right, v.right.down);
 		return { top, left, bottom, right };
 	};
 
@@ -345,26 +362,27 @@ export function createCartesianGridConstraintUtils(
 
 	const shingoki = {
 		blackPearl: (v: GridVertex) => {
-			const leftUsed = getEdgeVar(v, v.left).eq(1);
-			const rightUsed = getEdgeVar(v, v.right).eq(1);
-			const downUsed = getEdgeVar(v, v.down).eq(1);
-			const upUsed = getEdgeVar(v, v.up).eq(1);
+			const leftUsed = getEdgeVarFromEndpoints(v, v.left).eq(1);
+			const rightUsed = getEdgeVarFromEndpoints(v, v.right).eq(1);
+			const downUsed = getEdgeVarFromEndpoints(v, v.down).eq(1);
+			const upUsed = getEdgeVarFromEndpoints(v, v.up).eq(1);
 			return Or(
 				And(downUsed, Or(leftUsed, rightUsed)),
 				And(upUsed, Or(leftUsed, rightUsed))
 			);
 		},
 		whitePearl: (v: GridVertex) => {
-			const leftUsed = getEdgeVar(v, v.left).eq(1);
-			const rightUsed = getEdgeVar(v, v.right).eq(1);
-			const downUsed = getEdgeVar(v, v.down).eq(1);
-			const upUsed = getEdgeVar(v, v.up).eq(1);
+			const leftUsed = getEdgeVarFromEndpoints(v, v.left).eq(1);
+			const rightUsed = getEdgeVarFromEndpoints(v, v.right).eq(1);
+			const downUsed = getEdgeVarFromEndpoints(v, v.down).eq(1);
+			const upUsed = getEdgeVarFromEndpoints(v, v.up).eq(1);
 			return Or(And(downUsed, upUsed), And(leftUsed, rightUsed));
 		},
 	};
 
 	return {
 		edges: {
+			getEdgeVar,
 			goesVerticallyThrough,
 			goesHorizontallyThrough,
 			hasHorizontalEdge,
