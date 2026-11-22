@@ -35,18 +35,6 @@ export interface PearlRenderOptions extends EdgeIndicatorRenderOptions {
 }
 
 /**
- * Textual representation of a Shingoki puzzle grid.
- * `colors` contains the color of each cell ('B' for black, 'W' for white, '.' for empty).
- * `lengths` contains the length of each pearl at the corresponding position.
- *
- * The parser does not currently support multi-digit lengths for pearls.
- */
-export interface ShingokiTextGrids {
-	colors: string;
-	lengths: string;
-}
-
-/**
  * @remarks
  * Used only prior to constructing a {@link ShingokiPuzzle}.
  *
