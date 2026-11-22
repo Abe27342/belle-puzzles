@@ -1,23 +1,12 @@
 import { getOrCreate } from '../utils.js';
-import type { Edge, Grid, PlanarGraph, Vertex } from './grid.js';
+import type { Edge, GridData, PlanarGraph, Vertex } from './grid.js';
 
 export type CartesianCoord = [x: number, y: number];
 
-/**
- * A representation of a 2D cartesian grid.
- * @remarks
- * The implementation takes some pain to allocate exactly one edge/vertex object per unique edge/vertex, which
- * allows constraint problem representations to safely use these objects as keys.
- */
-export class CartesianGrid<T>
-	implements PlanarGraph<CartesianCoord>, Grid<CartesianCoord, T>
-{
+export class CartesianGridData<T> implements GridData<CartesianCoord, T> {
 	#grid: T[][];
 	public readonly width: number;
 	public readonly height: number;
-
-	#vertexCache = new Map<string, GridVertex>();
-	#edgeCache = new Map<string, GridEdge>();
 
 	constructor(grid: T[][]) {
 		this.height = grid.length;
@@ -36,11 +25,11 @@ export class CartesianGrid<T>
 		width: number,
 		height: number,
 		filledValue: () => T
-	): CartesianGrid<T> {
+	): CartesianGridData<T> {
 		const grid: T[][] = Array.from({ length: height }, () =>
 			Array.from({ length: width }, () => filledValue())
 		);
-		return new CartesianGrid(grid);
+		return new CartesianGridData(grid);
 	}
 
 	#validateCoord(coord: CartesianCoord): void {
@@ -56,37 +45,11 @@ export class CartesianGrid<T>
 		this.#grid[y][x] = value;
 	}
 
-	public get(coord: CartesianCoord | GridVertex): T {
-		if (coord instanceof GridVertexImpl) {
-			return this.get(coord.coord);
-		}
-
-		this.#validateCoord(coord as CartesianCoord);
-		const [x, y] = coord as CartesianCoord;
+	public get(coord: CartesianCoord): T {
+		this.#validateCoord(coord);
+		const [x, y] = coord;
 		return this.#grid[y][x];
 	}
-
-	// static #up = [0, -1];
-	// static #down = [0, 1];
-	// static #left = [-1, 0];
-	// static #right = [1, 0];
-
-	// static #deltas = [
-	// 	CartesianGrid.#up,
-	// 	CartesianGrid.#down,
-	// 	CartesianGrid.#left,
-	// 	CartesianGrid.#right,
-	// ];
-
-	// public neighbors(coord: CartesianCoord): CartesianCoord[] {
-	// 	const [x, y] = coord;
-	// 	return CartesianGrid.#deltas
-	// 		.map(([dx, dy]) => [x + dx, y + dy] as CartesianCoord)
-	// 		.filter(
-	// 			([nx, ny]) =>
-	// 				nx >= 0 && nx < this.width && ny >= 0 && ny < this.height
-	// 		);
-	// }
 
 	public *entries(): Iterable<[CartesianCoord, T]> {
 		for (let y = 0; y < this.height; y++) {
@@ -99,6 +62,22 @@ export class CartesianGrid<T>
 	public values(): Iterable<T> {
 		return this.#grid.flat();
 	}
+}
+
+/**
+ * A {@link PlanarGraph} representation of a 2D cartesian grid.
+ */
+export class CartesianGridGraph implements PlanarGraph<CartesianCoord> {
+	#vertexCache = new Map<string, GridVertex>();
+	#edgeCache = new Map<string, GridEdge>();
+
+	public readonly width: number;
+	public readonly height: number;
+
+	public constructor(dimensions: { width: number; height: number }) {
+		this.width = dimensions.width;
+		this.height = dimensions.height;
+	}
 
 	public getVertex(coord: CartesianCoord): GridVertex {
 		return getOrCreate(
@@ -109,8 +88,10 @@ export class CartesianGrid<T>
 	}
 
 	public *vertices(): Iterable<GridVertex> {
-		for (const [coord] of this.entries()) {
-			yield this.getVertex(coord);
+		for (let y = 0; y < this.height; y++) {
+			for (let x = 0; x < this.width; x++) {
+				yield this.getVertex([x, y]);
+			}
 		}
 	}
 
@@ -185,22 +166,43 @@ const equalCoord = (a: CartesianCoord, b: CartesianCoord) =>
 export interface GridVertex extends Vertex<CartesianCoord> {
 	x: number;
 	y: number;
+	/**
+	 * The vertex above this vertex. Can return out-of-bounds vertices.
+	 */
 	up: GridVertex;
+	/**
+	 * The vertex below this vertex. Can return out-of-bounds vertices.
+	 */
 	down: GridVertex;
+	/**
+	 * The vertex to the left of this vertex. Can return out-of-bounds vertices.
+	 */
 	left: GridVertex;
+	/**
+	 * The vertex to the right of this vertex. Can return out-of-bounds vertices.
+	 */
 	right: GridVertex;
 
+	/**
+	 * Compares this vertex with another vertex.
+	 * @param other The other vertex to compare with.
+	 * @returns A negative number if this vertex is less than the other, a positive number if greater, or 0 if equal.
+	 */
 	compare(other: GridVertex): number;
+
+	/**
+	 * Whether this vertex is within the bounds of the {@link CartesianGridGraph} it is part of.
+	 */
 	isInBounds(): boolean;
 }
 
 export interface GridEdge extends Edge<CartesianCoord> {}
 
 class GridVertexImpl implements GridVertex {
-	#grid: CartesianGrid<unknown>;
+	#grid: CartesianGridGraph;
 	constructor(
 		public readonly coord: CartesianCoord,
-		grid: CartesianGrid<unknown>
+		grid: CartesianGridGraph
 	) {
 		this.#grid = grid;
 	}
@@ -263,13 +265,9 @@ class GridVertexImpl implements GridVertex {
 class GridEdgeImpl implements GridEdge {
 	#start: GridVertex;
 	#end: GridVertex;
-	#grid: CartesianGrid<unknown>;
+	#grid: CartesianGridGraph;
 
-	constructor(
-		start: GridVertex,
-		end: GridVertex,
-		grid: CartesianGrid<unknown>
-	) {
+	constructor(start: GridVertex, end: GridVertex, grid: CartesianGridGraph) {
 		if (start.compare(end) < 0) {
 			this.#start = start;
 			this.#end = end;

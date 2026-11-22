@@ -35,7 +35,7 @@ interface ConstructionGivens {
 	count: number;
 }
 
-export class SlitherlinkPuzzle extends EdgeIndicatorPuzzle<never> {
+export class SlitherlinkPuzzle extends EdgeIndicatorPuzzle<never, string> {
 	/**
 	 * Note that the givens' coordinates are in terms of the face grid, not the vertex grid.
 	 *
@@ -59,7 +59,7 @@ export class SlitherlinkPuzzle extends EdgeIndicatorPuzzle<never> {
 			if (!this.grid.inBounds(given.coord.coord)) {
 				throw new Error(`Pearl at ${given.coord} is out of bounds`);
 			}
-			this.faceGrid.set(given.coord.coord, given.count.toString());
+			this.faceContents.set(given.coord.coord, given.count.toString());
 		}
 	}
 
@@ -137,9 +137,5 @@ export class SlitherlinkPuzzle extends EdgeIndicatorPuzzle<never> {
 			throw new Error(`Invalid assignment value: ${value}`);
 		}
 		return value;
-	}
-
-	public override renderT(_: never): string {
-		throw new Error('Should not be called');
 	}
 }

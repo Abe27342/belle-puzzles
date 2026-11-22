@@ -37,7 +37,7 @@ interface ConstructionPearl {
 	color: 'black' | 'white';
 }
 
-export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white'> {
+export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white', never> {
 	/**
 	 * Note: the indexing model assumes pearls are placed go-style.
 	 *
@@ -69,7 +69,7 @@ export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white'> {
 			if (!this.grid.inBounds(pearl.coord.coord)) {
 				throw new Error(`Pearl at ${pearl.coord} is out of bounds`);
 			}
-			this.grid.set(pearl.coord.coord, pearl.color);
+			this.vertexContents.set(pearl.coord.coord, pearl.color);
 		}
 	}
 
@@ -92,10 +92,6 @@ export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white'> {
 			}
 		}
 		return new MasyuPuzzle({ width, height, pearls, renderOptions });
-	}
-
-	public getCell(coord: CartesianCoord): 'black' | 'white' | 'empty' {
-		return this.grid.get(coord);
 	}
 
 	public override addConstraints(
@@ -145,7 +141,7 @@ export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white'> {
 		return value;
 	}
 
-	public override renderT(t: 'black' | 'white'): string {
+	protected override renderVertexData(t: 'black' | 'white'): string {
 		return this.#renderChars[t];
 	}
 }

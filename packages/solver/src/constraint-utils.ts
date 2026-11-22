@@ -7,7 +7,7 @@ import { Arith, Bool, Context, Solver } from 'z3-solver';
 import { oob } from './utils.js';
 import {
 	Vertex,
-	CartesianGrid,
+	CartesianGridGraph,
 	Edge,
 	HasNeighbors,
 	GridVertex,
@@ -269,7 +269,7 @@ export interface ShingokiConstraints {
 export function createCartesianGridConstraintUtils(
 	context: Context<string>,
 	solver: Solver<string>,
-	grid: CartesianGrid<unknown>,
+	grid: CartesianGridGraph,
 	edgeIndicators: Map<GridEdge, Arith<string>>
 ): CartesianGridConstraintUtils {
 	const { Int, And, Or } = context;

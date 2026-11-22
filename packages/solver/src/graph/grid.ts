@@ -1,10 +1,7 @@
 /**
  * Map-like interface for a grid structure storing values, keyed on some coordinate.
- *
- * @remarks
- * Not clear this is a particularly useful abstraction.
  */
-export interface Grid<TCoord, T> {
+export interface GridData<TCoord, T> {
 	get(coord: TCoord): T;
 
 	set(coord: TCoord, value: T): void;

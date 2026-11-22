@@ -1,7 +1,8 @@
 import { Context, Arith, Solver } from 'z3-solver';
 import {
 	GridEdge,
-	CartesianGrid,
+	CartesianGridGraph,
+	CartesianGridData,
 	CartesianCoord,
 	GridVertex,
 } from './graph/index.js';
@@ -24,27 +25,39 @@ export type EdgeIndicatorRenderOptions = Record<
  *
  * Ex: slitherlink, masyu
  */
-export abstract class EdgeIndicatorPuzzle<TCell> extends Puzzle<
-	GridEdge,
-	0 | 1
-> {
+export abstract class EdgeIndicatorPuzzle<
+	TVertexData,
+	TFaceData
+> extends Puzzle<GridEdge, 0 | 1> {
 	#width: number;
 	#height: number;
-
-	protected grid: CartesianGrid<TCell | 'empty'>;
+	/**
+	 * Planar graph representation of a 2d cartesian grid.
+	 *
+	 * Derived classes frequently create classes of variables associated with aspects of this grid.
+	 *
+	 * @example
+	 * Slitherlink allocates edge indicator variables for each edge in the grid.
+	 * It associates givens with faces of the grid, and uses those givens to constrain the surrounding edges.
+	 */
+	protected grid: CartesianGridGraph;
 
 	/**
-	 * Grid representing the face contents of the puzzle.
-	 *
-	 * This grid has dimensions (width - 1) x (height - 1).
-	 *
-	 * This grid is used when rendering the puzzle with {@link renderSolution}.
+	 * Data for the vertices of the puzzle. Data is used at solution rendering time.
 	 * Classes extending {@link EdgeIndicatorPuzzle} can place length-1 content in cells of the grid
 	 * to improve that rendering.
 	 *
-	 * This is useful for puzzles which indicate clues in cells, e.g. slitherlink.
+	 * This grid has dimensions width x height.
 	 */
-	protected faceGrid: CartesianGrid<string>;
+	protected vertexContents: CartesianGridData<TVertexData | 'empty'>;
+	/**
+	 * Data for the faces of the grid. Data is used at solution rendering time.
+	 * Classes extending {@link EdgeIndicatorPuzzle} can place length-1 content in cells of the grid
+	 * to improve that rendering.
+	 *
+	 * This grid has dimensions (width - 1) x (height - 1).
+	 */
+	protected faceContents: CartesianGridData<TFaceData | 'empty'>;
 
 	/**
 	 * Given a face coordinate, returns all edge variables that border this face.
@@ -81,26 +94,23 @@ export abstract class EdgeIndicatorPuzzle<TCell> extends Puzzle<
 		super();
 		this.#width = props.width;
 		this.#height = props.height;
-		this.grid = CartesianGrid.fromDimensions(
+		this.grid = new CartesianGridGraph(props);
+		this.vertexContents = CartesianGridData.fromDimensions(
 			this.#width,
 			this.#height,
 			() => 'empty'
 		);
 
-		this.faceGrid = CartesianGrid.fromDimensions(
+		this.faceContents = CartesianGridData.fromDimensions(
 			this.#width - 1,
 			this.#height - 1,
-			() => ' '
+			() => 'empty'
 		);
 		this.#renderOptions = props.renderOptions ?? {
 			vertex: '·',
 			horizontal: '━',
 			vertical: '┃',
 		};
-	}
-
-	public getCell(coord: CartesianCoord | GridVertex): TCell | 'empty' {
-		return this.grid.get(coord);
 	}
 
 	protected createEdgeIndicatorVariables(
@@ -127,7 +137,13 @@ export abstract class EdgeIndicatorPuzzle<TCell> extends Puzzle<
 		return value;
 	}
 
-	public abstract renderT(t: TCell): string;
+	protected renderVertexData(t: TVertexData): string {
+		return `${t}`;
+	}
+
+	protected renderFaceData(t: TFaceData): string {
+		return `${t}`;
+	}
 
 	public renderSolution(
 		assignment: 'unsat' | 'unknown' | Map<GridEdge, 0 | 1>
@@ -136,8 +152,13 @@ export abstract class EdgeIndicatorPuzzle<TCell> extends Puzzle<
 			return assignment;
 		}
 
-		const renderChar = (t: TCell | 'empty') =>
-			t === 'empty' ? this.#renderOptions.vertex : this.renderT(t);
+		const renderVertexChar = (t: TVertexData | 'empty') =>
+			t === 'empty'
+				? this.#renderOptions.vertex
+				: this.renderVertexData(t);
+
+		const renderFaceChar = (t: TFaceData | 'empty') =>
+			t === 'empty' ? ' ' : this.renderFaceData(t);
 
 		let result = '';
 		for (let y = 0; y < this.height; y++) {
@@ -145,7 +166,9 @@ export abstract class EdgeIndicatorPuzzle<TCell> extends Puzzle<
 			let verticalEdgeLine = '';
 			for (let x = 0; x < this.width; x++) {
 				const current = this.grid.getVertex([x, y]);
-				contentLine += renderChar(this.getCell(current));
+				contentLine += renderVertexChar(
+					this.vertexContents.get(current.coord)
+				);
 
 				const rightEdge = this.grid.getEdge(current, current.right);
 				const rightEdgeAssignment = assignment.get(rightEdge);
@@ -164,7 +187,9 @@ export abstract class EdgeIndicatorPuzzle<TCell> extends Puzzle<
 						: ' ';
 
 				if (x < this.width - 1 && y < this.height - 1) {
-					verticalEdgeLine += this.faceGrid.get([x, y]);
+					verticalEdgeLine += renderFaceChar(
+						this.faceContents.get([x, y])
+					);
 				}
 			}
 
