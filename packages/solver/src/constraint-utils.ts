@@ -12,7 +12,7 @@ import {
 	HasNeighbors,
 	GridVertex,
 	GridEdge,
-} from './grid/index.js';
+} from './graph/index.js';
 
 /**
  * Ergonomic helpers for expressing common constraints.

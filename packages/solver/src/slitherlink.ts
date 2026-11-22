@@ -1,4 +1,4 @@
-import { CartesianCoord, GridEdge, GridVertex } from './grid/index.js';
+import { CartesianCoord, GridEdge, GridVertex } from './graph/index.js';
 import type { Arith, Context, Solver } from './z3.js';
 import {
 	EdgeIndicatorPuzzleProps,

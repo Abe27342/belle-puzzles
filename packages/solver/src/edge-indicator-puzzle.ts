@@ -4,7 +4,7 @@ import {
 	CartesianGrid,
 	CartesianCoord,
 	GridVertex,
-} from './grid/index.js';
+} from './graph/index.js';
 import { Puzzle } from './puzzle.js';
 import { createConstraintExtensions } from './constraint-utils.js';
 
