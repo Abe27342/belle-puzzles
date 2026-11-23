@@ -53,7 +53,10 @@ export abstract class CartesianGridPuzzle<TSolution = GraphDisplay>
 	): BuiltPuzzle<TSolution>;
 }
 
-/** Lay out resolved bindings without interpreting their values or Z3 sorts. */
+/**
+ * Lay out resolved bindings without interpreting their values or Z3 sorts.
+ * Explicitly empty interstitial rows are omitted. This allows compact rendering when edges aren't important.
+ */
 export function renderCartesianGrid(
 	grid: CartesianGridGraph,
 	display: GraphDisplay,
@@ -82,7 +85,7 @@ export function renderCartesianGrid(
 			}
 		}
 		result += contentLine + '\n';
-		if (y < grid.height - 1) {
+		if (y < grid.height - 1 && verticalEdgeLine.length > 0) {
 			result += verticalEdgeLine + '\n';
 		}
 	}

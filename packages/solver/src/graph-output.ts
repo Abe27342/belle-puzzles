@@ -24,7 +24,7 @@ export interface GraphOutput {
 /**
  * Maps each grid vertex/edge/face to a string for display purposes.
  * @remarks
- * Current functionality does not correctly space multi-character strings. Use single characters.
+ * Empty strings collapse gaps. Multi-character strings do not automatically align.
  */
 export interface GraphDisplay {
 	vertices: ReadonlyMap<GridVertex, string>;
