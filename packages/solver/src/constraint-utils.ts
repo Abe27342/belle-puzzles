@@ -237,8 +237,8 @@ export function* sightLineSumConstraints(
 		const nonBlockingEdges: GridEdge[] = [];
 		let blockingEdge = edge;
 		for (
-			let directionalCount = 0;
-			directionalCount < count;
+			let directionalCount = 1;
+			directionalCount <= count;
 			directionalCount++
 		) {
 			yield Implies(
@@ -256,8 +256,8 @@ export function* sightLineSumConstraints(
 		}
 	}
 
-	// We've counted the cell itself 4 times, but the actual count should include it only once.
-	yield Sum(...ensureNonEmpty(variables)).eq(count + 3);
+	// The RHS of this fixes the fact that we overcounted the starting vertex (we counted it once for each direction).
+	yield Sum(...ensureNonEmpty(variables)).eq(count + variables.length - 1);
 }
 
 /**

@@ -57,6 +57,58 @@ describe('grid character parsing', () => {
 });
 
 describe('parseTextGrids', () => {
+	it.each(['\t\t', '    ', '\t  '])(
+		'removes common indentation %j without shifting coordinates',
+		(indentation) => {
+			const visitor = vi.fn();
+			expect(
+				parseTextGrids(
+					`\n${indentation}.W.\n${indentation}B..\n${indentation}\n`,
+					visitor
+				)
+			).toEqual({ width: 3, height: 2 });
+			expect(visitor.mock.calls).toEqual([
+				[['W'], [1, 0]],
+				[['B'], [0, 1]],
+			]);
+		}
+	);
+
+	it('removes indentation independently from CRLF-separated grids', () => {
+		const visitor = vi.fn();
+		expect(
+			parseTextGrids(
+				'\r\n\t.W\r\n\tB.\r\n \t\r\n    .3\r\n    2.\r\n\t',
+				visitor,
+				{ gridCount: 2 }
+			)
+		).toEqual({ width: 2, height: 2 });
+		expect(visitor.mock.calls).toEqual([
+			[['W', '3'], [1, 0]],
+			[['B', '2'], [0, 1]],
+		]);
+	});
+
+	it('preserves empty cells after indentation, including trailing spaces', () => {
+		const visitor = vi.fn();
+		expect(parseTextGrids('  .A \n  B  ', visitor)).toEqual({
+			width: 3,
+			height: 2,
+		});
+		expect(visitor.mock.calls).toEqual([
+			[['A'], [1, 0]],
+			[['B'], [0, 1]],
+		]);
+	});
+
+	it('still rejects ragged indented grids before visiting', () => {
+		const visitor = vi.fn();
+		expect(() => parseTextGrids('\t..\n\t.', visitor)).toThrow(
+			'Grid 1 must have 2 columns in every row'
+		);
+		expect(visitor).not.toHaveBeenCalled();
+	});
+
 	it('visits non-empty positions in row-major order with zero-based coordinates', () => {
 		const visitor = vi.fn();
 		expect(parseTextGrids('\n.A.\nB  \n..C\n', visitor)).toEqual({

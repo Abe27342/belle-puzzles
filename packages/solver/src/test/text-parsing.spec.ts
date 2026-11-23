@@ -5,6 +5,14 @@ import { ShingokiPuzzle } from '../shingoki.js';
 import { SlitherlinkPuzzle } from '../slitherlink.js';
 
 describe('puzzle text parsing', () => {
+	it('Shingoki parses tab-indented color and length grids', () => {
+		const puzzle = ShingokiPuzzle.fromText(
+			'\n\t\t.W....\n\t\t..B...\n\t\t......\n\t\tB....W\n\t\tWB..B.\n\t\t......\n\n\t\t.3....\n\t\t..2...\n\t\t......\n\t\t6....5\n\t\t22..2.\n\t\t......\n\t\t'
+		);
+		expect(puzzle.width).toBe(6);
+		expect(puzzle.height).toBe(6);
+	});
+
 	it('uses character dimensions for vertex clues', () => {
 		for (const puzzle of [
 			MasyuPuzzle.fromText('.b.\r\n..w'),

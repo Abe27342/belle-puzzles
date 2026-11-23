@@ -8,7 +8,6 @@ import {
 import {
 	connectedLoopConstraints,
 	createCartesianGridConstraintUtils,
-	createConstraintExtensions,
 	sightLineSumConstraints,
 } from './constraint-utils.js';
 import {
@@ -132,10 +131,6 @@ export class ShingokiPuzzle extends EdgeIndicatorPuzzle<
 			edgeVariables
 		);
 
-		const { bound } = createConstraintExtensions(context);
-
-		const { Int, And, Sum, Implies } = context;
-
 		for (const pearl of this.#pearls) {
 			solver.add(
 				...sightLineSumConstraints(
@@ -145,53 +140,6 @@ export class ShingokiPuzzle extends EdgeIndicatorPuzzle<
 					edgeVariables
 				)
 			);
-
-			// const { coord } = pearl;
-			// // Variables in each direction representing the number of straight-line steps taken from this pearl before turning.
-			// const up = Int.const(`${coord}_up`);
-			// const down = Int.const(`${coord}_down`);
-			// const left = Int.const(`${coord}_left`);
-			// const right = Int.const(`${coord}_right`);
-			// const dirMap = {
-			// 	up,
-			// 	down,
-			// 	left,
-			// 	right,
-			// };
-
-			// for (const variable of [up, down, left, right]) {
-			// 	// -1 here is correct because of closed loop constraint (if it took all the length,
-			// 	// it would be a dead end)
-			// 	solver.add(bound(variable, 0, pearl.length - 1));
-			// }
-
-			// solver.add(Sum(up, down, left, right).eq(pearl.length));
-
-			// // Bind these variables to the indicator variables.
-			// for (const direction of ['up', 'down', 'left', 'right'] as const) {
-			// 	const lengthVariable = dirMap[direction];
-			// 	for (
-			// 		let stepsTaken = 0;
-			// 		stepsTaken < pearl.length;
-			// 		stepsTaken++
-			// 	) {
-			// 		const relevantIndicators = Array.from(
-			// 			gridUtils.edges.directionalRun(
-			// 				coord,
-			// 				direction,
-			// 				stepsTaken + 1
-			// 			)
-			// 		);
-			// 		const [zeroEdge] = relevantIndicators.splice(-1);
-			// 		const oneEdges = relevantIndicators;
-			// 		solver.add(
-			// 			Implies(
-			// 				lengthVariable.eq(stepsTaken),
-			// 				And(...oneEdges.map((e) => e.eq(1)), zeroEdge.eq(0))
-			// 			)
-			// 		);
-			// 	}
-			// }
 		}
 
 		for (const { color, vertex: coord } of this.#pearls) {
