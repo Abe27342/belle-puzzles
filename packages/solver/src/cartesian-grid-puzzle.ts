@@ -21,7 +21,9 @@ export interface CartesianGridPuzzleProps {
 	renderOptions?: Partial<CartesianGridRenderOptions>;
 }
 
-/** Optional convenience class; solving and rendering do not depend on it. */
+/**
+ * Convenience class for Cartesian grid puzzles.
+ */
 export abstract class CartesianGridPuzzle<TSolution = GraphDisplay>
 	implements PuzzleDefinition<TSolution>
 {

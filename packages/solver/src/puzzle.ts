@@ -18,6 +18,8 @@ export interface BuiltPuzzle<TSolution = GraphDisplay> {
 	/**
 	 * Assignments that distinguish puzzle solutions. Exclude auxiliary variables
 	 * such as connectivity ranks, even when they have multiple valid assignments.
+	 *
+	 * Two solutions should be considered unique iff they differ in at least one of the key assignments.
 	 */
 	keyAssignments: readonly Expr<string>[];
 	decodeSolution(model: Model<string>, output: GraphDisplay): TSolution;
@@ -39,7 +41,9 @@ export type SolveResult<TSolution> =
 	| { status: 'sat'; solution: TSolution; output: GraphDisplay }
 	| { status: 'unsat' | 'unknown' };
 
-/** Builds a puzzle once and enumerates solutions distinguished by its keys. */
+/**
+ * Builds a puzzle once and allows enumeration of unique solutions to the puzzle.
+ */
 export class SolverSession<TSolution> {
 	readonly #context: Context<string>;
 	readonly #solver: Solver<string>;

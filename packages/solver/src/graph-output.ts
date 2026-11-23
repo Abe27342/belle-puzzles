@@ -1,16 +1,31 @@
 import type { Expr, Model } from './z3.js';
 import type { GridEdge, GridFace, GridVertex } from './graph/index.js';
 
+/**
+ * Represents a binding that can be resolved to a string for some Z3 model at display time.
+ *
+ * @remarks
+ * Use {@link constant} to create a binding with a fixed string value,
+ * or {@link variable} to create a binding based on a Z3 expression.
+ */
 export interface RenderBinding {
 	resolve(model: Model<string>): string;
 }
 
+/**
+ * Maps each grid vertex/edge/face to a {@link RenderBinding} for display purposes.
+ */
 export interface GraphOutput {
 	vertices: Map<GridVertex, RenderBinding>;
 	edges: Map<GridEdge, RenderBinding>;
 	faces: Map<GridFace, RenderBinding>;
 }
 
+/**
+ * Maps each grid vertex/edge/face to a string for display purposes.
+ * @remarks
+ * Current functionality does not correctly space multi-character strings. Use single characters.
+ */
 export interface GraphDisplay {
 	vertices: ReadonlyMap<GridVertex, string>;
 	edges: ReadonlyMap<GridEdge, string>;
@@ -54,7 +69,11 @@ export function variable<T>(
 	};
 }
 
-/** Resolve eagerly so subsequent solves cannot change an earlier display. */
+/**
+ * Resolves a {@link GraphOutput} to a {@link GraphDisplay}.
+ * @remarks
+ * This happens eagerly so subsequent solves (which may use the same variables) cannot change an earlier display.
+ */
 export function resolveGraphOutput(
 	output: GraphOutput,
 	model: Model<string>

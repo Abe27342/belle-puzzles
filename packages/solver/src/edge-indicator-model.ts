@@ -11,6 +11,9 @@ import {
 export type EdgeIndicatorSolution = Map<GridEdge, 0 | 1>;
 
 export interface EdgeIndicatorModel extends BuiltPuzzle<EdgeIndicatorSolution> {
+	/**
+	 * Maps each {@link GridEdge} to an indicator variable.
+	 */
 	variables: Map<GridEdge, Arith<string>>;
 }
 
@@ -22,7 +25,10 @@ export function decodeIndicator(assignment: string): 0 | 1 {
 	return value;
 }
 
-/** An opt-in preset: edge variables, their bindings, decoder, and solution keys. */
+/**
+ * Creates a model suitable for cartesian grid puzzles uniquely determined by the presence or absence of edges
+ * in their grid.
+ */
 export function createEdgeIndicatorModel(
 	context: Context<string>,
 	solver: Solver<string>,
