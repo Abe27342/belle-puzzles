@@ -3,9 +3,12 @@ import { killThreads, z3 } from '../z3.js';
 import {
 	CartesianGridGraph,
 	constant,
+	createEdgeValueDecoder,
+	createEdgeValueModel,
 	createGraphModel,
 	createGraphOutput,
 	renderCartesianGrid,
+	resolveGraphOutput,
 	SolverSession,
 	variable,
 } from '../index.js';
@@ -34,6 +37,58 @@ it('loads Z3 and solves puzzle constraints through the package entry point', asy
 	solver.pop();
 	expect(await solver.check()).toBe('sat');
 }, 15000);
+
+it('supports sparse integer edge domains with orientation-specific glyphs', async () => {
+	const context = new z3.Context<string>('edge-values');
+	const solver = new context.Solver();
+	const grid = new CartesianGridGraph({ width: 2, height: 2 });
+	const vertex = grid.getVertex([0, 0]);
+	const face = grid.getFace([0, 0]);
+	const output = createGraphOutput();
+	output.vertices.set(vertex, constant('V'));
+	output.faces.set(face, constant('F'));
+	const model = createEdgeValueModel(context, solver, { grid, output }, {
+		values: [-2, 2] as const,
+		glyphs: {
+			horizontal: { [-2]: '-', 2: '=' },
+			vertical: { [-2]: '|', 2: '#' },
+		},
+	});
+	const first = [...model.variables.values()][0];
+	solver.push();
+	solver.add(first.eq(0));
+	expect(await solver.check()).toBe('unsat');
+	solver.pop();
+	for (const [edge, expression] of model.variables) {
+		const [start, end] = edge.vertices;
+		solver.add(expression.eq(start.y === end.y ? -2 : 2));
+	}
+	expect(await solver.check()).toBe('sat');
+	const assignment = solver.model();
+	const display = resolveGraphOutput(model.output, assignment);
+	const solution = model.decodeSolution(assignment, display);
+	for (const [edge, value] of solution) {
+		const [start, end] = edge.vertices;
+		expect(value).toBe(start.y === end.y ? -2 : 2);
+	}
+	expect(renderCartesianGrid(grid, display)).toBe('V-·\n#F#\n·-·\n');
+	expect(model.keyAssignments).toEqual([...model.variables.values()]);
+	expect(output.edges.size).toBe(0);
+}, 15000);
+
+it('validates finite edge domains and rejects assignments outside them', () => {
+	const decode = createEdgeValueDecoder([-2, 2] as const);
+	expect(decode('-2')).toBe(-2);
+	expect(decode('(- 2)')).toBe(-2);
+	expect(decode('2')).toBe(2);
+	expect(() => decode('0')).toThrow('Invalid edge assignment');
+	expect(() => decode('')).toThrow('Invalid edge assignment');
+	for (const values of [[], [0.5], [Number.POSITIVE_INFINITY]]) {
+		expect(() => createEdgeValueDecoder(values)).toThrow(
+			'Edge values must be a non-empty domain of safe integers'
+		);
+	}
+});
 
 it('isolates puzzle contexts within the shared runtime', async () => {
 	const first = new z3.Context('first');
