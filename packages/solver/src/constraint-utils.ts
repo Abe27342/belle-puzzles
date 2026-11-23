@@ -106,7 +106,7 @@ export function* connectedConstraints<T extends HasNeighbors<T>>(
 		yield* [
 			bound(conVar, -1, vertices.length),
 			iff(edgeVariable.eq(0), conVar.eq(-1)),
-			iff(edgeVariable.eq(1), conVar.ge(0)),
+			iff(edgeVariable.gt(0), conVar.ge(0)),
 		];
 	}
 
@@ -355,28 +355,28 @@ export function createCartesianGridConstraintUtils(
 	// Some predicates that are helpful for defining constraints related to pearl colors.
 	const goesVerticallyThrough = (v: GridVertex) =>
 		And(
-			getEdgeVarFromEndpoints(v, v.up).eq(1),
-			getEdgeVarFromEndpoints(v, v.down).eq(1)
+			getEdgeVarFromEndpoints(v, v.up).gt(0),
+			getEdgeVarFromEndpoints(v, v.down).gt(0)
 		);
 
 	const goesHorizontallyThrough = (v: GridVertex) =>
 		And(
-			getEdgeVarFromEndpoints(v, v.left).eq(1),
-			getEdgeVarFromEndpoints(v, v.right).eq(1)
+			getEdgeVarFromEndpoints(v, v.left).gt(0),
+			getEdgeVarFromEndpoints(v, v.right).gt(0)
 		);
 
 	// Whether one of the horizontal edges adjacent to the vertex is used.
 	const hasHorizontalEdge = (v: GridVertex) =>
 		Or(
-			getEdgeVarFromEndpoints(v, v.left).eq(1),
-			getEdgeVarFromEndpoints(v, v.right).eq(1)
+			getEdgeVarFromEndpoints(v, v.left).gt(0),
+			getEdgeVarFromEndpoints(v, v.right).gt(0)
 		);
 
 	// Whether one of the vertical edges adjacent to the vertex is used.
 	const hasVerticalEdge = (v: GridVertex) =>
 		Or(
-			getEdgeVarFromEndpoints(v, v.up).eq(1),
-			getEdgeVarFromEndpoints(v, v.down).eq(1)
+			getEdgeVarFromEndpoints(v, v.up).gt(0),
+			getEdgeVarFromEndpoints(v, v.down).gt(0)
 		);
 
 	const directionalRun = function* (
