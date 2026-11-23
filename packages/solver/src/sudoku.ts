@@ -4,8 +4,8 @@ import {
 	CartesianGridPuzzleProps,
 	CartesianGridPuzzle,
 	CartesianGridRenderOptions,
-	defaultCartesianGridRenderOptions,
 } from './cartesian-grid-puzzle.js';
+import { constant } from './graph-output.js';
 import { parseDigit, parseTextGrids } from './text-grid.js';
 import type { TextGridVisitor } from './text-grid.js';
 import { ensureNonEmpty, oob } from './utils.js';
@@ -48,7 +48,14 @@ export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 	#givens: Given[];
 
 	constructor(props: SudokuPuzzleProps) {
-		super(props);
+		super({
+			...props,
+			renderOptions: {
+				horizontal: '-',
+				vertical: '|',
+				...props.renderOptions,
+			},
+		});
 
 		this.#givens = props.givens.map((p) => ({
 			vertex: this.grid.getVertex(p.coord),
@@ -59,6 +66,26 @@ export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 				throw new Error(`Pearl at ${given.vertex} is out of bounds`);
 			}
 		}
+
+		// Setup constant values in the output grid to render the sudoku nicely
+		const needsSeparator = (position: number) => (position + 1) % 3 === 0;
+		for (const edge of this.grid.edges()) {
+			const [start, end] = edge.vertices;
+			const horizontal = start.y === end.y;
+			const position = horizontal ? start.x : start.y;
+			const separator = horizontal
+				? this.renderOptions.vertical
+				: this.renderOptions.horizontal;
+			this.output.edges.set(
+				edge,
+				constant(needsSeparator(position) ? separator : '')
+			);
+		}
+		for (const face of this.grid.faces()) {
+			const [x, y] = face.coord;
+			const intersection = needsSeparator(x) && needsSeparator(y);
+			this.output.faces.set(face, constant(intersection ? '+' : ''));
+		}
 	}
 
 	/**
@@ -67,7 +94,7 @@ export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 	 */
 	public static fromText(
 		text: string,
-		renderOptions: CartesianGridRenderOptions = defaultCartesianGridRenderOptions
+		renderOptions?: CartesianGridRenderOptions
 	) {
 		const givens: ConstructionGiven[] = [];
 		const visitor: TextGridVisitor = ([count], coord) => {
