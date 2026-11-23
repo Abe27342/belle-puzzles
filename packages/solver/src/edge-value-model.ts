@@ -1,4 +1,4 @@
-import type { Arith, Context, Solver } from './z3.js';
+import type { Arith, Context, Expr, Solver } from './z3.js';
 import type { GridEdge, CartesianGridGraph } from './graph/index.js';
 import type { BuiltPuzzle } from './puzzle.js';
 import { createGraphOutput, GraphOutput, variable } from './graph-output.js';
@@ -28,11 +28,11 @@ export interface EdgeValueOptions<T extends number> {
 }
 
 /**
- * Decode assignments against an explicit, non-empty finite integer domain.
+ * Decode evaluated integer numerals against a non-empty finite integer domain.
  */
 export function createEdgeValueDecoder<T extends number>(
 	values: readonly T[]
-): (assignment: string) => T {
+): (assignment: Expr<string>) => T {
 	const domain = [...values];
 	if (
 		domain.length === 0 ||
@@ -43,14 +43,15 @@ export function createEdgeValueDecoder<T extends number>(
 		);
 	}
 	return (assignment) => {
+		if (!assignment.ctx.isIntVal(assignment)) {
+			throw new Error('Expected an integer edge assignment');
+		}
+		const integer = assignment.value();
 		const decoded = domain.find(
-			(value) =>
-				assignment === String(value) ||
-				// Z3 toString encodes "-2" as `(- 2)`
-				(value < 0 && assignment === `(- ${-value})`)
+			(value) => BigInt(value) === integer
 		);
 		if (decoded === undefined) {
-			throw new Error(`Invalid edge assignment: ${assignment}`);
+			throw new Error(`Invalid edge assignment: ${integer}`);
 		}
 		return decoded;
 	};
@@ -140,7 +141,7 @@ export function createEdgeValueModel<const T extends number>(
 			return new Map(
 				Array.from(variables, ([edge, expression]) => [
 					edge,
-					decode(model.eval(expression, true).toString()),
+					decode(model.eval(expression, true)),
 				])
 			);
 		},

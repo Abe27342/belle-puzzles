@@ -1,17 +1,20 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`HashiPuzzle solver > should solve for input: simple 1`] = `
-"23.4.2.
+"
+23.4.2.
 ......2
 11..133
 2..8.52
 3.3...1
 ..2..34
-3..31.2"
+3..31.2
+"
 `;
 
 exports[`HashiPuzzle solver > should solve for input: simple 2`] = `
-"2━3━·━4━·━2 ·
+"
+2━3━·━4━·━2 ·
 ┃ ┃   ‖   ┃  
 · · · · · · 2
 ┃ ┃   ‖   ┃ ‖
@@ -23,5 +26,6 @@ exports[`HashiPuzzle solver > should solve for input: simple 2`] = `
 ‖   ‖ ‖   ┃ ┃
 · · 2 · · 3=4
 ‖     ‖     ┃
-3━·━·━3 1━·━2"
+3━·━·━3 1━·━2
+"
 `;

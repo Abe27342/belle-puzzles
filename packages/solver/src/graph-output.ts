@@ -49,21 +49,22 @@ export function constant<T>(
 }
 
 export function variable(expression: Expr<string>): RenderBinding;
+/** Decode the evaluated Z3 expression before applying the value formatter. */
 export function variable<T>(
 	expression: Expr<string>,
-	decode: (assignment: string) => T,
+	decode: (assignment: Expr<string>) => T,
 	format?: (value: T) => string
 ): RenderBinding;
 export function variable<T>(
 	expression: Expr<string>,
-	decode?: (assignment: string) => T,
+	decode?: (assignment: Expr<string>) => T,
 	format: (value: T) => string = String
 ): RenderBinding {
 	return {
 		resolve(model) {
-			const assignment = model.eval(expression, true).toString();
+			const assignment = model.eval(expression, true);
 			return decode === undefined
-				? assignment
+				? assignment.toString()
 				: format(decode(assignment));
 		},
 	};

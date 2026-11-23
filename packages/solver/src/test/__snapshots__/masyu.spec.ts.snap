@@ -1,30 +1,37 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`Masyu solver > should solve for input: black corners 1`] = `
-"B..
+"
+B..
 ...
-..B"
+..B
+"
 `;
 
 exports[`Masyu solver > should solve for input: black corners 2`] = `
-"B-·-·
+"
+B-·-·
 |   |
 · · ·
 |   |
-·-·-B"
+·-·-B
+"
 `;
 
 exports[`Masyu solver > should solve for input: complex 1`] = `
-"B.W...
+"
+B.W...
 ..W..W
 ....B.
 .B....
 ......
-....B."
+....B.
+"
 `;
 
 exports[`Masyu solver > should solve for input: complex 2`] = `
-"B-·-W-· ·-·
+"
+B-·-W-· ·-·
 |     | | |
 · ·-W-· · W
 | |     | |
@@ -34,5 +41,6 @@ exports[`Masyu solver > should solve for input: complex 2`] = `
 | |   | |  
 · · ·-· · ·
 | | |   |  
-·-· ·-·-B ·"
+·-· ·-·-B ·
+"
 `;
