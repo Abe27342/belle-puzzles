@@ -1,10 +1,16 @@
-import { CartesianCoord, GridEdge, GridVertex } from './graph/index.js';
-import type { Arith, Context, Solver } from './z3.js';
+import { CartesianCoord, GridVertex } from './graph/index.js';
+import type { Context, Solver } from './z3.js';
 import {
-	EdgeIndicatorPuzzleProps,
-	EdgeIndicatorPuzzle,
-	EdgeIndicatorRenderOptions,
-} from './edge-indicator-puzzle.js';
+	CartesianGridPuzzleProps,
+	CartesianGridPuzzle,
+	CartesianGridRenderOptions,
+} from './cartesian-grid-puzzle.js';
+import {
+	createEdgeIndicatorModel,
+	EdgeIndicatorModel,
+	EdgeIndicatorSolution,
+} from './edge-indicator-model.js';
+import { constant } from './graph-output.js';
 import {
 	connectedLoopConstraints,
 	createCartesianGridConstraintUtils,
@@ -12,7 +18,7 @@ import {
 import { parsePearlColor, parseTextGrids } from './text-grid.js';
 import type { TextGridVisitor } from './text-grid.js';
 
-export interface MasyuPuzzleProps extends EdgeIndicatorPuzzleProps {
+export interface MasyuPuzzleProps extends CartesianGridPuzzleProps {
 	pearls: ConstructionPearl[];
 	renderOptions?: PearlRenderOptions;
 }
@@ -22,7 +28,7 @@ interface Pearl {
 	color: 'black' | 'white';
 }
 
-export interface PearlRenderOptions extends EdgeIndicatorRenderOptions {
+export interface PearlRenderOptions extends CartesianGridRenderOptions {
 	black: string;
 	white: string;
 }
@@ -38,7 +44,7 @@ interface ConstructionPearl {
 	color: 'black' | 'white';
 }
 
-export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white', never> {
+export class MasyuPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 	/**
 	 * Note: the indexing model assumes pearls are placed go-style.
 	 *
@@ -50,16 +56,12 @@ export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white', never> {
 	 */
 	#pearls: Pearl[];
 
-	#renderChars: PearlRenderOptions;
-
 	constructor(props: MasyuPuzzleProps) {
 		super(props);
-		this.#renderChars = props.renderOptions ?? {
-			vertex: '·',
-			horizontal: '━',
-			vertical: '┃',
+		const renderChars = {
 			black: '⬤',
 			white: '◯',
+			...props.renderOptions,
 		};
 
 		this.#pearls = props.pearls.map((p) => ({
@@ -70,7 +72,10 @@ export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white', never> {
 			if (!pearl.coord.isInBounds()) {
 				throw new Error(`Pearl at ${pearl.coord} is out of bounds`);
 			}
-			this.vertexContents.set(pearl.coord.coord, pearl.color);
+			this.output.vertices.set(
+				pearl.coord,
+				constant(pearl.color, (color) => renderChars[color])
+			);
 		}
 	}
 
@@ -85,14 +90,12 @@ export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white', never> {
 		return new MasyuPuzzle({ width, height, pearls, renderOptions });
 	}
 
-	public override addConstraints(
+	public override build(
 		context: Context<string>,
 		solver: Solver<string>
-	): Map<GridEdge, Arith<string>> {
-		const edgeVariables = this.createEdgeIndicatorVariables(
-			context,
-			solver
-		);
+	): EdgeIndicatorModel {
+		const model = createEdgeIndicatorModel(context, solver, this);
+		const edgeVariables = model.variables;
 
 		const gridUtils = createCartesianGridConstraintUtils(
 			context,
@@ -121,10 +124,6 @@ export class MasyuPuzzle extends EdgeIndicatorPuzzle<'black' | 'white', never> {
 				context
 			)
 		);
-		return edgeVariables;
-	}
-
-	protected override renderVertexData(t: 'black' | 'white'): string {
-		return this.#renderChars[t];
+		return model;
 	}
 }

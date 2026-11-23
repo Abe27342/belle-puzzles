@@ -1,5 +1,15 @@
 import { afterAll, expect, it } from 'vitest';
 import { killThreads, z3 } from '../z3.js';
+import {
+	CartesianGridGraph,
+	constant,
+	createGraphModel,
+	createGraphOutput,
+	renderCartesianGrid,
+	SolverSession,
+	variable,
+} from '../index.js';
+import type { PuzzleDefinition } from '../puzzle.js';
 
 afterAll(async () => {
 	await killThreads(z3.em);
@@ -40,4 +50,82 @@ it('isolates puzzle contexts within the shared runtime', async () => {
 	expect(firstSolver.model().eval(firstCell).toString()).toBe('1');
 	expect(await secondSolver.check()).toBe('sat');
 	expect(secondSolver.model().eval(secondCell).toString()).toBe('2');
+}, 15000);
+
+it('renders mixed graph bindings and enumerates only solution-defining assignments', async () => {
+	const grid = new CartesianGridGraph({ width: 2, height: 2 });
+	const vertex = grid.getVertex([0, 0]);
+	const top = grid.getEdge(vertex, vertex.right);
+	const left = grid.getEdge(vertex, vertex.down);
+	const face = grid.getFace([0, 0]);
+	let builds = 0;
+	const puzzle: PuzzleDefinition<number> = {
+		build(context, solver) {
+			builds++;
+			const value = context.Int.const('value');
+			const auxiliary = context.Int.const('auxiliary');
+			solver.add(value.ge(0), value.le(1));
+			solver.add(auxiliary.ge(0), auxiliary.le(2));
+			const output = createGraphOutput();
+			output.vertices.set(vertex, variable(value, Number));
+			output.vertices.set(
+				vertex.right,
+				constant('pearl', (name) => name[0].toUpperCase())
+			);
+			output.edges.set(top, constant('-'));
+			output.edges.set(
+				left,
+				variable(
+					value.eq(1),
+					(assignment) => assignment === 'true',
+					(enabled) => (enabled ? '|' : ' ')
+				)
+			);
+			output.faces.set(face, variable(value.add(1), Number));
+			return {
+				output,
+				keyAssignments: [value],
+				decodeSolution: (model) => Number(model.eval(value).toString()),
+			};
+		},
+	};
+	const session = new SolverSession(puzzle);
+	const first = await session.nextSolution();
+	const second = await session.nextSolution();
+	if (first.status !== 'sat' || second.status !== 'sat') {
+		throw new Error('Expected two satisfiable solutions');
+	}
+	expect(new Set([first.solution, second.solution])).toEqual(new Set([0, 1]));
+	for (const result of [first, second]) {
+		expect(renderCartesianGrid(grid, result.output)).toBe(
+			`${result.solution}-P\n${result.solution === 1 ? '|' : ' '}${
+				result.solution + 1
+			} \n· ·\n`
+		);
+	}
+	expect(await session.nextSolution()).toEqual({ status: 'unsat' });
+	expect(builds).toBe(1);
+}, 15000);
+
+it('supports display-only models and treats empty keys as one solution', async () => {
+	const grid = new CartesianGridGraph({ width: 2, height: 2 });
+	const face = grid.getFace([0, 0]);
+	const session = new SolverSession({
+		build(context, solver) {
+			const value = context.Int.const('value');
+			solver.add(value.eq(7));
+			const output = createGraphOutput();
+			output.faces.set(face, constant(7, String));
+			output.vertices.set(grid.getVertex([0, 0]), variable(value));
+			return createGraphModel(output, []);
+		},
+	});
+	const result = await session.nextSolution();
+	if (result.status !== 'sat') {
+		throw new Error('Expected a satisfiable solution');
+	}
+	expect(result.solution).toBe(result.output);
+	expect(result.output.faces.get(face)).toBe('7');
+	expect(result.output.vertices.get(grid.getVertex([0, 0]))).toBe('7');
+	expect(await session.nextSolution()).toEqual({ status: 'unsat' });
 }, 15000);

@@ -1,18 +1,24 @@
-import { CartesianCoord, GridEdge, GridFace } from './graph/index.js';
-import type { Arith, Context, Solver } from './z3.js';
+import { CartesianCoord, GridFace } from './graph/index.js';
+import type { Context, Solver } from './z3.js';
 import {
-	EdgeIndicatorPuzzleProps,
-	EdgeIndicatorPuzzle,
-	EdgeIndicatorRenderOptions,
-} from './edge-indicator-puzzle.js';
+	CartesianGridPuzzleProps,
+	CartesianGridPuzzle,
+	CartesianGridRenderOptions,
+} from './cartesian-grid-puzzle.js';
+import {
+	createEdgeIndicatorModel,
+	EdgeIndicatorModel,
+	EdgeIndicatorSolution,
+} from './edge-indicator-model.js';
+import { constant } from './graph-output.js';
 import { connectedLoopConstraints } from './constraint-utils.js';
 import { ensureNonEmpty, oob } from './utils.js';
 import { parseDigit, parseTextGrids } from './text-grid.js';
 import type { TextGridVisitor } from './text-grid.js';
 
-export interface SlitherlinkPuzzleProps extends EdgeIndicatorPuzzleProps {
+export interface SlitherlinkPuzzleProps extends CartesianGridPuzzleProps {
 	givens: ConstructionGivens[];
-	renderOptions?: EdgeIndicatorRenderOptions;
+	renderOptions?: CartesianGridRenderOptions;
 }
 
 interface Given {
@@ -37,7 +43,7 @@ interface ConstructionGivens {
 	count: number;
 }
 
-export class SlitherlinkPuzzle extends EdgeIndicatorPuzzle<never, string> {
+export class SlitherlinkPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 	#givens: Given[];
 
 	constructor(props: SlitherlinkPuzzleProps) {
@@ -51,13 +57,13 @@ export class SlitherlinkPuzzle extends EdgeIndicatorPuzzle<never, string> {
 			if (!given.face.isInBounds()) {
 				throw new Error(`Given at ${given.face} is out of bounds`);
 			}
-			this.faceContents.set(given.face.coord, given.count.toString());
+			this.output.faces.set(given.face, constant(given.count));
 		}
 	}
 
 	public static fromText(
 		text: string,
-		renderOptions?: EdgeIndicatorRenderOptions
+		renderOptions?: CartesianGridRenderOptions
 	) {
 		const givens: ConstructionGivens[] = [];
 		const visitor: TextGridVisitor = ([char], coord) => {
@@ -78,14 +84,12 @@ export class SlitherlinkPuzzle extends EdgeIndicatorPuzzle<never, string> {
 		});
 	}
 
-	public override addConstraints(
+	public override build(
 		context: Context<string>,
 		solver: Solver<string>
-	): Map<GridEdge, Arith<string>> {
-		const edgeVariables = this.createEdgeIndicatorVariables(
-			context,
-			solver
-		);
+	): EdgeIndicatorModel {
+		const model = createEdgeIndicatorModel(context, solver, this);
+		const edgeVariables = model.variables;
 
 		const { Sum } = context;
 
@@ -106,6 +110,6 @@ export class SlitherlinkPuzzle extends EdgeIndicatorPuzzle<never, string> {
 				context
 			)
 		);
-		return edgeVariables;
+		return model;
 	}
 }
