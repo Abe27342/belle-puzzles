@@ -44,6 +44,7 @@ export interface HasNeighbors<T> {
 
 export interface Vertex<TConcrete extends ConcreteGraphTypes>
 	extends HasNeighbors<TConcrete['vertex']> {
+	type: 'vertex';
 	coord: TConcrete['coord'];
 
 	incidentEdges(): Iterable<TConcrete['edge']>;
@@ -55,6 +56,7 @@ export interface Vertex<TConcrete extends ConcreteGraphTypes>
  */
 export interface Edge<TConcrete extends ConcreteGraphTypes>
 	extends HasNeighbors<TConcrete['edge']> {
+	type: 'edge';
 	vertices: [TConcrete['vertex'], TConcrete['vertex']];
 	/**
 	 * Faces incident to this edge (i.e. the faces that have this edge as part of their boundary).
@@ -72,6 +74,7 @@ export interface DirectedEdge<TConcrete extends ConcreteGraphTypes> {
 
 export interface Face<TConcrete extends ConcreteGraphTypes>
 	extends HasNeighbors<TConcrete['face']> {
+	type: 'face';
 	/**
 	 * Edges incident to this face (i.e. its boundary)
 	 */

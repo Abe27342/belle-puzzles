@@ -271,6 +271,10 @@ class GridVertexImpl
 		this.#grid = grid;
 	}
 
+	public get type(): 'vertex' {
+		return 'vertex';
+	}
+
 	public get x() {
 		return this.coord[0];
 	}
@@ -369,6 +373,10 @@ class GridFaceImpl extends CartesianTranslatable<GridFace> implements GridFace {
 	) {
 		super();
 		this.#grid = grid;
+	}
+
+	public get type(): 'face' {
+		return 'face';
 	}
 
 	public get x() {
@@ -477,6 +485,10 @@ class GridEdgeImpl implements GridEdge {
 				}`
 			);
 		}
+	}
+
+	public get type(): 'edge' {
+		return 'edge';
 	}
 
 	public get vertices(): [GridVertex, GridVertex] {

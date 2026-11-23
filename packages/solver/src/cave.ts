@@ -9,6 +9,7 @@ import {
 	connectedLoopConstraints,
 	createCartesianGridConstraintUtils,
 	createConstraintExtensions,
+	sightLineSumConstraints,
 } from './constraint-utils.js';
 import { ensureNonEmpty } from './utils.js';
 import { parseDigit, parseTextGrids } from './text-grid.js';
@@ -87,49 +88,10 @@ export class CavePuzzle extends EdgeIndicatorPuzzle<never, string> {
 			solver
 		);
 
-		const { Sum, Int, Implies, And } = context;
-		const { bound } = createConstraintExtensions(context);
-
-		const gridUtils = createCartesianGridConstraintUtils(
-			context,
-			solver,
-			this.grid,
-			edgeVariables
-		);
-
-		const { getEdgeVar } = gridUtils.edges;
-
 		for (const { count, face } of this.#givens) {
-			const variables: Arith<string>[] = [];
-			// Variables in each direction representing the number of straight-line faces visible from this face,
-			// including the starting face.
-			for (const edge of face.incidentEdges()) {
-				const bearing = edge.bearingFrom(face);
-				const variable = Int.const(`F${face}_B${bearing}`);
-				solver.add(bound(variable, 1, count));
-				variables.push(variable);
-
-				// Bind straight-line visibility for this direction to the relevant edge indicator variables.
-				const emptyEdges: GridEdge[] = [];
-				let blockingEdge = edge;
-				for (let stepsTaken = 0; stepsTaken < count; stepsTaken++) {
-					solver.add(
-						Implies(
-							variable.eq(stepsTaken + 1),
-							And(
-								getEdgeVar(blockingEdge).eq(1),
-								...emptyEdges.map((e) => getEdgeVar(e).eq(0))
-							)
-						)
-					);
-
-					emptyEdges.push(blockingEdge);
-					blockingEdge = blockingEdge.translate(bearing);
-				}
-			}
-
-			// We've counted the cell itself 4 times, but the actual count should include it only once.
-			solver.add(Sum(...ensureNonEmpty(variables)).eq(count + 3));
+			solver.add(
+				...sightLineSumConstraints(context, face, count, edgeVariables)
+			);
 		}
 
 		// Givens with < 5 must have at least one adjacent edge.

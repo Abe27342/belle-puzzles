@@ -79,3 +79,17 @@ W ·-· B-· ·-·-· · ·-B
 |   |   |       | | |
 B-·-· · ·-·-·-·-· ·-·"
 `;
+
+exports[`Shingoki solver > should solve for input: simple 1`] = `
+"BB
+BB
+
+22
+22"
+`;
+
+exports[`Shingoki solver > should solve for input: simple 2`] = `
+"B-B
+| |
+B-B"
+`;
