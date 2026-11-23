@@ -44,7 +44,9 @@ export function parsePearlColor(
 
 /**
  * Parse rectangular character grids separated by one or more blank lines.
- * Surrounding whitespace is ignored; LF and CRLF line endings are supported.
+ * Surrounding blank lines and each grid's common leading whitespace indentation
+ * are ignored; LF and CRLF line endings are supported. Other whitespace remains
+ * an empty grid value, including trailing spaces.
  * All grids must have the same dimensions. Each character is one value, so
  * multi-digit clues need a different format.
  *
@@ -64,13 +66,22 @@ export function parseTextGrids(
 	visitor: TextGridVisitor,
 	options: TextGridParseOptions = {}
 ): { width: number; height: number } {
-	const normalized = text.replace(/\r\n?/g, '\n').trim();
-	if (normalized.length === 0) {
+	const normalized = text
+		.replace(/\r\n?/g, '\n')
+		.replace(/^(?:[ \t]*\n)+/, '')
+		.replace(/(?:\n[ \t]*)+$/, '');
+	if (normalized.trim().length === 0) {
 		throw new Error('Expected at least one non-empty text grid');
 	}
 	const grids = normalized
 		.split(/\n[ \t]*\n(?:[ \t]*\n)*/)
-		.map((grid) => grid.split('\n'));
+		.map((grid) => {
+			const lines = grid.split('\n');
+			const indentation = Math.min(
+				...lines.map((line) => line.length - line.trimStart().length)
+			);
+			return lines.map((line) => line.slice(indentation));
+		});
 	if (options.gridCount !== undefined && grids.length !== options.gridCount) {
 		throw new Error(
 			`Expected ${options.gridCount} text grids, received ${grids.length}`

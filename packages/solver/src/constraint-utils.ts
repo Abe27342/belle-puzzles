@@ -4,14 +4,13 @@
  */
 
 import { Arith, Bool, Context, Solver } from 'z3-solver';
-import { oob } from './utils.js';
+import { ensureNonEmpty, oob } from './utils.js';
 import {
-	Vertex,
 	CartesianGridGraph,
-	Edge,
 	HasNeighbors,
 	GridVertex,
 	GridEdge,
+	GridFace,
 } from './graph/index.js';
 
 /**
@@ -193,6 +192,72 @@ export function* connectedLoopConstraints<T extends HasNeighbors<T>>(
 
 		yield Or(edgeVar.eq(0), degree.eq(2));
 	}
+}
+
+/**
+ * Given a vertex or face `v` and a count `count`, this constraint ensures that exactly `count` vertices are visible in
+ * straight lines from `v`, including `v` itself.
+ *
+ * visibility is determined by the presence of edges along straight lines from `v` based on `v`'s type
+ * (when `v` is a vertex, the edge must be present, and when `v` is a face, the edge must be absent)
+ *
+ * @remarks
+ * This should generalize to non-cartesian grids operating on their vertices.
+ *
+ * It works for cartesian grid faces in addition to vertices because that grid is self-dual
+ * (so e.g. translating an edge is well-defined for a sight line, and can be understood
+ * as an equivalent problem on the dual graph)
+ */
+export function* sightLineSumConstraints(
+	context: Context<string>,
+	v: GridFace | GridVertex,
+	count: number,
+	edgeIndicators: Map<GridEdge, Arith<string>>
+) {
+	const { Int, Sum, Implies, And, Not } = context;
+	const zero = Int.const('zero');
+	yield zero.eq(0);
+
+	const allowsVisibility =
+		v.type === 'face'
+			? (indicator: Arith<string>) => indicator.eq(0)
+			: (indicator: Arith<string>) => indicator.eq(1);
+
+	const getEdgeVar = (e: GridEdge) => edgeIndicators.get(e) ?? zero;
+	const variables: Arith<string>[] = [];
+	// Variables in each direction representing the number of straight-line faces visible from this face,
+	// including the starting face.
+	for (const edge of v.incidentEdges()) {
+		const bearing = edge.bearingFrom(v);
+		const variable = Int.const(`F${v}_B${bearing}`);
+		yield variable.ge(1).and(variable.le(count));
+		variables.push(variable);
+
+		// Bind straight-line visibility for this direction to the relevant edge indicator variables.
+		const nonBlockingEdges: GridEdge[] = [];
+		let blockingEdge = edge;
+		for (
+			let directionalCount = 1;
+			directionalCount <= count;
+			directionalCount++
+		) {
+			yield Implies(
+				variable.eq(directionalCount),
+				And(
+					...nonBlockingEdges.map((e) =>
+						allowsVisibility(getEdgeVar(e))
+					),
+					Not(allowsVisibility(getEdgeVar(blockingEdge)))
+				)
+			);
+
+			nonBlockingEdges.push(blockingEdge);
+			blockingEdge = blockingEdge.translate(bearing);
+		}
+	}
+
+	// The RHS of this fixes the fact that we overcounted the starting vertex (we counted it once for each direction).
+	yield Sum(...ensureNonEmpty(variables)).eq(count + variables.length - 1);
 }
 
 /**

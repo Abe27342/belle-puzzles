@@ -3,8 +3,6 @@ import {
 	GridEdge,
 	CartesianGridGraph,
 	CartesianGridData,
-	CartesianCoord,
-	GridVertex,
 } from './graph/index.js';
 import { Puzzle } from './puzzle.js';
 import { createConstraintExtensions } from './constraint-utils.js';
