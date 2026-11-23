@@ -9,7 +9,7 @@ import {
 	createEdgeIndicatorModel,
 	EdgeIndicatorModel,
 	EdgeIndicatorSolution,
-} from './edge-indicator-model.js';
+} from './edge-value-model.js';
 import { constant } from './graph-output.js';
 import {
 	connectedLoopConstraints,

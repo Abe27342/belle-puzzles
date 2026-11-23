@@ -1,22 +1,18 @@
-import {
-	CartesianCoord,
-	CartesianGridGraph,
-	GridEdge,
-	GridVertex,
-} from './graph/index.js';
-import type { Arith, Context, Solver } from './z3.js';
+import { CartesianCoord, GridVertex } from './graph/index.js';
+import type { Context, Solver } from './z3.js';
 import {
 	CartesianGridPuzzleProps,
 	CartesianGridPuzzle,
 	CartesianGridRenderOptions,
 	defaultCartesianGridRenderOptions,
 } from './cartesian-grid-puzzle.js';
+import { constant } from './graph-output.js';
 import {
-	constant,
-	createGraphOutput,
-	GraphOutput,
-	variable,
-} from './graph-output.js';
+	createEdgeValueModel,
+	EdgeValueModel,
+	EdgeValueModelProps,
+	EdgeValueSolution,
+} from './edge-value-model.js';
 import {
 	connectedConstraints,
 	createCartesianGridConstraintUtils,
@@ -24,7 +20,6 @@ import {
 import { parseDigit, parseTextGrids } from './text-grid.js';
 import type { TextGridVisitor } from './text-grid.js';
 import { ensureNonEmpty } from './utils.js';
-import { BuiltPuzzle } from './puzzle.js';
 
 export interface HashiPuzzleProps extends CartesianGridPuzzleProps {
 	givens: ConstructionGiven[];
@@ -53,6 +48,44 @@ interface ConstructionGiven {
 export interface HashiRenderOptions extends CartesianGridRenderOptions {
 	doubleHorizontal: string;
 	doubleVertical: string;
+}
+
+type HashiEdgeModel = EdgeValueModel<0 | 1 | 2>;
+
+type HashiSolution = EdgeValueSolution<0 | 1 | 2>;
+
+const defaultRenderOptions: HashiRenderOptions = {
+	...defaultCartesianGridRenderOptions,
+	doubleHorizontal: '=',
+	doubleVertical: '‖',
+};
+
+export function createHashiEdgeModel(
+	context: Context<string>,
+	solver: Solver<string>,
+	props: EdgeValueModelProps & {
+		renderOptions?: Partial<HashiRenderOptions>;
+	}
+): HashiEdgeModel {
+	const renderOptions = {
+		...defaultRenderOptions,
+		...props.renderOptions,
+	};
+	return createEdgeValueModel(context, solver, props, {
+		values: [0, 1, 2] as const,
+		glyphs: {
+			horizontal: [
+				' ',
+				renderOptions.horizontal,
+				renderOptions.doubleHorizontal,
+			],
+			vertical: [
+				' ',
+				renderOptions.vertical,
+				renderOptions.doubleVertical,
+			],
+		},
+	});
 }
 
 export class HashiPuzzle extends CartesianGridPuzzle<HashiSolution> {
@@ -164,82 +197,4 @@ export class HashiPuzzle extends CartesianGridPuzzle<HashiSolution> {
 
 		return model;
 	}
-}
-
-const defaultRenderOptions: HashiRenderOptions = {
-	...defaultCartesianGridRenderOptions,
-	doubleHorizontal: '=',
-	doubleVertical: '‖',
-};
-
-interface HashiEdgeModel extends BuiltPuzzle<HashiSolution> {
-	variables: Map<GridEdge, Arith<string>>;
-}
-
-type HashiSolution = Map<GridEdge, 0 | 1 | 2>;
-
-export function createHashiEdgeModel(
-	context: Context<string>,
-	solver: Solver<string>,
-	props: {
-		grid: CartesianGridGraph;
-		output?: GraphOutput;
-		renderOptions?: Partial<HashiRenderOptions>;
-	}
-): HashiEdgeModel {
-	const output = createGraphOutput(props.output);
-	const renderOptions = {
-		...defaultRenderOptions,
-		...props.renderOptions,
-	};
-	const { Int } = context;
-	const variables = new Map<GridEdge, Arith<string>>();
-
-	const empty = ' ';
-	const renderMap = {
-		horizontal: [
-			empty,
-			renderOptions.horizontal,
-			renderOptions.doubleHorizontal,
-		],
-		vertical: [empty, renderOptions.vertical, renderOptions.doubleVertical],
-	};
-	const valueToChar = (edge: GridEdge, value: number) => {
-		const [start, end] = edge.vertices;
-		const orientation = start.y === end.y ? 'horizontal' : 'vertical';
-		return renderMap[orientation][value];
-	};
-
-	for (const edge of props.grid.edges()) {
-		const bridgeVar = Int.const(edge.toString());
-		solver.add(bridgeVar.ge(0).and(bridgeVar.le(2)));
-		variables.set(edge, bridgeVar);
-		output.edges.set(
-			edge,
-			variable(bridgeVar, decodeEdgeVariable, (value) =>
-				valueToChar(edge, value)
-			)
-		);
-	}
-	return {
-		variables,
-		output,
-		keyAssignments: [...variables.values()],
-		decodeSolution(model) {
-			return new Map(
-				Array.from(variables, ([edge, expression]) => [
-					edge,
-					decodeEdgeVariable(model.eval(expression, true).toString()),
-				])
-			);
-		},
-	};
-}
-
-function decodeEdgeVariable(assignment: string): 0 | 1 | 2 {
-	const value = Number(assignment);
-	if (value !== 0 && value !== 1 && value !== 2) {
-		throw new Error(`Invalid indicator assignment: ${assignment}`);
-	}
-	return value;
 }
