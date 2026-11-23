@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { EdgeIndicatorPuzzle } from '../edge-indicator-puzzle';
+import {
+	CartesianGridPuzzle,
+	renderCartesianGrid,
+} from '../cartesian-grid-puzzle.js';
+import { solve } from '../puzzle.js';
 
 export function expectEqualSolutionString(actual: string, expected: string) {
 	const normalizedActual = actual.trim();
@@ -25,7 +29,7 @@ export function expectEqualSolutionString(actual: string, expected: string) {
 
 interface PuzzleClass {
 	name: string;
-	fromText(input: string): EdgeIndicatorPuzzle<unknown, unknown>;
+	fromText(input: string): CartesianGridPuzzle<unknown>;
 }
 
 export function describeSuiteFromTestData(
@@ -40,10 +44,15 @@ export function describeSuiteFromTestData(
 				async () => {
 					const puzzle = puzzleClass.fromText(input);
 					expect(input.trim()).toMatchSnapshot();
-					const assignment = await puzzle.solve();
-					const solutionString = await puzzle.renderSolution(
-						assignment
-					);
+					const result = await solve(puzzle);
+					const solutionString =
+						result.status === 'sat'
+							? renderCartesianGrid(
+									puzzle.grid,
+									result.output,
+									puzzle.renderOptions
+							  )
+							: result.status;
 					expect(solutionString.trim()).toMatchSnapshot();
 				}
 			);
