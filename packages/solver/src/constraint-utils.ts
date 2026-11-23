@@ -6,9 +6,7 @@
 import { Arith, Bool, Context, Solver } from 'z3-solver';
 import { oob } from './utils.js';
 import {
-	Vertex,
 	CartesianGridGraph,
-	Edge,
 	HasNeighbors,
 	GridVertex,
 	GridEdge,
