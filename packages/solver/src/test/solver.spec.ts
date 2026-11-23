@@ -3,16 +3,17 @@ import { killThreads, z3 } from '../z3.js';
 import {
 	CartesianGridGraph,
 	constant,
-	createEdgeValueDecoder,
+	createValueDecoder,
 	createEdgeValueModel,
 	createGraphModel,
 	createGraphOutput,
+	createVertexValueModel,
 	renderCartesianGrid,
 	resolveGraphOutput,
 	SolverSession,
 	variable,
 } from '../index.js';
-import type { PuzzleDefinition } from '../puzzle.js';
+import type { PuzzleDefinition, VertexValueSolution } from '../index.js';
 
 afterAll(async () => {
 	await killThreads(z3.em);
@@ -47,13 +48,18 @@ it('supports sparse integer edge domains with orientation-specific glyphs', asyn
 	const output = createGraphOutput();
 	output.vertices.set(vertex, constant('V'));
 	output.faces.set(face, constant('F'));
-	const model = createEdgeValueModel(context, solver, { grid, output }, {
-		values: [-2, 2] as const,
-		glyphs: {
-			horizontal: { [-2]: '-', 2: '=' },
-			vertical: { [-2]: '|', 2: '#' },
-		},
-	});
+	const model = createEdgeValueModel(
+		context,
+		solver,
+		{ grid, output },
+		{
+			values: [-2, 2] as const,
+			glyphs: {
+				horizontal: { [-2]: '-', 2: '=' },
+				vertical: { [-2]: '|', 2: '#' },
+			},
+		}
+	);
 	const first = [...model.variables.values()][0];
 	solver.push();
 	solver.add(first.eq(0));
@@ -76,27 +82,29 @@ it('supports sparse integer edge domains with orientation-specific glyphs', asyn
 	expect(output.edges.size).toBe(0);
 }, 15000);
 
-it('validates finite edge domains and rejects assignments outside them', () => {
-	const context = new z3.Context<string>('edge-decoding');
-	const decode = createEdgeValueDecoder([-2, 2] as const);
+it('validates finite value domains and rejects assignments outside them', () => {
+	const context = new z3.Context<string>('value-decoding');
+	const decode = createValueDecoder([-2, 2] as const);
 	expect(decode(context.Int.val(-2))).toBe(-2);
 	expect(decode(context.Int.val(2))).toBe(2);
-	expect(() => decode(context.Int.val(0))).toThrow('Invalid edge assignment');
+	expect(() => decode(context.Int.val(0))).toThrow(
+		'Invalid value assignment'
+	);
 	expect(() =>
 		decode(context.Int.val(BigInt(Number.MAX_SAFE_INTEGER) + 1n))
-	).toThrow('Invalid edge assignment');
+	).toThrow('BigInt exceeds safe Number range');
 	for (const assignment of [
 		context.Bool.val(true),
 		context.Real.val(2),
 		context.Int.const('unresolved'),
 	]) {
 		expect(() => decode(assignment)).toThrow(
-			'Expected an integer edge assignment'
+			'Expected an integer value assignment'
 		);
 	}
 	for (const values of [[], [0.5], [Number.POSITIVE_INFINITY]]) {
-		expect(() => createEdgeValueDecoder(values)).toThrow(
-			'Edge values must be a non-empty domain of safe integers'
+		expect(() => createValueDecoder(values)).toThrow(
+			'Values must be a non-empty domain of safe integers'
 		);
 	}
 });
@@ -133,8 +141,8 @@ it('renders mixed graph bindings and enumerates only solution-defining assignmen
 			solver.add(value.ge(0), value.le(1));
 			solver.add(auxiliary.ge(0), auxiliary.le(2));
 			const output = createGraphOutput();
-			const decodeValue = createEdgeValueDecoder([0, 1] as const);
-			const decodeCount = createEdgeValueDecoder([1, 2] as const);
+			const decodeValue = createValueDecoder([0, 1] as const);
+			const decodeCount = createValueDecoder([1, 2] as const);
 			output.vertices.set(vertex, variable(value, decodeValue));
 			output.vertices.set(
 				vertex.right,
@@ -197,3 +205,97 @@ it('supports display-only models and treats empty keys as one solution', async (
 	expect(result.output.vertices.get(grid.getVertex([0, 0]))).toBe('7');
 	expect(await session.nextSolution()).toEqual({ status: 'unsat' });
 }, 15000);
+
+it('renders and enumerates vertex values while preserving other output bindings', async () => {
+	const grid = new CartesianGridGraph({ width: 2, height: 2 });
+	const vertex = grid.getVertex([0, 0]);
+	const output = createGraphOutput();
+	output.edges.set(grid.getEdge(vertex, vertex.right), constant('-'));
+	output.faces.set(grid.getFace([0, 0]), constant('F'));
+	const puzzle: PuzzleDefinition<VertexValueSolution<1 | 2>> = {
+		build(context, solver) {
+			const model = createVertexValueModel(
+				context,
+				solver,
+				{ grid, output },
+				{
+					values: [1, 2] as const,
+					glyphs: { 1: 'A', 2: 'B' },
+				}
+			);
+			// A coordinate-named auxiliary must not collide with vertex variables.
+			solver.add(context.Int.const(vertex.toString()).eq(9));
+			for (const [key, expression] of model.variables) {
+				if (key !== vertex) {
+					solver.add(expression.eq(1));
+				}
+			}
+			expect(model.keyAssignments).toEqual([...model.variables.values()]);
+			return model;
+		},
+	};
+	const session = new SolverSession(puzzle);
+	const first = await session.nextSolution();
+	const second = await session.nextSolution();
+	if (first.status !== 'sat' || second.status !== 'sat') {
+		throw new Error('Expected two satisfiable vertex solutions');
+	}
+	expect(
+		new Set([first.solution.get(vertex), second.solution.get(vertex)])
+	).toEqual(new Set([1, 2]));
+	for (const result of [first, second]) {
+		expect(result.solution.size).toBe(4);
+		expect(renderCartesianGrid(grid, result.output)).toBe(
+			`${result.solution.get(vertex) === 1 ? 'A' : 'B'}-A\n F \nA A\n`
+		);
+	}
+	expect(await session.nextSolution()).toEqual({ status: 'unsat' });
+	expect(output.vertices.size).toBe(0);
+}, 15000);
+
+it.each(['edges', 'vertices'] as const)(
+	'formats decoded %s as numbers when glyphs are omitted',
+	async (kind) => {
+		const context = new z3.Context<string>('numeric-output');
+		const solver = new context.Solver();
+		const grid = new CartesianGridGraph({ width: 2, height: 1 });
+		const options = { values: [-2, 2] as const };
+		const model =
+			kind === 'edges'
+				? createEdgeValueModel(context, solver, { grid }, options)
+				: createVertexValueModel(context, solver, { grid }, options);
+		for (const expression of model.variables.values()) {
+			solver.add(expression.eq(-2));
+		}
+		expect(await solver.check()).toBe('sat');
+		const assignment = solver.model();
+		const display = resolveGraphOutput(model.output, assignment);
+		const rendered = [
+			...display.edges.values(),
+			...display.vertices.values(),
+		];
+		expect(rendered.length).toBe(model.variables.size);
+		expect(new Set(rendered)).toEqual(new Set(['-2']));
+		const solution = model.decodeSolution(assignment, display);
+		expect(new Set(solution.values())).toEqual(new Set([-2]));
+	},
+	15000
+);
+
+it('rejects incomplete explicit glyph maps instead of using numeric fallback', () => {
+	const context = new z3.Context<string>('incomplete-glyphs');
+	const solver = new context.Solver();
+	const grid = new CartesianGridGraph({ width: 1, height: 1 });
+	const values: number[] = [0, 1];
+	expect(() =>
+		createVertexValueModel(
+			context,
+			solver,
+			{ grid },
+			{
+				values,
+				glyphs: { 0: '0' },
+			}
+		)
+	).toThrow('Missing value glyph for value 1');
+});

@@ -10,9 +10,9 @@ import { constant } from './graph-output.js';
 import {
 	createEdgeValueModel,
 	EdgeValueModel,
-	EdgeValueModelProps,
 	EdgeValueSolution,
 } from './edge-value-model.js';
+import type { GridValueModelProps } from './value-model.js';
 import {
 	connectedConstraints,
 	createCartesianGridConstraintUtils,
@@ -63,7 +63,7 @@ const defaultRenderOptions: HashiRenderOptions = {
 export function createHashiEdgeModel(
 	context: Context<string>,
 	solver: Solver<string>,
-	props: EdgeValueModelProps & {
+	props: GridValueModelProps & {
 		renderOptions?: Partial<HashiRenderOptions>;
 	}
 ): HashiEdgeModel {
