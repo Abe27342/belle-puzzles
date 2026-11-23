@@ -77,12 +77,23 @@ it('supports sparse integer edge domains with orientation-specific glyphs', asyn
 }, 15000);
 
 it('validates finite edge domains and rejects assignments outside them', () => {
+	const context = new z3.Context<string>('edge-decoding');
 	const decode = createEdgeValueDecoder([-2, 2] as const);
-	expect(decode('-2')).toBe(-2);
-	expect(decode('(- 2)')).toBe(-2);
-	expect(decode('2')).toBe(2);
-	expect(() => decode('0')).toThrow('Invalid edge assignment');
-	expect(() => decode('')).toThrow('Invalid edge assignment');
+	expect(decode(context.Int.val(-2))).toBe(-2);
+	expect(decode(context.Int.val(2))).toBe(2);
+	expect(() => decode(context.Int.val(0))).toThrow('Invalid edge assignment');
+	expect(() =>
+		decode(context.Int.val(BigInt(Number.MAX_SAFE_INTEGER) + 1n))
+	).toThrow('Invalid edge assignment');
+	for (const assignment of [
+		context.Bool.val(true),
+		context.Real.val(2),
+		context.Int.const('unresolved'),
+	]) {
+		expect(() => decode(assignment)).toThrow(
+			'Expected an integer edge assignment'
+		);
+	}
 	for (const values of [[], [0.5], [Number.POSITIVE_INFINITY]]) {
 		expect(() => createEdgeValueDecoder(values)).toThrow(
 			'Edge values must be a non-empty domain of safe integers'
@@ -122,7 +133,9 @@ it('renders mixed graph bindings and enumerates only solution-defining assignmen
 			solver.add(value.ge(0), value.le(1));
 			solver.add(auxiliary.ge(0), auxiliary.le(2));
 			const output = createGraphOutput();
-			output.vertices.set(vertex, variable(value, Number));
+			const decodeValue = createEdgeValueDecoder([0, 1] as const);
+			const decodeCount = createEdgeValueDecoder([1, 2] as const);
+			output.vertices.set(vertex, variable(value, decodeValue));
 			output.vertices.set(
 				vertex.right,
 				constant('pearl', (name) => name[0].toUpperCase())
@@ -132,15 +145,15 @@ it('renders mixed graph bindings and enumerates only solution-defining assignmen
 				left,
 				variable(
 					value.eq(1),
-					(assignment) => assignment === 'true',
+					(assignment) => context.isTrue(assignment),
 					(enabled) => (enabled ? '|' : ' ')
 				)
 			);
-			output.faces.set(face, variable(value.add(1), Number));
+			output.faces.set(face, variable(value.add(1), decodeCount));
 			return {
 				output,
 				keyAssignments: [value],
-				decodeSolution: (model) => Number(model.eval(value).toString()),
+				decodeSolution: (model) => decodeValue(model.eval(value, true)),
 			};
 		},
 	};
