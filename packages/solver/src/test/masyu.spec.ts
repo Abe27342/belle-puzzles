@@ -1,4 +1,4 @@
-import { MasyuPuzzle } from '../masyu.js';
+import { MasyuPuzzle } from '../puzzles/masyu.js';
 import { describeSuiteFromTestData } from './utils.js';
 
 // This set of characters renders better in VSCode editor.

@@ -1,16 +1,16 @@
-export * from './masyu.js';
-export * from './text-grid.js';
-export * from './puzzle.js';
-export * from './graph-output.js';
-export * from './cartesian-grid-puzzle.js';
-export * from './edge-value-model.js';
-export * from './value-model.js';
-export * from './vertex-value-model.js';
-export * from './graph/index.js';
-export * from './cave.js';
-export * from './slitherlink.js';
-export { ShingokiPuzzle } from './shingoki.js';
+export * from './puzzles/masyu.js';
+export * from './lib/text-grid.js';
+export * from './lib/puzzle.js';
+export * from './lib/graph-output.js';
+export * from './lib/cartesian-grid-puzzle.js';
+export * from './lib/edge-value-model.js';
+export * from './lib/value-model.js';
+export * from './lib/vertex-value-model.js';
+export * from './lib/graph/index.js';
+export * from './puzzles/cave.js';
+export * from './puzzles/slitherlink.js';
+export { ShingokiPuzzle } from './puzzles/shingoki.js';
 export type {
 	ShingokiPuzzleProps,
 	PearlRenderOptions as ShingokiPearlRenderOptions,
-} from './shingoki.js';
+} from './puzzles/shingoki.js';

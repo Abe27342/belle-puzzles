@@ -1,19 +1,19 @@
-import { CartesianCoord, GridVertex } from './graph/index.js';
-import type { Context, Solver } from './z3.js';
+import { CartesianCoord, GridVertex } from '../lib/graph/index.js';
+import type { Context, Solver } from '../lib/z3.js';
 import {
 	CartesianGridPuzzleProps,
 	CartesianGridPuzzle,
 	CartesianGridRenderOptions,
-} from './cartesian-grid-puzzle.js';
-import { constant } from './graph-output.js';
-import { parseDigit, parseTextGrids } from './text-grid.js';
-import type { TextGridVisitor } from './text-grid.js';
-import { ensureNonEmpty, oob } from './utils.js';
+} from '../lib/cartesian-grid-puzzle.js';
+import { constant } from '../lib/graph-output.js';
+import { parseDigit, parseTextGrids } from '../lib/text-grid.js';
+import type { TextGridVisitor } from '../lib/text-grid.js';
+import { ensureNonEmpty, oob } from '../lib/utils.js';
 import {
 	createVertexValueModel,
 	VertexValueModel,
 	VertexValueSolution,
-} from './vertex-value-model.js';
+} from '../lib/vertex-value-model.js';
 
 export interface SudokuPuzzleProps extends CartesianGridPuzzleProps {
 	givens: ConstructionGiven[];

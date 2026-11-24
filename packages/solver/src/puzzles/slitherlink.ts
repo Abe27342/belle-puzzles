@@ -1,20 +1,20 @@
-import { CartesianCoord, GridFace } from './graph/index.js';
-import type { Context, Solver } from './z3.js';
+import { CartesianCoord, GridFace } from '../lib/graph/index.js';
+import type { Context, Solver } from '../lib/z3.js';
 import {
 	CartesianGridPuzzleProps,
 	CartesianGridPuzzle,
 	CartesianGridRenderOptions,
-} from './cartesian-grid-puzzle.js';
+} from '../lib/cartesian-grid-puzzle.js';
 import {
 	createEdgeIndicatorModel,
 	EdgeIndicatorModel,
 	EdgeIndicatorSolution,
-} from './edge-value-model.js';
-import { constant } from './graph-output.js';
-import { connectedLoopConstraints } from './constraint-utils.js';
-import { ensureNonEmpty, oob } from './utils.js';
-import { parseDigit, parseTextGrids } from './text-grid.js';
-import type { TextGridVisitor } from './text-grid.js';
+} from '../lib/edge-value-model.js';
+import { constant } from '../lib/graph-output.js';
+import { connectedLoopConstraints } from '../lib/constraint-utils.js';
+import { ensureNonEmpty, oob } from '../lib/utils.js';
+import { parseDigit, parseTextGrids } from '../lib/text-grid.js';
+import type { TextGridVisitor } from '../lib/text-grid.js';
 
 export interface SlitherlinkPuzzleProps extends CartesianGridPuzzleProps {
 	givens: ConstructionGivens[];
