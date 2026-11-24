@@ -23,7 +23,7 @@ import {
 
 export interface ShingokiPuzzleProps extends CartesianGridPuzzleProps {
 	pearls: ConstructionPearl[];
-	renderOptions?: PearlRenderOptions;
+	renderOptions?: Partial<PearlRenderOptions>;
 }
 
 interface Pearl {
@@ -102,7 +102,10 @@ export class ShingokiPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 	 * The grids should be separated by one or more blank lines.
 	 * The parser does not currently support multi-digit lengths for pearls.
 	 */
-	public static fromText(text: string, renderOptions?: PearlRenderOptions) {
+	public static fromText(
+		text: string,
+		renderOptions?: Partial<PearlRenderOptions>
+	) {
 		const pearls: ConstructionPearl[] = [];
 		const visitor: TextGridVisitor = ([char, lengthChar], coord) => {
 			if (

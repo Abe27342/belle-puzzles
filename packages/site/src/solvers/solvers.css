@@ -36,7 +36,7 @@
 
 .solver-menu-collapsed {
 	width: 2.5rem;
-	padding: 0;
+	padding: 1rem 0;
 }
 
 .solver-menu-heading {
@@ -158,7 +158,9 @@
 
 .solver-input textarea,
 .solver-output pre {
-	font: 18px/1.3 Consolas, 'Courier New', monospace;
+	font: 18px/1.3 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+		'Liberation Mono', 'Courier New', monospace;
+	font-variant-ligatures: none;
 	tab-size: 4;
 }
 
@@ -182,8 +184,52 @@
 	cursor: pointer;
 }
 
-.solver-menu-heading button {
-	padding: 0.4rem 0.65rem;
+.solver-area .solver-menu-toggle {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	min-width: 2.25rem;
+	min-height: 2.25rem;
+	padding: 0.35rem;
+	border: 1px solid #b5c8b7;
+	border-radius: 0.5rem;
+	background: transparent;
+	color: #164a41;
+}
+
+.solver-menu-toggle svg {
+	width: 1.25rem;
+	height: 1.25rem;
+}
+
+.solver-menu-toggle .solver-menu-caret {
+	width: 1rem;
+	height: 1rem;
+}
+
+.solver-menu-toggle:hover {
+	background: #d2e1cf;
+}
+
+.solver-menu-toggle:focus-visible,
+.solver-next-link:focus-visible {
+	outline: 2px solid #164a41;
+	outline-offset: 3px;
+}
+
+.solver-area .solver-next-link {
+	padding: 0;
+	border: 0;
+	background: none;
+	color: #164a41;
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
+}
+
+.solver-area .solver-next-link:disabled {
+	color: #586d64;
+	text-decoration: none;
 }
 
 .solver-area button:disabled {
@@ -197,6 +243,81 @@
 
 .solver-output [role='alert'] {
 	color: #9d1616;
+}
+
+.solver-visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+	border: 0;
+}
+
+.solver-skeleton-heading,
+.solver-skeleton-search,
+.solver-skeleton-line,
+.solver-skeleton-textarea,
+.solver-skeleton-button {
+	display: block;
+	background: #d8e2d7;
+	border-radius: 0.25rem;
+}
+
+.solver-skeleton-heading,
+.solver-skeleton-search,
+.solver-skeleton-line,
+.solver-skeleton-textarea,
+.solver-skeleton-button {
+	animation: solver-skeleton-pulse 1.2s ease-in-out infinite alternate;
+}
+
+.solver-skeleton-heading {
+	width: 8rem;
+	height: 1.5rem;
+	margin-bottom: 1rem;
+}
+
+.solver-skeleton-search {
+	height: 2.25rem;
+	margin-bottom: 1rem;
+}
+
+.solver-skeleton-line {
+	height: 1rem;
+	margin-bottom: 1rem;
+}
+
+.solver-skeleton-textarea {
+	height: 15rem;
+	margin-top: 1.5rem;
+}
+
+.solver-skeleton-button {
+	width: 6rem;
+	height: 2.25rem;
+}
+
+@keyframes solver-skeleton-pulse {
+	from {
+		opacity: 0.5;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.solver-skeleton-heading,
+	.solver-skeleton-search,
+	.solver-skeleton-line,
+	.solver-skeleton-textarea,
+	.solver-skeleton-button {
+		animation: none;
+	}
 }
 
 @media (max-width: 900px) {
@@ -217,6 +338,15 @@
 
 	.solver-divider {
 		display: none;
+	}
+
+	.solver-input h1,
+	.solver-output > h2 {
+		text-align: center;
+	}
+
+	.solver-page-skeleton .solver-input > .solver-skeleton-heading {
+		margin-inline: auto;
 	}
 }
 
@@ -244,15 +374,47 @@
 
 	.solver-menu {
 		grid-row: 1;
+		position: relative;
+		z-index: 2;
 		width: auto;
-		max-height: 40vh;
-		max-height: 40dvh;
+		padding: 0.5rem 1rem;
 		border-right: 0;
-		border-bottom: 1px solid #c6d3c8;
+		background: transparent;
 	}
 
-	.solver-menu-collapsed .solver-menu-heading {
+	.solver-menu-heading {
 		justify-content: flex-start;
+		margin: 0;
+	}
+
+	.solver-area .solver-menu-toggle {
+		min-height: 2.75rem;
+		padding: 0.5rem 0.75rem;
+	}
+
+	#solver-menu-content {
+		position: absolute;
+		top: 100%;
+		left: 1rem;
+		right: 1rem;
+		box-sizing: border-box;
+		max-height: min(70vh, 28rem);
+		max-height: min(70dvh, 28rem);
+		padding: 1rem;
+		border: 1px solid #b5c8b7;
+		border-radius: 0.75rem;
+		background: #eaf1e8;
+		box-shadow: 0 0.5rem 1.5rem rgb(24 59 50 / 18%);
+	}
+
+	.solver-page-skeleton .solver-menu > .solver-skeleton-line,
+	.solver-page-skeleton .solver-menu > .solver-skeleton-search {
+		display: none;
+	}
+
+	.solver-page-skeleton .solver-menu > .solver-skeleton-heading {
+		height: 2.75rem;
+		margin: 0;
 	}
 
 	.solver-input,

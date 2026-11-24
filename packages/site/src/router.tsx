@@ -18,6 +18,7 @@ import {
 	HandleAuthRedirects,
 } from './components';
 import { fetchLoginInfo, redirectIfAlreadyLoggedIn } from './loaders';
+import { SolverPageSkeleton } from './solvers/solverSkeleton';
 
 const SolverRoute = React.lazy(() =>
 	import('./solvers/solverPage').then(({ SolverRoute }) => ({
@@ -26,7 +27,7 @@ const SolverRoute = React.lazy(() =>
 );
 
 const solverPage = (
-	<React.Suspense fallback={<p role="status">Loading solver page...</p>}>
+	<React.Suspense fallback={<SolverPageSkeleton />}>
 		<SolverRoute />
 	</React.Suspense>
 );
