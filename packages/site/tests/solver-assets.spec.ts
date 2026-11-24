@@ -2,10 +2,10 @@
 import { request, type IncomingHttpHeaders } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { isolationHeaders, solverAssets } from '../solver-assets';
 
-it('serves unbundled Z3 development assets with isolation headers and correct MIME types', async () => {
+it('serves isolated Z3 assets and resets registration on solver rebuilds', async () => {
 	const server = await createServer({
 		configFile: false,
 		root: fileURLToPath(new URL('..', import.meta.url)),
@@ -54,6 +54,16 @@ it('serves unbundled Z3 development assets with isolation headers and correct MI
 			);
 			expect(headers['content-type']).toBe(mimeType);
 		}
+		const send = vi.spyOn(server.ws, 'send');
+		server.watcher.emit(
+			'change',
+			fileURLToPath(
+				new URL('../../solver/dist/puzzles/masyu.js', import.meta.url)
+			)
+		);
+		await vi.waitFor(() => {
+			expect(send).toHaveBeenCalledWith({ type: 'full-reload' });
+		});
 	} finally {
 		await server.close();
 	}

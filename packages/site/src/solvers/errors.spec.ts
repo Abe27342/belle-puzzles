@@ -46,6 +46,16 @@ it('identifies parsing failures and points to the input instructions', () => {
 	expect(message).toContain('load an example');
 });
 
+it('preserves unknown puzzle errors without looking up missing metadata', () => {
+	const message = formatSolverError(
+		new Error('Unknown puzzle type "missing".'),
+		'parse',
+		'missing'
+	);
+	expect(message).toContain('Could not parse this logic puzzle');
+	expect(message).toContain('Unknown puzzle type "missing".');
+});
+
 it('shows one-based row and column numbers for coordinate-based parse errors', () => {
 	expect(
 		formatSolverError(

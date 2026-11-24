@@ -6,7 +6,8 @@
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
-import type { Plugin } from 'vite';
+import { fileURLToPath } from 'node:url';
+import { normalizePath, type Plugin } from 'vite';
 
 export const isolationHeaders = {
 	'Cross-Origin-Opener-Policy': 'same-origin',
@@ -14,9 +15,9 @@ export const isolationHeaders = {
 };
 
 export function solverAssets(): Plugin {
-	const solverRequire = createRequire(
-		import.meta.resolve('@belle-puzzles/solver')
-	);
+	const solverEntry = import.meta.resolve('@belle-puzzles/solver');
+	const solverRequire = createRequire(solverEntry);
+	const solverDirectory = normalizePath(dirname(fileURLToPath(solverEntry)));
 	const z3Directory = dirname(solverRequire.resolve('z3-solver'));
 	const assets = ['z3-built.js', 'z3-built.wasm'];
 	let building = false;
@@ -24,6 +25,16 @@ export function solverAssets(): Plugin {
 		name: 'solver-assets',
 		configResolved(config) {
 			building = config.command === 'build';
+		},
+		// This ensures the puzzle catalog (which uses module load side effects) is up-to-date.
+		handleHotUpdate({ file, server }) {
+			if (
+				normalizePath(file).startsWith(`${solverDirectory}/`) &&
+				file.endsWith('.js')
+			) {
+				server.ws.send({ type: 'full-reload' });
+				return [];
+			}
 		},
 		buildStart() {
 			if (!building) return;

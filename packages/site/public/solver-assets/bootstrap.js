@@ -1,6 +1,8 @@
-// Loaded by createSolverClient as a classic Web Worker at /solver-assets/bootstrap.js.
+// Loaded by prepareSolverWorker as a classic Web Worker at /solver-assets/bootstrap.js.
 // Its first message supplies the bundled solver module URL. Load Z3's unbundled
 // Emscripten script with importScripts, then dynamically import that solver module.
+// Z3's browser/thread-loading guidance explains some of the magic strings in this code:
+// https://github.com/Z3Prover/z3/blob/master/src/api/js/PUBLISHED_README.md#using
 let runtime;
 function initializationFailed(error) {
 	// Initialization may have spawned threads before rejecting its promise.

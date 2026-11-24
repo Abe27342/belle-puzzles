@@ -45,19 +45,13 @@ interface ConstructionGivens {
 	count: number;
 }
 
-declare module '../catalog.js' {
-	interface PuzzleTypes {
-		cave: typeof CavePuzzle;
-	}
-}
-
 export class CavePuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 	static {
 		registerPuzzle('cave', {
 			name: 'Cave',
 			instructions:
 				'Enter a rectangular grid of single-digit cell clues (0-9). Multi-digit clues are not supported.',
-			example: '1',
+			example: '...3\n.4..\n5.6.\n...2',
 			parser: CavePuzzle,
 		});
 	}

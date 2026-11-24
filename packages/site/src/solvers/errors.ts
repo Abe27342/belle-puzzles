@@ -1,4 +1,4 @@
-import { puzzleTypes, type PuzzleType } from '@belle-puzzles/solver';
+import { isPuzzleType, puzzleTypes } from '@belle-puzzles/solver';
 
 export type SolverErrorStage =
 	| 'runtime'
@@ -29,9 +29,12 @@ export function errorMessage(error: unknown, depth = 0): string {
 export function formatSolverError(
 	error: unknown,
 	stage: SolverErrorStage,
-	puzzleType?: PuzzleType
+	puzzleType?: string
 ): string {
-	const name = puzzleType ? puzzleTypes[puzzleType].name : 'logic';
+	const name =
+		puzzleType && isPuzzleType(puzzleType)
+			? puzzleTypes[puzzleType].name
+			: 'logic';
 	const guidance: Record<SolverErrorStage, string> = {
 		runtime:
 			'The solver could not start. Reload the page and try again. Check your connection if it still fails.',

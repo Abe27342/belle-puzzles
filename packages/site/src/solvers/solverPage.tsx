@@ -1,11 +1,12 @@
 import * as React from 'react';
 import { NavLink, useParams } from 'react-router-dom';
+import { isPuzzleType, puzzleTypes } from '@belle-puzzles/solver';
 import {
-	isPuzzleType,
-	puzzleTypes,
-	type PuzzleType,
-} from '@belle-puzzles/solver';
-import { createSolverClient, type SolverClient } from './client';
+	createSolverClient,
+	prepareSolverWorker,
+	type PreparedSolverWorker,
+	type SolverClient,
+} from './client';
 import { formatSolverError } from './errors';
 import { SolverDivider } from './solverDivider';
 import './solvers.css';
@@ -53,14 +54,16 @@ export function SolverNavigation() {
 				</button>
 			</div>
 			<div id="solver-menu-content" hidden={!expanded}>
-				<label htmlFor="puzzle-search">Search puzzles</label>
-				<input
-					id="puzzle-search"
-					type="search"
-					value={search}
-					onChange={(event) => setSearch(event.target.value)}
-					placeholder="Puzzle name"
-				/>
+				<div className="solver-menu-search">
+					<label htmlFor="puzzle-search">Search puzzles</label>
+					<input
+						id="puzzle-search"
+						type="search"
+						value={search}
+						onChange={(event) => setSearch(event.target.value)}
+						placeholder="Puzzle name"
+					/>
+				</div>
 				<nav aria-label="Puzzle solvers">
 					<ul>
 						{matches.map(([type, { name }]) => (
@@ -85,6 +88,41 @@ export function SolverNavigation() {
 
 export function SolverRoute() {
 	const { puzzleType } = useParams();
+	const prepared = React.useRef<PreparedSolverWorker>();
+	const stopPreparing = React.useCallback(() => {
+		prepared.current?.dispose();
+		prepared.current = undefined;
+	}, []);
+	React.useEffect(() => {
+		if (puzzleType && isPuzzleType(puzzleType)) {
+			if (!prepared.current) {
+				try {
+					prepared.current = prepareSolverWorker();
+				} catch (error) {
+					console.error(error);
+				}
+			}
+		} else {
+			stopPreparing();
+		}
+	}, [puzzleType, stopPreparing]);
+	React.useEffect(() => {
+		window.addEventListener('pagehide', stopPreparing);
+		return () => {
+			window.removeEventListener('pagehide', stopPreparing);
+			stopPreparing();
+		};
+	}, [stopPreparing]);
+	const createClient = React.useCallback<typeof createSolverClient>(
+		(type, text, onResponse) => {
+			const idle = prepared.current;
+			prepared.current = undefined;
+			return idle
+				? idle.start(type, text, onResponse)
+				: createSolverClient(type, text, onResponse);
+		},
+		[]
+	);
 	const [inputShare, setInputShare] = React.useState(50);
 	const style: React.CSSProperties & {
 		'--solver-input-share': string;
@@ -104,15 +142,20 @@ export function SolverRoute() {
 					key={puzzleType}
 					puzzleType={puzzleType}
 					divider={divider}
+					createClient={createClient}
 				/>
 			) : (
 				<>
 					<section id="solver-input-pane" className="solver-input">
 						<h1>Logic Puzzle Solvers</h1>
 						<p>
+							No login required. Puzzles are solved locally in
+							your browser.
+						</p>
+						<p>
 							{puzzleType
 								? 'Unknown puzzle type. Choose a puzzle from the menu.'
-								: 'Choose a puzzle from the menu to get started. No login is required.'}
+								: 'Choose a puzzle from the menu to get started.'}
 						</p>
 					</section>
 					{divider}
@@ -122,9 +165,9 @@ export function SolverRoute() {
 				<section
 					id="solver-output-pane"
 					className="solver-output"
-					aria-label="Solution status"
+					aria-labelledby="solutions-title"
 				>
-					<h2>Solution status</h2>
+					<h2 id="solutions-title">Solutions</h2>
 					<p>
 						Select a puzzle to enter its clues and see solutions
 						here.
@@ -138,9 +181,11 @@ export function SolverRoute() {
 export function SolverPage({
 	puzzleType,
 	divider,
+	createClient = createSolverClient,
 }: {
-	puzzleType: PuzzleType;
+	puzzleType: string;
 	divider?: React.ReactNode;
+	createClient?: typeof createSolverClient;
 }) {
 	const definition = puzzleTypes[puzzleType];
 	const [text, setText] = React.useState('');
@@ -202,53 +247,49 @@ export function SolverPage({
 		let receivedFirst = false;
 		let probing = false;
 		try {
-			client.current = createSolverClient(
-				puzzleType,
-				text,
-				(response) => {
-					if (generation.current !== id) return;
-					if (response.type === 'solution') {
-						if (!receivedFirst) {
-							receivedFirst = true;
-							probing = true;
-							setSolutions([response.output]);
-							setPhase('uniqueness');
-							setUniqueness('checking');
-							client.current.next();
-						} else if (probing) {
-							probing = false;
-							setCachedSecond(response.output);
-							setUniqueness('multiple');
-							setPhase('ready');
-						} else {
-							setSolutions((previous) => [
-								...previous,
-								response.output,
-							]);
-							setPhase('ready');
-						}
-					} else if (response.type === 'terminal') {
-						stop();
-						setPhase('done');
-						if (response.status === 'unknown') {
-							if (probing) setUniqueness('unknown');
-							setMessage(
-								'The solver returned unknown. This does not prove that no further solutions exist.'
-							);
-						} else if (!receivedFirst) {
-							setMessage(
-								'This puzzle has no solutions. Check that the clues are correct and do not contradict each other.'
-							);
-						} else if (probing) {
-							setUniqueness('unique');
-						} else {
-							setMessage('No more solutions.');
-						}
-					} else if (response.type === 'error') {
-						reportError(response.message);
+			client.current = createClient(puzzleType, text, (response) => {
+				if (generation.current !== id) return;
+				if (response.type === 'solution') {
+					if (!receivedFirst) {
+						receivedFirst = true;
+						probing = true;
+						setSolutions([response.output]);
+						setPhase('uniqueness');
+						setUniqueness('checking');
+						client.current.next();
+					} else if (probing) {
+						probing = false;
+						setCachedSecond(response.output);
+						setUniqueness('multiple');
+						setPhase('ready');
+					} else {
+						setSolutions((previous) => [
+							...previous,
+							response.output,
+						]);
+						setPhase('ready');
 					}
+				} else if (response.type === 'terminal') {
+					stop();
+					setPhase('done');
+					if (response.status === 'unknown') {
+						if (probing) setUniqueness('unknown');
+						setMessage(
+							'The solver returned unknown. This does not prove that no further solutions exist.'
+						);
+					} else if (!receivedFirst) {
+						setMessage(
+							'This puzzle has no solutions. Check that the clues are correct and do not contradict each other.'
+						);
+					} else if (probing) {
+						setUniqueness('unique');
+					} else {
+						setMessage('No more solutions.');
+					}
+				} else if (response.type === 'error') {
+					reportError(response.message);
 				}
-			);
+			});
 		} catch (error) {
 			reportError(formatSolverError(error, 'runtime', puzzleType));
 		}
@@ -276,15 +317,10 @@ export function SolverPage({
 				className="solver-input"
 				aria-labelledby="puzzle-title"
 			>
-				<h1 id="puzzle-title">{definition.name} Solver</h1>
-				<p>
-					No login required. Puzzles are solved locally in your
-					browser.
-				</p>
+				<h1 id="puzzle-title">{definition.name}</h1>
 				<p id="input-help">
-					{definition.instructions} Use a dot (.) for an empty
-					position. Rows must have equal lengths; spaces also count as
-					empty positions.
+					{definition.instructions} Use a dot (".") or single space ("
+					") for an empty position. Rows must have equal lengths.
 				</p>
 				<form onSubmit={start}>
 					<label htmlFor="puzzle-input">Puzzle text</label>
@@ -338,9 +374,9 @@ export function SolverPage({
 			<section
 				id="solver-output-pane"
 				className="solver-output"
-				aria-labelledby="solution-status-title"
+				aria-labelledby="solutions-title"
 			>
-				<h2 id="solution-status-title">Solution status</h2>
+				<h2 id="solutions-title">Solutions</h2>
 				<div role="status" aria-live="polite">
 					{phase === 'idle' &&
 						solutions.length === 0 &&
@@ -361,7 +397,7 @@ export function SolverPage({
 					{message && <p>{message}</p>}
 				</div>
 				{error && <p role="alert">{error}</p>}
-				<section aria-label="Solutions">
+				<div>
 					{solutions.map((output, index) => (
 						<article key={index}>
 							<h3>Solution {index + 1}</h3>
@@ -370,7 +406,7 @@ export function SolverPage({
 							</pre>
 						</article>
 					))}
-				</section>
+				</div>
 			</section>
 		</>
 	);

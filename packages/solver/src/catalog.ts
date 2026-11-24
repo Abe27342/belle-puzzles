@@ -1,10 +1,5 @@
 import type { CartesianGridPuzzle } from './lib/cartesian-grid-puzzle.js';
 
-/** Puzzle modules extend this interface with their registered IDs. */
-export interface PuzzleTypes {}
-
-export type PuzzleType = keyof PuzzleTypes;
-
 export interface PuzzleRegistration {
 	name: string;
 	instructions: string;
@@ -19,12 +14,12 @@ const registrations: Record<string, PuzzleRegistration> = {};
 export const puzzleTypes: Readonly<Record<string, PuzzleRegistration>> =
 	registrations;
 
-export function isPuzzleType(value: string): value is PuzzleType {
+export function isPuzzleType(value: string): boolean {
 	return Object.prototype.hasOwnProperty.call(registrations, value);
 }
 
 export function registerPuzzle(
-	type: PuzzleType,
+	type: string,
 	definition: PuzzleRegistration
 ): void {
 	if (isPuzzleType(type)) {

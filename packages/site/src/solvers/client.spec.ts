@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
-import { createSolverClient } from './client';
+import { createSolverClient, prepareSolverWorker } from './client';
 import type { SolverResponse } from './protocol';
 
 class FakeWorker {
@@ -128,5 +128,93 @@ it('logs the original post-initialization worker error and shows a brief solve f
 		type: 'error',
 		message: 'The solver could not finish this Hashi puzzle.',
 	});
+	expect(worker.terminate).toHaveBeenCalledTimes(1);
+});
+
+it('loads an idle worker without solving and starts the first puzzle on that same worker', () => {
+	const prepared = prepareSolverWorker();
+	const worker = FakeWorker.current;
+	expect(worker.postMessage).toHaveBeenCalledTimes(1);
+	worker.respond({ type: 'ready' });
+	expect(worker.postMessage).toHaveBeenCalledTimes(1);
+	const callback = vi.fn();
+	const client = prepared.start('cave', 'example', callback);
+	expect(FakeWorker.current).toBe(worker);
+	expect(worker.postMessage).toHaveBeenLastCalledWith({
+		type: 'start',
+		puzzleType: 'cave',
+		text: 'example',
+	});
+	expect(() => prepared.start('hashi', 'example', vi.fn())).toThrow(
+		'no longer available'
+	);
+	worker.respond({ type: 'solution', output: 'grid' });
+	expect(callback).toHaveBeenCalledWith({ type: 'solution', output: 'grid' });
+	client.dispose();
+	expect(worker.terminate).not.toHaveBeenCalled();
+	worker.respond({ type: 'disposed' });
+	expect(worker.terminate).toHaveBeenCalledTimes(1);
+});
+
+it('queues the first solve when the preloaded worker is still initializing', () => {
+	const prepared = prepareSolverWorker();
+	const worker = FakeWorker.current;
+	prepared.start('masyu', 'example', vi.fn());
+	expect(worker.postMessage).toHaveBeenCalledTimes(1);
+	worker.respond({ type: 'ready' });
+	expect(worker.postMessage).toHaveBeenLastCalledWith({
+		type: 'start',
+		puzzleType: 'masyu',
+		text: 'example',
+	});
+});
+
+it.each([false, true])(
+	'cleans up an unused preloaded worker, ready=%s',
+	(ready) => {
+		const prepared = prepareSolverWorker();
+		const worker = FakeWorker.current;
+		if (ready) worker.respond({ type: 'ready' });
+		prepared.dispose();
+		expect(worker.terminate).not.toHaveBeenCalled();
+		if (!ready) worker.respond({ type: 'ready' });
+		expect(worker.postMessage).toHaveBeenLastCalledWith({
+			type: 'dispose',
+		});
+		worker.respond({ type: 'disposed' });
+		expect(worker.terminate).toHaveBeenCalledTimes(1);
+		prepared.dispose();
+		expect(worker.terminate).toHaveBeenCalledTimes(1);
+	}
+);
+
+it('logs a preload failure and preserves it for the first solve attempt', () => {
+	const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+	const prepared = prepareSolverWorker();
+	const worker = FakeWorker.current;
+	worker.respond({
+		type: 'error',
+		stage: 'runtime',
+		message: 'Failed to load WASM',
+	});
+	expect(log).toHaveBeenCalledWith(
+		expect.objectContaining({
+			message: 'Failed to load WASM',
+		})
+	);
+	expect(() => prepared.start('sudoku', 'example', vi.fn())).toThrow(
+		'Failed to load WASM'
+	);
+	expect(worker.terminate).toHaveBeenCalledTimes(1);
+});
+
+it('logs and preserves the original browser error when an idle worker fails', () => {
+	const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+	const prepared = prepareSolverWorker();
+	const worker = FakeWorker.current;
+	const error = new Error('Worker loading failed');
+	worker.onerror(new ErrorEvent('error', { error }));
+	expect(log).toHaveBeenCalledWith(error);
+	expect(() => prepared.start('sudoku', 'example', vi.fn())).toThrow(error);
 	expect(worker.terminate).toHaveBeenCalledTimes(1);
 });

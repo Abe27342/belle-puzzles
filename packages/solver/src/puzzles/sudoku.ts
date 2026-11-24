@@ -47,12 +47,6 @@ type SudokuModel = VertexValueModel<SudokuDigit>;
 
 type SudokuSolution = VertexValueSolution<SudokuDigit>;
 
-declare module '../catalog.js' {
-	interface PuzzleTypes {
-		sudoku: typeof SudokuPuzzle;
-	}
-}
-
 export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 	static {
 		registerPuzzle('sudoku', {

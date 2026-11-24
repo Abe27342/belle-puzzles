@@ -63,6 +63,13 @@
 	overflow-y: auto;
 }
 
+.solver-menu-search {
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	background: #eaf1e8;
+}
+
 .solver-menu input {
 	box-sizing: border-box;
 	width: 100%;

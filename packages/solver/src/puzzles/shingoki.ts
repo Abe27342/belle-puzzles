@@ -49,12 +49,6 @@ interface ConstructionPearl {
 	color: 'black' | 'white';
 }
 
-declare module '../catalog.js' {
-	interface PuzzleTypes {
-		shingoki: typeof ShingokiPuzzle;
-	}
-}
-
 export class ShingokiPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 	static {
 		registerPuzzle('shingoki', {

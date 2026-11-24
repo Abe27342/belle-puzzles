@@ -2,12 +2,15 @@ import * as React from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { createSolverClient } from './client';
+import { createSolverClient, prepareSolverWorker } from './client';
 import { SolverPage, SolverRoute } from './solverPage';
 import { puzzleTypes } from '@belle-puzzles/solver';
 import type { SolverResponse } from './protocol';
 
-vi.mock('./client', () => ({ createSolverClient: vi.fn() }));
+vi.mock('./client', () => ({
+	createSolverClient: vi.fn(),
+	prepareSolverWorker: vi.fn(),
+}));
 
 let respond: (response: SolverResponse) => void;
 const next = vi.fn();
@@ -15,6 +18,10 @@ const dispose = vi.fn();
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	vi.mocked(prepareSolverWorker).mockImplementation(() => ({
+		start: createSolverClient,
+		dispose: vi.fn(),
+	}));
 	vi.mocked(createSolverClient).mockImplementation(
 		(_type, _text, callback) => {
 			respond = callback;
@@ -192,13 +199,45 @@ describe('solver page', () => {
 					</Routes>
 				</MemoryRouter>
 			);
-			expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-				'Solver'
-			);
+			expect(
+				screen.getByRole('heading', {
+					level: 1,
+					name: puzzleTypes[type].name,
+				})
+			).toBeInTheDocument();
 			expect(screen.getByLabelText('Puzzle text')).toBeInTheDocument();
+			expect(
+				screen.getByText(
+					`${puzzleTypes[type].instructions} Use a dot (".") or single space (" ") for an empty position. Rows must have equal lengths.`
+				)
+			).toBeInTheDocument();
+			expect(
+				screen.queryByText(/No login required/)
+			).not.toBeInTheDocument();
+			expect(prepareSolverWorker).toHaveBeenCalledTimes(1);
 			expect(createSolverClient).not.toHaveBeenCalled();
 		}
 	);
+
+	it('shows login and local-solving information before selecting a puzzle', () => {
+		render(
+			<MemoryRouter initialEntries={['/solvers']}>
+				<Routes>
+					<Route path="/solvers" element={<SolverRoute />} />
+				</Routes>
+			</MemoryRouter>
+		);
+		expect(
+			screen.getByText(
+				'No login required. Puzzles are solved locally in your browser.'
+			)
+		).toBeInTheDocument();
+		expect(screen.queryByLabelText('Puzzle text')).not.toBeInTheDocument();
+		expect(
+			screen.getByRole('heading', { name: 'Solutions', level: 2 })
+		).toBeInTheDocument();
+		expect(prepareSolverWorker).not.toHaveBeenCalled();
+	});
 
 	it('shows an explanation for unknown puzzle types', () => {
 		render(
@@ -212,6 +251,26 @@ describe('solver page', () => {
 			</MemoryRouter>
 		);
 		expect(screen.getByText(/Unknown puzzle type/)).toBeInTheDocument();
+		expect(prepareSolverWorker).not.toHaveBeenCalled();
+	});
+
+	it('disposes an unused preloaded worker when the page is hidden or unmounted', () => {
+		const idle = { start: createSolverClient, dispose: vi.fn() };
+		vi.mocked(prepareSolverWorker).mockReturnValueOnce(idle);
+		const view = render(
+			<MemoryRouter initialEntries={['/solvers/sudoku']}>
+				<Routes>
+					<Route
+						path="/solvers/:puzzleType"
+						element={<SolverRoute />}
+					/>
+				</Routes>
+			</MemoryRouter>
+		);
+		act(() => window.dispatchEvent(new Event('pagehide')));
+		expect(idle.dispose).toHaveBeenCalledTimes(1);
+		view.unmount();
+		expect(idle.dispose).toHaveBeenCalledTimes(1);
 	});
 
 	it('separates puzzle selection, text input, and solution status', () => {
@@ -230,12 +289,12 @@ describe('solver page', () => {
 		);
 		expect(
 			within(
-				screen.getByRole('region', { name: 'Sudoku Solver' })
+				screen.getByRole('region', { name: 'Sudoku' })
 			).getByLabelText('Puzzle text')
 		).toBeInTheDocument();
 		expect(
 			within(
-				screen.getByRole('region', { name: 'Solution status' })
+				screen.getByRole('region', { name: 'Solutions' })
 			).getByRole('status')
 		).toHaveTextContent('Enter a puzzle');
 	});

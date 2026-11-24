@@ -10,12 +10,6 @@ vi.mock('z3-solver', () => {
 	throw new Error('Importing the puzzle catalog must not load Z3.');
 });
 
-declare module '../catalog.js' {
-	interface PuzzleTypes {
-		'catalog-test': typeof SudokuPuzzle;
-	}
-}
-
 it('imports and parses all registered examples without loading the Z3 runtime', () => {
 	expect(Object.keys(puzzleTypes)).toEqual([
 		'sudoku',
@@ -30,8 +24,8 @@ it('imports and parses all registered examples without loading the Z3 runtime', 
 		expect(definition.name).not.toBe('');
 		expect(definition.instructions).not.toBe('');
 		const puzzle = definition.parser.fromText(definition.example);
-		expect(puzzle.width).toBeGreaterThan(0);
-		expect(puzzle.height).toBeGreaterThan(0);
+		expect(puzzle.width).toBeGreaterThan(2);
+		expect(puzzle.height).toBeGreaterThan(2);
 	}
 	expect(isPuzzleType('missing')).toBe(false);
 	expect(isPuzzleType('toString')).toBe(false);
