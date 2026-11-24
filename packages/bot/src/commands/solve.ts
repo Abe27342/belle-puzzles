@@ -6,6 +6,7 @@ import {
 } from 'discord.js';
 import { PuzzlehuntContext } from '../puzzlehunt-context.js';
 import { Command } from './types.js';
+import { puzzleSolvedMessage } from '../sync/logs.js';
 
 const ANSWER_ARG = 'answer';
 
@@ -49,9 +50,7 @@ export const solve: Command = {
 			const { puzzleSolve } = puzzlehunt.loggingChannelIds;
 			const channel = interaction.guild.channels.cache.get(puzzleSolve);
 			if (channel?.isTextBased()) {
-				await channel.send(
-					`${puzzle.name} solved! Answer: "${answer}".`
-				);
+				await channel.send(puzzleSolvedMessage(puzzle.name, answer));
 			}
 		}
 

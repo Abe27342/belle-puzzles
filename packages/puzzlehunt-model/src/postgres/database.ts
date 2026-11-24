@@ -8,6 +8,9 @@ export interface HuntDatabaseConnection {
 		values?: unknown[]
 	): Promise<{ rows: Row[] }>;
 	release(error?: Error): void;
+	/** Session-owned workers observe connection loss while external operations are in flight. */
+	on?(event: 'error', listener: (error: Error) => void): unknown;
+	removeListener?(event: 'error', listener: (error: Error) => void): unknown;
 }
 
 export interface HuntDatabasePool {

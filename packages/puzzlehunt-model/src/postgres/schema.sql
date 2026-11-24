@@ -120,6 +120,8 @@ CREATE TABLE integration_jobs (
     available_at timestamptz NOT NULL DEFAULT now(),
     attempts integer NOT NULL DEFAULT 0,
     last_error text,
+    -- Confirmed partial results belong to this job, never to a replacement node's jobs.
+    confirmed jsonb NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(confirmed) = 'object'),
     completed_at timestamptz,
     cancelled_at timestamptz,
     CHECK (completed_at IS NULL OR cancelled_at IS NULL),
@@ -141,6 +143,7 @@ CREATE TABLE integration_events (
     available_at timestamptz NOT NULL DEFAULT now(),
     attempts integer NOT NULL DEFAULT 0,
     last_error text,
+    message_id text,
     delivered_at timestamptz,
     PRIMARY KEY (hunt_id, command_id, ordinal),
     FOREIGN KEY (hunt_id, command_id)
