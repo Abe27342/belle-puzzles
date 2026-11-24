@@ -41,7 +41,8 @@ See [the bot's opt-in settings](../bot/README.md#local-postgresql-bot-opt-in) fo
 `LOCAL_POSTGRES_GUILD_IDS`, `GUILD_ALLOW_LIST`, the loopback database/service,
 and server-only credentials. Create the hunt through Discord `/create` and its
 first root round with `/add_round`; there is no browser creation/root-round flow.
-The persistent full-stack VS Code launch recipe is a separate layer.
+For persistent full-stack startup, use
+[the Local PostgreSQL stack target](../../README.md#local-postgresql-stack).
 
 ### Refreshing and saving
 

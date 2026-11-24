@@ -105,6 +105,7 @@ async function main(): Promise<void> {
 			typeof address === 'object' && address ? address.port : config.port
 		}.`
 	);
+	process.send?.('local-stack-ready');
 }
 
 void main().catch((error) => {
