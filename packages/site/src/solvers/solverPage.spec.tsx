@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { createSolverClient } from './client';
 import { SolverPage, SolverRoute } from './solverPage';
-import { puzzleTypes } from './catalog';
+import { puzzleTypes } from '@belle-puzzles/solver';
 import type { SolverResponse } from './protocol';
 
 vi.mock('./client', () => ({ createSolverClient: vi.fn() }));

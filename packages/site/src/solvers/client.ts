@@ -1,5 +1,5 @@
 import moduleUrl from './solver.worker.ts?worker&url';
-import type { PuzzleType } from './catalog';
+import type { PuzzleType } from '@belle-puzzles/solver';
 import type { SolverRequest, SolverResponse } from './protocol';
 import { formatSolverError } from './errors';
 
@@ -71,6 +71,9 @@ export function createSolverClient(
 	};
 	worker.onerror = (event) => {
 		if (!disposed) {
+			if (ready) {
+				console.log(event.error ?? event);
+			}
 			onResponse({
 				type: 'error',
 				message: formatSolverError(

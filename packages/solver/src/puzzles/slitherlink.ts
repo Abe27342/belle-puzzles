@@ -1,3 +1,4 @@
+import { registerPuzzle } from '../catalog.js';
 import {
 	CartesianGridPuzzle,
 	constant,
@@ -45,7 +46,23 @@ interface ConstructionGivens {
 	count: number;
 }
 
+declare module '../catalog.js' {
+	interface PuzzleTypes {
+		slitherlink: typeof SlitherlinkPuzzle;
+	}
+}
+
 export class SlitherlinkPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
+	static {
+		registerPuzzle('slitherlink', {
+			name: 'Slitherlink',
+			instructions:
+				'Enter a rectangular grid of single-digit cell clues (0-4).',
+			example: '4',
+			parser: SlitherlinkPuzzle,
+		});
+	}
+
 	#givens: Given[];
 
 	constructor(props: SlitherlinkPuzzleProps) {

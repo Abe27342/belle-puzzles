@@ -21,7 +21,7 @@ it.each([
 	'Uncaught [object Event]',
 	{},
 	null,
-])('replaces opaque errors with actionable guidance: %s', (error) => {
+])('replaces opaque errors with actionable guidance: case %#', (error) => {
 	const message = formatSolverError(error, 'runtime');
 	expect(message).toContain('Reload the page');
 	expect(message).not.toContain('[object');
@@ -55,3 +55,19 @@ it('shows one-based row and column numbers for coordinate-based parse errors', (
 		)
 	).toContain('Row 1, column 3.');
 });
+
+it.each([
+	['solve', 'The solver could not finish this Hashi puzzle.'],
+	['render', 'The solution could not be displayed.'],
+] as const)(
+	'keeps %s failures brief without technical details or reload advice',
+	(stage, message) => {
+		expect(
+			formatSolverError(
+				new Error('Internal implementation failure'),
+				stage,
+				'hashi'
+			)
+		).toBe(message);
+	}
+);

@@ -1,3 +1,8 @@
+// Node-side Vite plugin used by vite.config.ts, not browser code. It serves Z3's
+// JS/WASM at /solver-assets/ in development and emits them into production builds.
+// Keep these assets unbundled so Emscripten can load its worker script correctly.
+// Isolation headers are shared with Vite's dev/preview configuration and applied
+// directly to development asset responses; deployment headers live in staticwebapp.config.json.
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';

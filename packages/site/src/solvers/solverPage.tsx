@@ -1,6 +1,10 @@
 import * as React from 'react';
 import { NavLink, useParams } from 'react-router-dom';
-import { isPuzzleType, puzzleTypes, type PuzzleType } from './catalog';
+import {
+	isPuzzleType,
+	puzzleTypes,
+	type PuzzleType,
+} from '@belle-puzzles/solver';
 import { createSolverClient, type SolverClient } from './client';
 import { formatSolverError } from './errors';
 import { SolverDivider } from './solverDivider';
@@ -259,6 +263,7 @@ export function SolverPage({
 		try {
 			client.current.next();
 		} catch (error) {
+			console.log(error);
 			reportError(formatSolverError(error, 'solve', puzzleType));
 		}
 	};

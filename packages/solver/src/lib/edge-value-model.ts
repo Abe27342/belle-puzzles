@@ -1,4 +1,4 @@
-import type { Context, Solver } from './z3.js';
+import type { Context, Solver } from 'z3-solver';
 import type { GridEdge } from './graph/index.js';
 import {
 	createValueModel,

@@ -19,9 +19,10 @@ Other workspace packages can depend on it using `"@belle-puzzles/solver": "works
 
 ## Usage
 
-Puzzle helpers initialize a shared Z3 runtime internally using top-level await,
-so callers do not need to call `init()` themselves. Initialization failures reject
-the import. This requires an ESM environment with top-level await support.
+The main entry point provides puzzle definitions and helpers without initializing
+Z3. Execution helpers live in `@belle-puzzles/solver/runtime`, which initializes a
+shared runtime using top-level await. Initialization failures reject the import;
+an ESM environment with top-level await support is required.
 
 For direct Z3 modeling with your own runtime, use the upstream API. For example,
 this Node.js program finds two distinct digits with a sum of three:
@@ -68,31 +69,3 @@ runtime. Long-running operations are serialized within a runtime. Separate
 runtimes are useful for parallel solves, different initialization options, or
 independent worker lifetimes, at the cost of additional initialization and memory.
 The upstream `init()` remains available for those cases.
-
-## Browser integration
-
-The website's `/solvers/:puzzleType` pages load this package on demand in a
-dedicated worker. They are public, lazy-loaded routes in the site's SPA, outside
-authentication loaders and login gates. Cross-origin isolation headers
-(`Cross-Origin-Opener-Policy: same-origin` and
-`Cross-Origin-Embedder-Policy: require-corp`) apply to the whole site, including
-HTML and worker responses. This permits client-side navigation into solver
-pages without a document reload. The site README describes compatibility
-requirements for authentication and cross-origin resources.
-
-Z3's `z3-built.js` and `z3-built.wasm` are served unbundled from `/solver-assets/`.
-A classic worker loads the script before dynamically importing the bundled solver
-module. Its Emscripten `mainScriptUrlOrBlob` points to the original script so
-pthread workers can load it independently.
-
-The worker owns the runtime. On cancellation, replacement, navigation, or
-exhaustion, it calls `shutdownSolverRuntime()` (the upstream `killThreads` helper)
-before acknowledging disposal. Only then does the page terminate the parent
-worker, releasing its context, expression references, and WASM memory. Never
-terminate only the parent worker while leaving Z3's pthread workers running.
-Initialization failures also explicitly terminate any spawned threads.
-
-After showing the first solution, the UI requests exactly one additional solution
-to check uniqueness. It caches that second solution until requested; later
-solutions are computed only on demand. An `unknown` result or a cancelled probe
-does not establish uniqueness.

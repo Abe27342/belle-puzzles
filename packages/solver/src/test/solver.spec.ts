@@ -1,5 +1,9 @@
 import { afterAll, expect, it } from 'vitest';
-import { shutdownSolverRuntime, z3 } from '../lib/z3.js';
+import {
+	shutdownSolverRuntime,
+	SolverSession,
+	z3,
+} from '../runtime/index.js';
 import {
 	CartesianGridGraph,
 	constant,
@@ -10,7 +14,6 @@ import {
 	createVertexValueModel,
 	renderCartesianGrid,
 	resolveGraphOutput,
-	SolverSession,
 	variable,
 } from '../index.js';
 import type { PuzzleDefinition, VertexValueSolution } from '../index.js';

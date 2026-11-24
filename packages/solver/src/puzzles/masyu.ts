@@ -1,3 +1,4 @@
+import { registerPuzzle } from '../catalog.js';
 import {
 	CartesianGridPuzzle,
 	constant,
@@ -43,7 +44,23 @@ interface ConstructionPearl {
 	color: 'black' | 'white';
 }
 
+declare module '../catalog.js' {
+	interface PuzzleTypes {
+		masyu: typeof MasyuPuzzle;
+	}
+}
+
 export class MasyuPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
+	static {
+		registerPuzzle('masyu', {
+			name: 'Masyu',
+			instructions:
+				'Enter B for black pearls and W for white pearls, one character per grid vertex.',
+			example: 'B..\n...\n..B',
+			parser: MasyuPuzzle,
+		});
+	}
+
 	/**
 	 * Note: the indexing model assumes pearls are placed go-style.
 	 *

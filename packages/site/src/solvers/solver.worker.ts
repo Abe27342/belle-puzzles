@@ -1,26 +1,15 @@
 import {
-	CavePuzzle,
-	HashiPuzzle,
-	MasyuPuzzle,
-	ShingokiPuzzle,
-	SlitherlinkPuzzle,
-	SudokuPuzzle,
-	SolverSession,
+	isPuzzleType,
+	puzzleTypes,
 	renderCartesianGrid,
-	shutdownSolverRuntime,
 	type CartesianGridPuzzle,
 } from '@belle-puzzles/solver';
+import {
+	SolverSession,
+	shutdownSolverRuntime,
+} from '@belle-puzzles/solver/runtime';
 import type { SolverRequest, SolverResponse } from './protocol';
 import { errorMessage, type SolverErrorStage } from './errors';
-
-const parsers = {
-	sudoku: SudokuPuzzle,
-	masyu: MasyuPuzzle,
-	shingoki: ShingokiPuzzle,
-	slitherlink: SlitherlinkPuzzle,
-	cave: CavePuzzle,
-	hashi: HashiPuzzle,
-};
 
 let puzzle: CartesianGridPuzzle<unknown>;
 let session: SolverSession<unknown>;
@@ -54,7 +43,10 @@ self.onmessage = async ({ data }: MessageEvent<SolverRequest>) => {
 		busy = true;
 		if (data.type === 'start') {
 			stage = 'parse';
-			puzzle = parsers[data.puzzleType].fromText(data.text);
+			if (!isPuzzleType(data.puzzleType)) {
+				throw new Error(`Unknown puzzle type "${data.puzzleType}".`);
+			}
+			puzzle = puzzleTypes[data.puzzleType].parser.fromText(data.text);
 			stage = 'build';
 			session = new SolverSession(puzzle);
 		}
@@ -82,6 +74,9 @@ self.onmessage = async ({ data }: MessageEvent<SolverRequest>) => {
 		}
 	} catch (error) {
 		if (!disposing) {
+			if (stage === 'solve' || stage === 'render') {
+				console.log(error);
+			}
 			send({
 				type: 'error',
 				message: errorMessage(error),

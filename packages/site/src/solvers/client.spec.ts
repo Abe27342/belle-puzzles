@@ -20,7 +20,10 @@ beforeEach(() => {
 	vi.stubGlobal('Worker', FakeWorker);
 	vi.stubGlobal('crossOriginIsolated', true);
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+	vi.unstubAllGlobals();
+	vi.restoreAllMocks();
+});
 
 it('waits for initialization before starting, and terminates only after thread cleanup', () => {
 	const callback = vi.fn();
@@ -110,4 +113,20 @@ it('rejects unsupported environments before creating a worker', () => {
 	expect(() => createSolverClient('sudoku', 'text', vi.fn())).toThrow(
 		'cross-origin isolation'
 	);
+});
+
+it('logs the original post-initialization worker error and shows a brief solve failure', () => {
+	const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+	const callback = vi.fn();
+	createSolverClient('hashi', '2.2', callback);
+	const worker = FakeWorker.current;
+	worker.respond({ type: 'ready' });
+	const error = new Error('Internal solver failure');
+	worker.onerror(new ErrorEvent('error', { error, message: error.message }));
+	expect(log).toHaveBeenCalledWith(error);
+	expect(callback).toHaveBeenCalledWith({
+		type: 'error',
+		message: 'The solver could not finish this Hashi puzzle.',
+	});
+	expect(worker.terminate).toHaveBeenCalledTimes(1);
 });

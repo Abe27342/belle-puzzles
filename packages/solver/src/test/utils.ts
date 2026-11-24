@@ -3,7 +3,7 @@ import {
 	CartesianGridPuzzle,
 	renderCartesianGrid,
 } from '../lib/cartesian-grid-puzzle.js';
-import { solve } from '../lib/puzzle.js';
+import { solve } from '../runtime/index.js';
 
 interface PuzzleClass {
 	name: string;
