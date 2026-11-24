@@ -14,5 +14,13 @@
 		"Cross-Origin-Opener-Policy": "same-origin",
 		"Cross-Origin-Embedder-Policy": "require-corp"
 	},
-	"routes": [{ "route": "/api/*", "allowedRoles": ["authenticated"] }]
+	"routes": [
+		{
+			"route": "/solver-assets/z3/*",
+			"headers": {
+				"Cache-Control": "public, max-age=31536000, immutable"
+			}
+		},
+		{ "route": "/api/*", "allowedRoles": ["authenticated"] }
+	]
 }

@@ -30,6 +30,13 @@ it('waits for initialization before starting, and terminates only after thread c
 	const client = createSolverClient('sudoku', 'text', callback);
 	const worker = FakeWorker.current;
 	expect(worker.postMessage).toHaveBeenCalledTimes(1);
+	expect(worker.postMessage).toHaveBeenCalledWith({
+		moduleUrl: expect.any(String),
+		z3AssetBase: new URL(
+			import.meta.env.VITE_Z3_ASSET_BASE,
+			window.location.href
+		).href,
+	});
 	worker.respond({ type: 'ready' });
 	expect(worker.postMessage).toHaveBeenLastCalledWith({
 		type: 'start',
