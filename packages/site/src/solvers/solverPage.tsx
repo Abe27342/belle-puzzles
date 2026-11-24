@@ -329,7 +329,7 @@ export function SolverPage({
 					<textarea
 						id="puzzle-input"
 						value={text}
-						placeholder={definition.example}
+						placeholder={`Example:\n\n${definition.example}`}
 						onChange={(event) => changeInput(event.target.value)}
 						aria-describedby="input-help"
 						spellCheck={false}

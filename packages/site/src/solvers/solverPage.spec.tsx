@@ -208,7 +208,7 @@ describe('solver page', () => {
 			expect(screen.getByLabelText('Puzzle text')).toBeInTheDocument();
 			expect(screen.getByLabelText('Puzzle text')).toHaveAttribute(
 				'placeholder',
-				puzzleTypes[type].example
+				`Example:\n\n${puzzleTypes[type].example}`
 			);
 			expect(screen.getByLabelText('Puzzle text')).toHaveValue('');
 			expect(screen.getByRole('button', { name: 'Solve' })).toBeDisabled();
