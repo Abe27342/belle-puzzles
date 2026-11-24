@@ -250,7 +250,7 @@ describe('solver page', () => {
 			expect(screen.getByLabelText('Puzzle text')).toBeInTheDocument();
 			expect(screen.getByLabelText('Puzzle text')).toHaveAttribute(
 				'placeholder',
-				`Example:\n\n${puzzleTypes[type].example}`
+				`${puzzleTypes[type].example}\n\n(example)`
 			);
 			expect(screen.getByLabelText('Puzzle text')).toHaveValue('');
 			expect(

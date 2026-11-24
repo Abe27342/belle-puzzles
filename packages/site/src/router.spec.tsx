@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { Router } from './router';
 import { fetchLoginInfo } from './loaders';
@@ -47,11 +47,18 @@ beforeEach(() => {
 	window.history.replaceState(null, '', '/solvers/sudoku');
 });
 
+async function renderSolverRoute() {
+	const view = render(<Router />);
+	await screen.findByRole('heading', { name: 'Sudoku' });
+	// The lazy-loaded heading can appear before the preload effect runs.
+	await waitFor(() => {
+		expect(prepareSolverWorker).toHaveBeenCalledTimes(1);
+	});
+	return view;
+}
+
 it('loads solver routes without running authentication loaders', async () => {
-	render(<Router />);
-	expect(
-		await screen.findByRole('heading', { name: 'Sudoku' })
-	).toBeInTheDocument();
+	await renderSolverRoute();
 	expect(fetchLoginInfo).not.toHaveBeenCalled();
 	expect(createSolverClient).not.toHaveBeenCalled();
 	expect(prepareSolverWorker).toHaveBeenCalledTimes(1);
@@ -60,8 +67,7 @@ it('loads solver routes without running authentication loaders', async () => {
 it('reuses an unused preloaded worker across puzzle types and hands it to the first solve', async () => {
 	const idle = { start: createSolverClient, dispose: vi.fn() };
 	vi.mocked(prepareSolverWorker).mockReturnValueOnce(idle);
-	const view = render(<Router />);
-	await screen.findByRole('heading', { name: 'Sudoku' });
+	const view = await renderSolverRoute();
 	fireEvent.click(screen.getByRole('link', { name: 'Masyu' }));
 	await screen.findByRole('heading', { name: 'Masyu' });
 	expect(prepareSolverWorker).toHaveBeenCalledTimes(1);
@@ -70,6 +76,7 @@ it('reuses an unused preloaded worker across puzzle types and hands it to the fi
 	fireEvent.click(screen.getByRole('button', { name: 'Load example' }));
 	fireEvent.click(screen.getByRole('button', { name: 'Solve' }));
 	expect(createSolverClient).toHaveBeenCalledTimes(1);
+	expect(prepareSolverWorker).toHaveBeenCalledTimes(1);
 	view.unmount();
 	expect(dispose).toHaveBeenCalledTimes(1);
 	expect(idle.dispose).not.toHaveBeenCalled();
@@ -78,32 +85,33 @@ it('reuses an unused preloaded worker across puzzle types and hands it to the fi
 it('disposes an unused preloaded worker when leaving solver routes', async () => {
 	const idle = { start: createSolverClient, dispose: vi.fn() };
 	vi.mocked(prepareSolverWorker).mockReturnValueOnce(idle);
-	render(<Router />);
-	await screen.findByRole('heading', { name: 'Sudoku' });
+	await renderSolverRoute();
 	fireEvent.click(screen.getByRole('link', { name: 'Home' }));
 	await screen.findByRole('heading', { name: 'Home page' });
-	expect(idle.dispose).toHaveBeenCalledTimes(1);
+	await waitFor(() => {
+		expect(idle.dispose).toHaveBeenCalledTimes(1);
+	});
 	expect(createSolverClient).not.toHaveBeenCalled();
 });
 
 it('changes puzzle types through the SPA and disposes the old session', async () => {
-	render(<Router />);
-	await screen.findByRole('heading', { name: 'Sudoku' });
+	await renderSolverRoute();
 	fireEvent.click(screen.getByRole('button', { name: 'Load example' }));
 	fireEvent.click(screen.getByRole('button', { name: 'Solve' }));
 	fireEvent.click(screen.getByRole('link', { name: 'Masyu' }));
 	expect(
 		await screen.findByRole('heading', { name: 'Masyu' })
 	).toBeInTheDocument();
-	expect(dispose).toHaveBeenCalledTimes(1);
+	await waitFor(() => {
+		expect(dispose).toHaveBeenCalledTimes(1);
+	});
 	expect(screen.getByLabelText('Puzzle text')).toHaveValue('');
 	expect(fetchLoginInfo).not.toHaveBeenCalled();
 	expect(window.location.pathname).toBe('/solvers/masyu');
 });
 
 it('preserves authentication loading on existing pages and cleans up when leaving a solver', async () => {
-	render(<Router />);
-	await screen.findByRole('heading', { name: 'Sudoku' });
+	await renderSolverRoute();
 	fireEvent.click(screen.getByRole('button', { name: 'Load example' }));
 	fireEvent.click(screen.getByRole('button', { name: 'Solve' }));
 	fireEvent.click(screen.getByRole('link', { name: 'Home' }));
@@ -111,7 +119,9 @@ it('preserves authentication loading on existing pages and cleans up when leavin
 		await screen.findByRole('heading', { name: 'Home page' })
 	).toBeInTheDocument();
 	expect(fetchLoginInfo).toHaveBeenCalledTimes(1);
-	expect(dispose).toHaveBeenCalledTimes(1);
+	await waitFor(() => {
+		expect(dispose).toHaveBeenCalledTimes(1);
+	});
 	fireEvent.click(screen.getByRole('link', { name: 'Solvers' }));
 	expect(
 		await screen.findByRole('heading', { name: 'Logic Puzzle Solvers' })
