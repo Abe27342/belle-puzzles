@@ -1,4 +1,4 @@
-// Node-side Vite plugin used by vite.config.ts, not browser code. It serves Z3's
+// Node-side Vite plugin used by vite.config.ts. It serves Z3's
 // JS/WASM at /solver-assets/ in development and emits them into production builds.
 // Keep these assets unbundled so Emscripten can load its worker script correctly.
 // Isolation headers are shared with Vite's dev/preview configuration and applied
