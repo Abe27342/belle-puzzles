@@ -1,5 +1,68 @@
 # Belle Puzzles Website
 
+## Public logic puzzle solvers
+
+The unauthenticated `/solvers` index links to `/solvers/sudoku`,
+`/solvers/masyu`, `/solvers/shingoki`, `/solvers/slitherlink`, `/solvers/cave`,
+and `/solvers/hashi`. Each page shares the same text-input and solution UI and
+uses the solver package's existing Cartesian grid renderer. Input stays in the
+browser; no puzzle data is sent to an API.
+
+Use dots for empty positions and equal-length rows. Each page documents its
+clue format and includes a loadable example. Shingoki takes two equally sized
+grids, separated by a blank line, for colors and lengths. Current text parsers
+support only single-digit clues.
+
+The first solution is displayed immediately. Only the second is precomputed to
+determine uniqueness, then cached until **Find next solution** is clicked.
+Subsequent solutions are computed on demand and displayed alongside earlier
+ones. **Cancel** stops the session and preserves displayed solutions; changing
+the input clears the old session and output.
+
+Build the solver dependency before starting the site:
+
+```sh
+pnpm --filter @belle-puzzles/solver build
+pnpm --filter @belle-puzzles/site start
+```
+
+Solver pages are lazy-loaded routes in the normal SPA, outside authentication
+loaders and login gates. Navigation between the main site and solvers does not
+reload the document. Leaving a solver route disposes its worker session.
+
+Z3's JS/WASM assets are emitted at build time and served unbundled from
+`/solver-assets/`.
+See the [solver README](../solver/README.md#browser-integration) for runtime
+ownership and thread cleanup.
+
+## Cross-origin isolation
+
+The entire SPA uses `Cross-Origin-Opener-Policy: same-origin` and
+`Cross-Origin-Embedder-Policy: require-corp`, enabling `SharedArrayBuffer` for
+Z3's threaded WebAssembly runtime. These are isolation policies, not CORS
+permissions. Vite development and preview servers set them globally;
+`staticwebapp.config.json` supplies equivalent global deployment headers.
+Other hosts must set the same headers on HTML and worker responses and retain
+the SPA navigation fallback. HTTPS is required outside localhost.
+
+Compatibility requirements:
+
+| Surface | Behavior under isolation |
+| --- | --- |
+| Microsoft and Discord login | Existing full-page redirect flows do not depend on `window.opener`. PKCE state is stored in localStorage, not cross-window communication. |
+| Discord avatars | Images request anonymous CORS; the public CDN permits cross-origin reads. |
+| Discord API and OAuth token requests | Normal CORS fetch requests remain subject to the provider's CORS policy. COEP does not exempt requests from CORS. |
+| Same-origin `/.auth/*` and `/api/*` requests | Existing cookies and API role restrictions remain in place. |
+| Fluid Relay | HTTP requests still require server CORS support; COEP does not block WebSockets. Live authenticated connections must be verified against the configured relay. |
+| Puzzle sheets and Drive folders | These are links to external pages, not embedded third-party frames. Cross-origin window opener relationships may be severed by COOP. |
+| Bundled images, fonts, and scripts | Same-origin resources need no additional cross-origin permission. |
+
+Before deploying isolation changes, test real Microsoft and Discord sign-in,
+the OAuth return path, token refresh/session expiry, and an authenticated
+puzzlehunt's Fluid connection and updates. Public response-header checks and
+local mocked authentication do not replace these live checks. New popup-based
+authentication or third-party embeds need their own compatibility review.
+
 ## Running against a local belle-bot
 
 TODO: restore this flow

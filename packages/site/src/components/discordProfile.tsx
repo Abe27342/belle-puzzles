@@ -58,6 +58,7 @@ export const DiscordProfile: React.FC = () => {
 		<div className="discord-account">
 			<img
 				className="discord-avatar"
+				crossOrigin="anonymous"
 				src={`https://cdn.discordapp.com/avatars/${currentDiscordUser.id}/${currentDiscordUser.avatar}`}
 			/>
 			<span className="discord-username">

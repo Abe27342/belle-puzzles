@@ -83,6 +83,7 @@ const HamburgerMenu: React.FC = () => {
 		const options = [
 			{ label: 'Home', path: '/home' },
 			{ label: 'About', path: '/about' },
+			{ label: 'Logic Puzzle Solvers', path: '/solvers' },
 			{ label: 'Puzzlehunt Viewer', path: '/servers' },
 		];
 		options.push(
@@ -190,6 +191,9 @@ const PageNavigation: React.FC = () => {
 			</li>
 			<li>
 				<Anchor href="/servers">Puzzlehunt Viewer</Anchor>
+			</li>
+			<li>
+				<Anchor href="/solvers">Logic Puzzle Solvers</Anchor>
 			</li>
 			{/* TODO: include github link here */}
 		</nav>

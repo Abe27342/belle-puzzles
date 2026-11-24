@@ -1,4 +1,7 @@
 export * from './puzzles/masyu.js';
+export * from './puzzles/sudoku.js';
+export * from './puzzles/hashi.js';
+export { shutdownSolverRuntime } from './lib/z3.js';
 export * from './lib/text-grid.js';
 export * from './lib/puzzle.js';
 export * from './lib/graph-output.js';

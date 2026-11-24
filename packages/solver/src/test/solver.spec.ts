@@ -1,5 +1,5 @@
 import { afterAll, expect, it } from 'vitest';
-import { killThreads, z3 } from '../lib/z3.js';
+import { shutdownSolverRuntime, z3 } from '../lib/z3.js';
 import {
 	CartesianGridGraph,
 	constant,
@@ -16,7 +16,7 @@ import {
 import type { PuzzleDefinition, VertexValueSolution } from '../index.js';
 
 afterAll(async () => {
-	await killThreads(z3.em);
+	await shutdownSolverRuntime();
 });
 
 it('loads the shared Z3 runtime and solves constraints', async () => {
