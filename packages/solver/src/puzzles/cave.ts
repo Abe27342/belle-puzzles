@@ -20,7 +20,7 @@ import {
 
 export interface CavePuzzleProps extends CartesianGridPuzzleProps {
 	givens: ConstructionGivens[];
-	renderOptions?: CartesianGridRenderOptions;
+	renderOptions?: Partial<CartesianGridRenderOptions>;
 }
 
 interface Given {
@@ -75,7 +75,7 @@ export class CavePuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 
 	public static fromText(
 		text: string,
-		renderOptions?: CartesianGridRenderOptions
+		renderOptions?: Partial<CartesianGridRenderOptions>
 	) {
 		const givens: ConstructionGivens[] = [];
 		const visitor: TextGridVisitor = ([char], coord) => {

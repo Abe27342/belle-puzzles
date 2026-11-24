@@ -24,14 +24,63 @@ const uniquenessLabels: Record<Uniqueness, string> = {
 	unchecked: '',
 	checking: 'Checking whether the solution is unique...',
 	unique: 'This solution is unique.',
-	multiple: 'This puzzle has multiple solutions.',
+	multiple: '',
 	unknown: 'The solver could not determine whether this solution is unique.',
 	cancelled: 'Uniqueness check cancelled; uniqueness is not known.',
 };
 
 export function SolverNavigation() {
 	const [expanded, setExpanded] = React.useState(true);
+	const [mobile, setMobile] = React.useState(
+		() => window.matchMedia('(max-width: 640px)').matches
+	);
+	const [mobileOpen, setMobileOpen] = React.useState(false);
 	const [search, setSearch] = React.useState('');
+	const menu = React.useRef<HTMLElement>(null);
+	const trigger = React.useRef<HTMLButtonElement>(null);
+	const searchInput = React.useRef<HTMLInputElement>(null);
+	React.useEffect(() => {
+		const media = window.matchMedia('(max-width: 640px)');
+		const onChange = (event: MediaQueryListEvent) => {
+			setMobile(event.matches);
+			setMobileOpen(false);
+		};
+		media.addEventListener('change', onChange);
+		return () => media.removeEventListener('change', onChange);
+	}, []);
+	React.useEffect(() => {
+		if (!mobile || !mobileOpen) return;
+		searchInput.current?.focus();
+		const onPointerDown = (event: PointerEvent) => {
+			if (
+				event.target instanceof Node &&
+				!menu.current?.contains(event.target)
+			) {
+				setMobileOpen(false);
+			}
+		};
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key === 'Escape') {
+				event.preventDefault();
+				setMobileOpen(false);
+				trigger.current?.focus();
+			}
+		};
+		document.addEventListener('pointerdown', onPointerDown);
+		document.addEventListener('keydown', onKeyDown);
+		return () => {
+			document.removeEventListener('pointerdown', onPointerDown);
+			document.removeEventListener('keydown', onKeyDown);
+		};
+	}, [mobile, mobileOpen]);
+	const open = mobile ? mobileOpen : expanded;
+	const toggleLabel = mobile
+		? mobileOpen
+			? 'Close puzzle menu'
+			: 'Choose puzzle'
+		: expanded
+		? 'Collapse puzzle menu'
+		: 'Expand puzzle menu';
 	const matches = Object.entries(puzzleTypes)
 		.filter(([, { name }]) =>
 			name.toLowerCase().includes(search.trim().toLowerCase())
@@ -39,26 +88,101 @@ export function SolverNavigation() {
 		.sort(([, left], [, right]) => left.name.localeCompare(right.name));
 	return (
 		<aside
-			className={`solver-menu${expanded ? '' : ' solver-menu-collapsed'}`}
+			ref={menu}
+			className={`solver-menu${
+				!mobile && !expanded ? ' solver-menu-collapsed' : ''
+			}`}
+			onBlur={(event) => {
+				if (
+					mobile &&
+					event.relatedTarget instanceof Node &&
+					!event.currentTarget.contains(event.relatedTarget)
+				) {
+					setMobileOpen(false);
+				}
+			}}
 		>
 			<div className="solver-menu-heading">
-				{expanded && <h2>Puzzles</h2>}
+				{!mobile && expanded && <h2>Puzzles</h2>}
 				<button
+					ref={trigger}
 					type="button"
-					aria-label={
-						expanded ? 'Collapse puzzle menu' : 'Expand puzzle menu'
-					}
-					aria-expanded={expanded}
+					className="solver-menu-toggle"
+					aria-label={toggleLabel}
+					title={toggleLabel}
+					aria-expanded={open}
+					aria-haspopup={mobile ? 'dialog' : undefined}
 					aria-controls="solver-menu-content"
-					onClick={() => setExpanded((value) => !value)}
+					onClick={() =>
+						mobile
+							? setMobileOpen((value) => !value)
+							: setExpanded((value) => !value)
+					}
 				>
-					{expanded ? '<' : '>'}
+					<svg
+						viewBox="0 0 24 24"
+						aria-hidden="true"
+						focusable="false"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="1.75"
+						strokeLinecap="round"
+						strokeLinejoin="round"
+					>
+						{mobile ? (
+							<path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" />
+						) : (
+							<>
+								<rect
+									x="3"
+									y="4"
+									width="18"
+									height="16"
+									rx="2"
+								/>
+								<path d="M9 4v16" />
+								<path
+									d={
+										open
+											? 'M15 9l-3 3 3 3'
+											: 'M12 9l3 3-3 3'
+									}
+								/>
+							</>
+						)}
+					</svg>
+					{mobile && (
+						<>
+							<span>Puzzles</span>
+							<svg
+								className="solver-menu-caret"
+								viewBox="0 0 24 24"
+								aria-hidden="true"
+								focusable="false"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="1.75"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+							>
+								<path
+									d={open ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6'}
+								/>
+							</svg>
+						</>
+					)}
 				</button>
 			</div>
-			<div id="solver-menu-content" hidden={!expanded}>
+			<div
+				id="solver-menu-content"
+				hidden={!open}
+				role={mobile ? 'dialog' : undefined}
+				aria-label={mobile ? 'Choose a puzzle' : undefined}
+			>
 				<div className="solver-menu-search">
 					<label htmlFor="puzzle-search">Search puzzles</label>
 					<input
+						ref={searchInput}
 						id="puzzle-search"
 						type="search"
 						value={search}
@@ -70,7 +194,15 @@ export function SolverNavigation() {
 					<ul>
 						{matches.map(([type, { name }]) => (
 							<li key={type}>
-								<NavLink to={`/solvers/${type}`}>
+								<NavLink
+									to={`/solvers/${type}`}
+									onClick={() => {
+										if (mobile) {
+											setMobileOpen(false);
+											trigger.current?.focus();
+										}
+									}}
+								>
 									{name}
 								</NavLink>
 							</li>
@@ -195,6 +327,7 @@ export function SolverPage({
 	const [cachedSecond, setCachedSecond] = React.useState<string | null>(null);
 	const [phase, setPhase] = React.useState<Phase>('idle');
 	const [uniqueness, setUniqueness] = React.useState<Uniqueness>('unchecked');
+	const [exhausted, setExhausted] = React.useState(false);
 	const [message, setMessage] = React.useState('');
 	const [error, setError] = React.useState('');
 	const client = React.useRef<SolverClient>();
@@ -227,6 +360,7 @@ export function SolverPage({
 		setCachedSecond(null);
 		setPhase('idle');
 		setUniqueness('unchecked');
+		setExhausted(false);
 		setMessage('');
 		setError('');
 	};
@@ -243,6 +377,7 @@ export function SolverPage({
 		setSolutions([]);
 		setCachedSecond(null);
 		setUniqueness('unchecked');
+		setExhausted(false);
 		setMessage('');
 		setError('');
 		setPhase('first');
@@ -272,6 +407,7 @@ export function SolverPage({
 						setPhase('ready');
 					}
 				} else if (response.type === 'terminal') {
+					setExhausted(response.status === 'unsat' && receivedFirst);
 					stop();
 					setPhase('done');
 					if (response.status === 'unknown') {
@@ -389,6 +525,20 @@ export function SolverPage({
 							</pre>
 						</article>
 					))}
+					{uniqueness === 'multiple' && !exhausted && (
+						<p className="solver-solution-more">
+							This puzzle has multiple solutions.{' '}
+							<button
+								type="button"
+								className="solver-next-link"
+								aria-label="Find another solution"
+								disabled={phase !== 'ready'}
+								onClick={next}
+							>
+								Find next...
+							</button>
+						</p>
+					)}
 				</div>
 				<div role="status" aria-live="polite">
 					{phase === 'idle' &&
@@ -401,7 +551,9 @@ export function SolverPage({
 							</p>
 						)}
 					{phase === 'first' && (
-						<p>Loading solver and finding the first solution...</p>
+						<p className="solver-visually-hidden">
+							Loading solver and finding the first solution...
+						</p>
 					)}
 					{phase === 'next' && <p>Finding the next solution...</p>}
 					{uniquenessLabels[uniqueness] && (

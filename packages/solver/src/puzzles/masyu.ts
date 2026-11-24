@@ -20,7 +20,7 @@ import {
 
 export interface MasyuPuzzleProps extends CartesianGridPuzzleProps {
 	pearls: ConstructionPearl[];
-	renderOptions?: PearlRenderOptions;
+	renderOptions?: Partial<PearlRenderOptions>;
 }
 
 interface Pearl {
@@ -89,7 +89,10 @@ export class MasyuPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 		}
 	}
 
-	public static fromText(text: string, renderOptions?: PearlRenderOptions) {
+	public static fromText(
+		text: string,
+		renderOptions?: Partial<PearlRenderOptions>
+	) {
 		const pearls: ConstructionPearl[] = [];
 		const visitor: TextGridVisitor = ([char], coord) => {
 			pearls.push({ coord, color: parsePearlColor(char, coord) });

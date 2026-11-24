@@ -21,7 +21,7 @@ import {
 
 export interface SlitherlinkPuzzleProps extends CartesianGridPuzzleProps {
 	givens: ConstructionGivens[];
-	renderOptions?: CartesianGridRenderOptions;
+	renderOptions?: Partial<CartesianGridRenderOptions>;
 }
 
 interface Given {
@@ -76,7 +76,7 @@ export class SlitherlinkPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution
 
 	public static fromText(
 		text: string,
-		renderOptions?: CartesianGridRenderOptions
+		renderOptions?: Partial<CartesianGridRenderOptions>
 	) {
 		const givens: ConstructionGivens[] = [];
 		const visitor: TextGridVisitor = ([char], coord) => {

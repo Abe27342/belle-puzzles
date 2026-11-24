@@ -10,6 +10,7 @@ import {
 } from '@belle-puzzles/solver/runtime';
 import type { SolverRequest, SolverResponse } from './protocol';
 import { errorMessage, type SolverErrorStage } from './errors';
+import { solverRenderOptions } from './rendering';
 
 let puzzle: CartesianGridPuzzle<unknown>;
 let session: SolverSession<unknown>;
@@ -46,7 +47,10 @@ self.onmessage = async ({ data }: MessageEvent<SolverRequest>) => {
 			if (!isPuzzleType(data.puzzleType)) {
 				throw new Error(`Unknown puzzle type "${data.puzzleType}".`);
 			}
-			puzzle = puzzleTypes[data.puzzleType].parser.fromText(data.text);
+			puzzle = puzzleTypes[data.puzzleType].parser.fromText(
+				data.text,
+				solverRenderOptions
+			);
 			stage = 'build';
 			session = new SolverSession(puzzle);
 		}

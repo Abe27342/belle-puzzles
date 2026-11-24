@@ -107,7 +107,7 @@ export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 	 */
 	public static fromText(
 		text: string,
-		renderOptions?: CartesianGridRenderOptions
+		renderOptions?: Partial<CartesianGridRenderOptions>
 	) {
 		const givens: ConstructionGiven[] = [];
 		const visitor: TextGridVisitor = ([value], coord) => {

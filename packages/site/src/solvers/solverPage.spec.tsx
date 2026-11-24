@@ -1,11 +1,12 @@
 import * as React from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { createSolverClient, prepareSolverWorker } from './client';
 import { SolverNavigation, SolverPage, SolverRoute } from './solverPage';
 import { puzzleTypes } from '@belle-puzzles/solver';
 import type { SolverResponse } from './protocol';
+import { SolverPageSkeleton } from './solverSkeleton';
 
 vi.mock('./client', () => ({
 	createSolverClient: vi.fn(),
@@ -30,6 +31,8 @@ beforeEach(() => {
 	);
 });
 
+afterEach(() => vi.restoreAllMocks());
+
 function start() {
 	const view = render(<SolverPage puzzleType="sudoku" />);
 	fireEvent.click(screen.getByRole('button', { name: 'Load example' }));
@@ -42,6 +45,112 @@ function send(response: SolverResponse) {
 }
 
 describe('solver page', () => {
+	it('uses the pane layout while loading and leaves Solutions empty until a result arrives', () => {
+		const placeholder = render(<SolverPageSkeleton />);
+		expect(screen.getByRole('main')).toHaveAttribute('aria-busy', 'true');
+		expect(screen.getByRole('status')).toHaveTextContent(
+			'Loading solver page'
+		);
+		expect(
+			placeholder.container.querySelector('.solver-input')
+		).toBeInTheDocument();
+		expect(
+			placeholder.container.querySelector('.solver-output')
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole('region', { name: 'Solutions' }).children
+		).toHaveLength(1);
+		placeholder.unmount();
+		const view = start();
+		expect(
+			view.container.querySelector('.solver-grid-skeleton')
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByLabelText('Solution 1 grid')
+		).not.toBeInTheDocument();
+		expect(screen.getByRole('status').firstElementChild).toHaveClass(
+			'solver-visually-hidden'
+		);
+		send({ type: 'solution', output: 'first' });
+		expect(
+			view.container.querySelector('.solver-grid-skeleton')
+		).not.toBeInTheDocument();
+		expect(screen.getByLabelText('Solution 1 grid')).toHaveTextContent(
+			'first'
+		);
+	});
+
+	it('offers one next-solution action after all grids and removes it when enumeration is exhausted', () => {
+		start();
+		send({ type: 'solution', output: 'first' });
+		send({ type: 'solution', output: 'second' });
+		fireEvent.click(
+			screen.getByRole('button', {
+				name: 'Find another solution',
+			})
+		);
+		expect(screen.getByLabelText('Solution 2 grid')).toHaveTextContent(
+			'second'
+		);
+		expect(next).toHaveBeenCalledTimes(1);
+		expect(
+			screen.getAllByRole('button', { name: 'Find another solution' })
+		).toHaveLength(1);
+		expect(
+			screen
+				.getByLabelText('Solution 2 grid')
+				.compareDocumentPosition(
+					screen.getByRole('button', {
+						name: 'Find another solution',
+					})
+				) & Node.DOCUMENT_POSITION_FOLLOWING
+		).not.toBe(0);
+		fireEvent.click(
+			screen.getByRole('button', {
+				name: 'Find another solution',
+			})
+		);
+		expect(next).toHaveBeenCalledTimes(2);
+		for (const action of screen.getAllByRole('button', {
+			name: 'Find another solution',
+		})) {
+			expect(action).toBeDisabled();
+		}
+		send({ type: 'terminal', status: 'unsat' });
+		expect(screen.getByText('No more solutions.')).toBeInTheDocument();
+		expect(
+			screen.queryByText('This puzzle has multiple solutions.')
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole('button', { name: 'Find another solution' })
+		).not.toBeInTheDocument();
+	});
+
+	it('does not report exhaustion when a subsequent search returns unknown', () => {
+		start();
+		send({ type: 'solution', output: 'first' });
+		send({ type: 'solution', output: 'second' });
+		fireEvent.click(
+			screen.getByRole('button', { name: 'Find next solution' })
+		);
+		fireEvent.click(
+			screen.getByRole('button', { name: 'Find next solution' })
+		);
+		send({ type: 'terminal', status: 'unknown' });
+		expect(screen.getByText(/does not prove/)).toBeInTheDocument();
+		expect(
+			screen.queryByText('No more solutions.')
+		).not.toBeInTheDocument();
+		expect(
+			screen.getAllByText('This puzzle has multiple solutions.')
+		).toHaveLength(1);
+		for (const action of screen.getAllByRole('button', {
+			name: 'Find another solution',
+		})) {
+			expect(action).toBeDisabled();
+		}
+	});
+
 	it('precomputes only the second solution and renders it only on demand', () => {
 		start();
 		expect(createSolverClient).toHaveBeenCalledWith(
@@ -394,6 +503,7 @@ describe('solver page', () => {
 		fireEvent.change(screen.getByLabelText('Search puzzles'), {
 			target: { value: '  HASHI  ' },
 		});
+
 		expect(screen.getByRole('link', { name: 'Hashi' })).toBeInTheDocument();
 		expect(
 			screen.queryByRole('link', { name: 'Masyu' })
@@ -417,6 +527,64 @@ describe('solver page', () => {
 			target: { value: 'not-a-puzzle' },
 		});
 		expect(screen.getByText(/No matching puzzles/)).toBeInTheDocument();
+	});
+
+	it('uses a mobile popover with focus, Escape, outside-click, and selection dismissal', () => {
+		const media = window.matchMedia('(max-width: 640px)');
+		vi.spyOn(window, 'matchMedia').mockReturnValue({
+			...media,
+			matches: true,
+		});
+		render(
+			<MemoryRouter initialEntries={['/solvers/sudoku']}>
+				<Routes>
+					<Route
+						path="/solvers/:puzzleType"
+						element={<SolverRoute />}
+					/>
+				</Routes>
+			</MemoryRouter>
+		);
+		const trigger = screen.getByRole('button', { name: 'Choose puzzle' });
+		expect(trigger).toHaveAttribute('aria-expanded', 'false');
+		expect(screen.getByLabelText('Search puzzles')).not.toBeVisible();
+		fireEvent.click(trigger);
+		expect(
+			screen.getByRole('dialog', { name: 'Choose a puzzle' })
+		).toBeInTheDocument();
+		expect(screen.getByLabelText('Search puzzles')).toHaveFocus();
+		fireEvent.keyDown(document, { key: 'Escape' });
+		expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+		expect(trigger).toHaveFocus();
+		fireEvent.click(trigger);
+		fireEvent.pointerDown(document.body);
+		expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+		fireEvent.click(trigger);
+		fireEvent.click(screen.getByRole('link', { name: 'Masyu' }));
+		expect(
+			screen.getByRole('heading', { name: 'Masyu' })
+		).toBeInTheDocument();
+		expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+		expect(trigger).toHaveFocus();
+	});
+
+	it('closes the mobile popover when keyboard focus moves to the puzzle input', () => {
+		const media = window.matchMedia('(max-width: 640px)');
+		vi.spyOn(window, 'matchMedia').mockReturnValue({
+			...media,
+			matches: true,
+		});
+		render(
+			<MemoryRouter>
+				<SolverNavigation />
+				<input aria-label="Outside input" />
+			</MemoryRouter>
+		);
+		fireEvent.click(screen.getByRole('button', { name: 'Choose puzzle' }));
+		fireEvent.blur(screen.getByLabelText('Search puzzles'), {
+			relatedTarget: screen.getByLabelText('Outside input'),
+		});
+		expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 	});
 
 	it('resizes the columns with the keyboard without clearing the puzzle input', () => {
