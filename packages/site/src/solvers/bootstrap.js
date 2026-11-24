@@ -1,4 +1,4 @@
-// Loaded by prepareSolverWorker as a classic Web Worker at /solver-assets/bootstrap.js.
+// Loaded by prepareSolverWorker as a classic Web Worker via a Vite-managed asset URL.
 // Its first message supplies the bundled solver module URL. Load Z3's unbundled
 // Emscripten script with importScripts, then dynamically import that solver module.
 // Z3's browser/thread-loading guidance explains some of the magic strings in this code:
@@ -24,12 +24,14 @@ self.addEventListener('error', (event) => {
 self.onmessage = async ({ data }) => {
 	try {
 		self.global = self;
-		importScripts('/solver-assets/z3-built.js');
+		const scriptUrl = new URL('z3-built.js', data.z3AssetBase).href;
+		importScripts(scriptUrl);
 		const initialize = self.initZ3;
 		self.initZ3 = (overrides) => {
 			runtime = {
 				...overrides,
-				mainScriptUrlOrBlob: '/solver-assets/z3-built.js',
+				mainScriptUrlOrBlob: scriptUrl,
+				locateFile: (path) => new URL(path, data.z3AssetBase).href,
 			};
 			return initialize(runtime);
 		};

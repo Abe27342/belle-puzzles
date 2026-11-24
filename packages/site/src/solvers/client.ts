@@ -1,4 +1,5 @@
 import moduleUrl from './solver.worker.ts?worker&url';
+import bootstrapUrl from './bootstrap.js?url&no-inline';
 import type { SolverRequest, SolverResponse } from './protocol';
 import { formatSolverError } from './errors';
 
@@ -25,7 +26,7 @@ export function prepareSolverWorker(): PreparedSolverWorker {
 			'This solver requires a browser with cross-origin isolation and SharedArrayBuffer support.'
 		);
 	}
-	const worker = new Worker('/solver-assets/bootstrap.js');
+	const worker = new Worker(bootstrapUrl);
 	let ready = false;
 	let disposed = false;
 	let closed = false;
@@ -123,6 +124,10 @@ export function prepareSolverWorker(): PreparedSolverWorker {
 	};
 	worker.postMessage({
 		moduleUrl: new URL(moduleUrl, window.location.href).href,
+		z3AssetBase: new URL(
+			import.meta.env.VITE_Z3_ASSET_BASE,
+			window.location.href
+		).href,
 	});
 	return {
 		start(type, text, callback) {
