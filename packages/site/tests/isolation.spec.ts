@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
-import deploymentConfig from '../../staticwebapp.config.json';
-import { isolationHeaders } from '../../solver-assets';
+import deploymentConfig from '../staticwebapp.config.json';
+import { isolationHeaders } from '../solver-assets';
 
 it('uses the same site-wide isolation policies in development and deployment', () => {
 	expect(deploymentConfig.globalHeaders).toEqual(isolationHeaders);

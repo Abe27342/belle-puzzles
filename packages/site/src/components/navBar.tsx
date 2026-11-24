@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Outlet, useNavigate } from 'react-router';
+import { Outlet, useMatch, useNavigate } from 'react-router';
 import { Anchor, Card, Menu, MenuItem } from '../fast';
 import { getMicrosoftUser, isLoggedIn } from '../store/auth';
 import { useAppSelector } from '../store/hooks';
@@ -28,7 +28,8 @@ function getScreenSize(state: RootState): ScreenSize {
 
 export const NavBar: React.FC = () => {
 	const size = useAppSelector(getScreenSize);
-	return (
+	const solverLayout = useMatch('/solvers/*');
+	const content = (
 		<>
 			<header className="header nav-header">
 				{size === ScreenSize.Small ? (
@@ -39,6 +40,11 @@ export const NavBar: React.FC = () => {
 			</header>
 			<Outlet />
 		</>
+	);
+	return solverLayout ? (
+		<div className="solver-site-layout">{content}</div>
+	) : (
+		content
 	);
 };
 

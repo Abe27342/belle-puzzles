@@ -11,6 +11,7 @@ import {
 	type CartesianGridPuzzle,
 } from '@belle-puzzles/solver';
 import type { SolverRequest, SolverResponse } from './protocol';
+import { errorMessage, type SolverErrorStage } from './errors';
 
 const parsers = {
 	sudoku: SudokuPuzzle,
@@ -39,18 +40,22 @@ self.onmessage = async ({ data }: MessageEvent<SolverRequest>) => {
 		} catch (error) {
 			send({
 				type: 'error',
-				message: `Z3 cleanup failed: ${String(error)}`,
+				message: errorMessage(error),
+				stage: 'cleanup',
 			});
 		}
 		return;
 	}
+	let stage: SolverErrorStage = 'solve';
 	try {
 		if (disposing || busy) {
 			throw new Error('The solver is not available for another request.');
 		}
 		busy = true;
 		if (data.type === 'start') {
+			stage = 'parse';
 			puzzle = parsers[data.puzzleType].fromText(data.text);
+			stage = 'build';
 			session = new SolverSession(puzzle);
 		}
 		if (!session) {
@@ -58,8 +63,10 @@ self.onmessage = async ({ data }: MessageEvent<SolverRequest>) => {
 				'Start a puzzle before requesting another solution.'
 			);
 		}
+		stage = 'solve';
 		const result = await session.nextSolution();
 		if (!disposing) {
+			stage = 'render';
 			send(
 				result.status === 'sat'
 					? {
@@ -77,7 +84,8 @@ self.onmessage = async ({ data }: MessageEvent<SolverRequest>) => {
 		if (!disposing) {
 			send({
 				type: 'error',
-				message: error instanceof Error ? error.message : String(error),
+				message: errorMessage(error),
+				stage,
 			});
 		}
 	} finally {

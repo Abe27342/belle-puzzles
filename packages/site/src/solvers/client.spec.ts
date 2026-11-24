@@ -66,11 +66,45 @@ it('surfaces initialization failure and closes the failed worker', () => {
 	worker.respond({ type: 'error', message: 'Initialization failed' });
 	expect(callback).toHaveBeenCalledWith({
 		type: 'error',
-		message: 'Initialization failed',
+		message: expect.stringContaining('Initialization failed'),
 	});
 	expect(worker.terminate).toHaveBeenCalledTimes(1);
 });
 
+it('adds puzzle-specific guidance to parsing failures', () => {
+	const callback = vi.fn();
+	createSolverClient('hashi', 'X', callback);
+	const worker = FakeWorker.current;
+	worker.respond({ type: 'ready' });
+	worker.respond({
+		type: 'error',
+		stage: 'parse',
+		message: 'Invalid digit at 0,0: "X"',
+	});
+	expect(callback).toHaveBeenCalledWith({
+		type: 'error',
+		stage: 'parse',
+		message: expect.stringContaining('Could not parse this Hashi puzzle'),
+	});
+	expect(callback.mock.calls[0][0].message).toContain('Invalid digit at 0,0');
+});
+
+it('replaces raw worker events with reload guidance', () => {
+	const callback = vi.fn();
+	createSolverClient('hashi', '..1', callback);
+	FakeWorker.current.onerror(
+		new ErrorEvent('error', {
+			message: 'Uncaught [object Event]',
+			error: new Event('error'),
+		})
+	);
+	expect(callback).toHaveBeenCalledWith({
+		type: 'error',
+		message: expect.stringContaining('Reload the page'),
+	});
+	expect(callback.mock.calls[0][0].message).not.toContain('[object');
+	expect(FakeWorker.current.terminate).toHaveBeenCalledTimes(1);
+});
 it('rejects unsupported environments before creating a worker', () => {
 	vi.stubGlobal('crossOriginIsolated', false);
 	expect(() => createSolverClient('sudoku', 'text', vi.fn())).toThrow(

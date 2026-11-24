@@ -8,6 +8,18 @@ and `/solvers/hashi`. Each page shares the same text-input and solution UI and
 uses the solver package's existing Cartesian grid renderer. Input stays in the
 browser; no puzzle data is sent to an API.
 
+The desktop layout has three grid columns: a searchable puzzle menu on the left,
+text input and controls in the middle, and solution status and rendered grids on
+the right. The menu starts expanded and can be collapsed without losing its
+search. Smaller screens stack the input and output panels. The solver background
+fills the available viewport height.
+
+The menu is flush with the left edge and becomes a narrow rail when collapsed.
+Input and solutions are flat panes separated by a divider, with independent
+scrolling on desktop. Drag their divider to resize them, or focus it and use the
+arrow keys; Home and End move to the minimum and maximum widths. On narrow
+screens the panes stack and the draggable divider is hidden.
+
 Use dots for empty positions and equal-length rows. Each page documents its
 clue format and includes a loadable example. Shingoki takes two equally sized
 grids, separated by a blank line, for colors and lengths. Current text parsers
@@ -18,6 +30,11 @@ determine uniqueness, then cached until **Find next solution** is clicked.
 Subsequent solutions are computed on demand and displayed alongside earlier
 ones. **Cancel** stops the session and preserves displayed solutions; changing
 the input clears the old session and output.
+
+Parsing failures include their row/clue details and point back to the format
+instructions and examples. Runtime and worker-loading failures offer recovery
+guidance instead of displaying raw browser event objects. A contradictory puzzle
+is reported separately as having no solutions.
 
 Build the solver dependency before starting the site:
 

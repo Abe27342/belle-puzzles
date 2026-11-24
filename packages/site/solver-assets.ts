@@ -40,6 +40,9 @@ export function solverAssets(): Plugin {
 					next();
 					return;
 				}
+				for (const [name, value] of Object.entries(isolationHeaders)) {
+					res.setHeader(name, value);
+				}
 				res.setHeader(
 					'Content-Type',
 					asset.endsWith('.wasm')

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { createSolverClient } from './client';
@@ -100,7 +100,7 @@ describe('solver page', () => {
 		start();
 		send({ type: 'terminal', status: 'unsat' });
 		expect(
-			screen.getByText('This puzzle has no solutions.')
+			screen.getByText(/This puzzle has no solutions\./)
 		).toBeInTheDocument();
 		fireEvent.click(screen.getByRole('button', { name: 'Solve' }));
 		send({ type: 'solution', output: 'first' });
@@ -212,5 +212,135 @@ describe('solver page', () => {
 			</MemoryRouter>
 		);
 		expect(screen.getByText(/Unknown puzzle type/)).toBeInTheDocument();
+	});
+
+	it('separates puzzle selection, text input, and solution status', () => {
+		render(
+			<MemoryRouter initialEntries={['/solvers/sudoku']}>
+				<Routes>
+					<Route
+						path="/solvers/:puzzleType"
+						element={<SolverRoute />}
+					/>
+				</Routes>
+			</MemoryRouter>
+		);
+		expect(screen.getByRole('complementary')).toContainElement(
+			screen.getByLabelText('Search puzzles')
+		);
+		expect(
+			within(
+				screen.getByRole('region', { name: 'Sudoku Solver' })
+			).getByLabelText('Puzzle text')
+		).toBeInTheDocument();
+		expect(
+			within(
+				screen.getByRole('region', { name: 'Solution status' })
+			).getByRole('status')
+		).toHaveTextContent('Enter a puzzle');
+	});
+
+	it('searches the expanded menu and keeps the search when collapsing and reopening', () => {
+		render(
+			<MemoryRouter initialEntries={['/solvers/sudoku']}>
+				<Routes>
+					<Route
+						path="/solvers/:puzzleType"
+						element={<SolverRoute />}
+					/>
+				</Routes>
+			</MemoryRouter>
+		);
+		expect(
+			screen.getByRole('button', { name: 'Collapse puzzle menu' })
+		).toHaveAttribute('aria-expanded', 'true');
+		fireEvent.change(screen.getByLabelText('Search puzzles'), {
+			target: { value: '  HASHI  ' },
+		});
+		expect(screen.getByRole('link', { name: 'Hashi' })).toBeInTheDocument();
+		expect(
+			screen.queryByRole('link', { name: 'Masyu' })
+		).not.toBeInTheDocument();
+		fireEvent.click(
+			screen.getByRole('button', { name: 'Collapse puzzle menu' })
+		);
+		expect(
+			screen.queryByRole('link', { name: 'Hashi' })
+		).not.toBeInTheDocument();
+		expect(
+			screen.getByRole('button', { name: 'Expand puzzle menu' })
+		).toHaveAttribute('aria-expanded', 'false');
+		fireEvent.click(
+			screen.getByRole('button', { name: 'Expand puzzle menu' })
+		);
+		expect(screen.getByLabelText('Search puzzles')).toHaveValue(
+			'  HASHI  '
+		);
+		fireEvent.change(screen.getByLabelText('Search puzzles'), {
+			target: { value: 'not-a-puzzle' },
+		});
+		expect(screen.getByText(/No matching puzzles/)).toBeInTheDocument();
+	});
+
+	it('resizes the columns with the keyboard without clearing the puzzle input', () => {
+		render(
+			<MemoryRouter initialEntries={['/solvers/sudoku']}>
+				<Routes>
+					<Route
+						path="/solvers/:puzzleType"
+						element={<SolverRoute />}
+					/>
+				</Routes>
+			</MemoryRouter>
+		);
+		fireEvent.change(screen.getByLabelText('Puzzle text'), {
+			target: { value: 'unfinished puzzle' },
+		});
+		const divider = screen.getByRole('separator', {
+			name: 'Resize input and solution columns',
+		});
+		expect(divider).toHaveAttribute('aria-valuenow', '50');
+		fireEvent.keyDown(divider, { key: 'ArrowRight' });
+		expect(divider).toHaveAttribute('aria-valuenow', '55');
+		expect(
+			screen
+				.getByRole('main')
+				.style.getPropertyValue('--solver-input-share')
+		).toBe('55fr');
+		fireEvent.keyDown(divider, { key: 'End' });
+		fireEvent.keyDown(divider, { key: 'ArrowRight' });
+		expect(divider).toHaveAttribute('aria-valuenow', '75');
+		fireEvent.keyDown(divider, { key: 'Home' });
+		fireEvent.keyDown(divider, { key: 'ArrowLeft' });
+		expect(divider).toHaveAttribute('aria-valuenow', '25');
+		expect(screen.getByLabelText('Puzzle text')).toHaveValue(
+			'unfinished puzzle'
+		);
+		expect(createSolverClient).not.toHaveBeenCalled();
+	});
+
+	it('keeps an active solver session when the divider moves', () => {
+		render(
+			<MemoryRouter initialEntries={['/solvers/sudoku']}>
+				<Routes>
+					<Route
+						path="/solvers/:puzzleType"
+						element={<SolverRoute />}
+					/>
+				</Routes>
+			</MemoryRouter>
+		);
+		fireEvent.click(screen.getByRole('button', { name: 'Load example' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Solve' }));
+		fireEvent.keyDown(screen.getByRole('separator'), { key: 'ArrowLeft' });
+		expect(createSolverClient).toHaveBeenCalledTimes(1);
+		expect(dispose).not.toHaveBeenCalled();
+		send({ type: 'solution', output: 'still solving' });
+		expect(screen.getByLabelText('Solution 1 grid')).toHaveTextContent(
+			'still solving'
+		);
+		expect(screen.getByLabelText('Puzzle text')).toHaveValue(
+			puzzleTypes.sudoku.example
+		);
 	});
 });

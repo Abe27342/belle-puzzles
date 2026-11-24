@@ -2,6 +2,8 @@ import * as React from 'react';
 import { NavLink, useParams } from 'react-router-dom';
 import { isPuzzleType, puzzleTypes, type PuzzleType } from './catalog';
 import { createSolverClient, type SolverClient } from './client';
+import { formatSolverError } from './errors';
+import { SolverDivider } from './solverDivider';
 import './solvers.css';
 
 type Phase = 'idle' | 'first' | 'uniqueness' | 'ready' | 'next' | 'done';
@@ -23,39 +25,119 @@ const uniquenessLabels: Record<Uniqueness, string> = {
 };
 
 export function SolverNavigation() {
+	const [expanded, setExpanded] = React.useState(true);
+	const [search, setSearch] = React.useState('');
+	const matches = Object.entries(puzzleTypes).filter(([, { name }]) =>
+		name.toLowerCase().includes(search.trim().toLowerCase())
+	);
 	return (
-		<nav className="solver-navigation" aria-label="Puzzle solvers">
-			{Object.entries(puzzleTypes).map(([type, { name }]) => (
-				<NavLink key={type} to={`/solvers/${type}`}>
-					{name}
-				</NavLink>
-			))}
-		</nav>
+		<aside
+			className={`solver-menu${expanded ? '' : ' solver-menu-collapsed'}`}
+		>
+			<div className="solver-menu-heading">
+				{expanded && <h2>Puzzles</h2>}
+				<button
+					type="button"
+					aria-label={
+						expanded ? 'Collapse puzzle menu' : 'Expand puzzle menu'
+					}
+					aria-expanded={expanded}
+					aria-controls="solver-menu-content"
+					onClick={() => setExpanded((value) => !value)}
+				>
+					{expanded ? '<' : '>'}
+				</button>
+			</div>
+			<div id="solver-menu-content" hidden={!expanded}>
+				<label htmlFor="puzzle-search">Search puzzles</label>
+				<input
+					id="puzzle-search"
+					type="search"
+					value={search}
+					onChange={(event) => setSearch(event.target.value)}
+					placeholder="Puzzle name"
+				/>
+				<nav aria-label="Puzzle solvers">
+					<ul>
+						{matches.map(([type, { name }]) => (
+							<li key={type}>
+								<NavLink to={`/solvers/${type}`}>
+									{name}
+								</NavLink>
+							</li>
+						))}
+					</ul>
+				</nav>
+				{matches.length === 0 && (
+					<p>
+						No matching puzzles. Try another name or clear the
+						search.
+					</p>
+				)}
+			</div>
+		</aside>
 	);
 }
 
 export function SolverRoute() {
 	const { puzzleType } = useParams();
+	const [inputShare, setInputShare] = React.useState(50);
+	const style: React.CSSProperties & {
+		'--solver-input-share': string;
+		'--solver-output-share': string;
+	} = {
+		'--solver-input-share': `${inputShare}fr`,
+		'--solver-output-share': `${100 - inputShare}fr`,
+	};
+	const divider = (
+		<SolverDivider value={inputShare} onChange={setInputShare} />
+	);
 	return (
-		<div className="solver-area">
+		<main className="solver-area" style={style}>
 			<SolverNavigation />
 			{puzzleType && isPuzzleType(puzzleType) ? (
-				<SolverPage key={puzzleType} puzzleType={puzzleType} />
+				<SolverPage
+					key={puzzleType}
+					puzzleType={puzzleType}
+					divider={divider}
+				/>
 			) : (
-				<main className="solver-page">
-					<h1>Logic Puzzle Solvers</h1>
-					<p>
-						{puzzleType
-							? 'Unknown puzzle type. Choose a solver above.'
-							: 'Choose a solver above to get started. No login is required.'}
-					</p>
-				</main>
+				<>
+					<section id="solver-input-pane" className="solver-input">
+						<h1>Logic Puzzle Solvers</h1>
+						<p>
+							{puzzleType
+								? 'Unknown puzzle type. Choose a puzzle from the menu.'
+								: 'Choose a puzzle from the menu to get started. No login is required.'}
+						</p>
+					</section>
+					{divider}
+				</>
 			)}
-		</div>
+			{(!puzzleType || !isPuzzleType(puzzleType)) && (
+				<section
+					id="solver-output-pane"
+					className="solver-output"
+					aria-label="Solution status"
+				>
+					<h2>Solution status</h2>
+					<p>
+						Select a puzzle to enter its clues and see solutions
+						here.
+					</p>
+				</section>
+			)}
+		</main>
 	);
 }
 
-export function SolverPage({ puzzleType }: { puzzleType: PuzzleType }) {
+export function SolverPage({
+	puzzleType,
+	divider,
+}: {
+	puzzleType: PuzzleType;
+	divider?: React.ReactNode;
+}) {
 	const definition = puzzleTypes[puzzleType];
 	const [text, setText] = React.useState('');
 	const [solutions, setSolutions] = React.useState<string[]>([]);
@@ -150,7 +232,9 @@ export function SolverPage({ puzzleType }: { puzzleType: PuzzleType }) {
 								'The solver returned unknown. This does not prove that no further solutions exist.'
 							);
 						} else if (!receivedFirst) {
-							setMessage('This puzzle has no solutions.');
+							setMessage(
+								'This puzzle has no solutions. Check that the clues are correct and do not contradict each other.'
+							);
 						} else if (probing) {
 							setUniqueness('unique');
 						} else {
@@ -162,7 +246,7 @@ export function SolverPage({ puzzleType }: { puzzleType: PuzzleType }) {
 				}
 			);
 		} catch (error) {
-			reportError(error instanceof Error ? error.message : String(error));
+			reportError(formatSolverError(error, 'runtime', puzzleType));
 		}
 	};
 	const next = () => {
@@ -175,90 +259,114 @@ export function SolverPage({ puzzleType }: { puzzleType: PuzzleType }) {
 		try {
 			client.current.next();
 		} catch (error) {
-			reportError(error instanceof Error ? error.message : String(error));
+			reportError(formatSolverError(error, 'solve', puzzleType));
 		}
 	};
 	const busy =
 		phase === 'first' || phase === 'uniqueness' || phase === 'next';
 	return (
-		<main className="solver-page">
-			<h1>{definition.name} Solver</h1>
-			<p>
-				No login required. Puzzles are solved locally in your browser.
-			</p>
-			<p id="input-help">
-				{definition.instructions} Use a dot (.) for an empty position.
-				Rows must have equal lengths; spaces also count as empty
-				positions.
-			</p>
-			<form onSubmit={start}>
-				<label htmlFor="puzzle-input">Puzzle text</label>
-				<textarea
-					id="puzzle-input"
-					value={text}
-					onChange={(event) => changeInput(event.target.value)}
-					aria-describedby="input-help"
-					spellCheck={false}
-					rows={12}
-					required
-				/>
-				<div className="solver-actions">
-					<button
-						type="button"
-						onClick={() => changeInput(definition.example)}
-					>
-						Load example
-					</button>
-					<button type="submit" disabled={busy || !text.trim()}>
-						Solve
-					</button>
-					<button
-						type="button"
-						disabled={phase !== 'ready'}
-						onClick={next}
-					>
-						Find next solution
-					</button>
-					<button
-						type="button"
-						disabled={!client.current}
-						onClick={() => {
-							stop();
-							setCachedSecond(null);
-							setPhase('idle');
-							setUniqueness((value) =>
-								value === 'checking' ? 'cancelled' : value
-							);
-							setMessage(
-								'Solving cancelled. Displayed solutions are preserved; solve again to start a new session.'
-							);
-						}}
-					>
-						Cancel
-					</button>
-				</div>
-			</form>
-			<div role="status" aria-live="polite">
-				{phase === 'first' && (
-					<p>Loading solver and finding the first solution...</p>
-				)}
-				{phase === 'next' && <p>Finding the next solution...</p>}
-				{uniquenessLabels[uniqueness] && (
-					<p>{uniquenessLabels[uniqueness]}</p>
-				)}
-				{message && <p>{message}</p>}
-			</div>
-			{error && <p role="alert">{error}</p>}
-			<section aria-label="Solutions">
-				{solutions.map((output, index) => (
-					<article key={index}>
-						<h2>Solution {index + 1}</h2>
-						<pre aria-label={`Solution ${index + 1} grid`}>
-							{output}
-						</pre>
-					</article>
-				))}
+		<>
+			<section
+				id="solver-input-pane"
+				className="solver-input"
+				aria-labelledby="puzzle-title"
+			>
+				<h1 id="puzzle-title">{definition.name} Solver</h1>
+				<p>
+					No login required. Puzzles are solved locally in your
+					browser.
+				</p>
+				<p id="input-help">
+					{definition.instructions} Use a dot (.) for an empty
+					position. Rows must have equal lengths; spaces also count as
+					empty positions.
+				</p>
+				<form onSubmit={start}>
+					<label htmlFor="puzzle-input">Puzzle text</label>
+					<textarea
+						id="puzzle-input"
+						value={text}
+						onChange={(event) => changeInput(event.target.value)}
+						aria-describedby="input-help"
+						spellCheck={false}
+						rows={12}
+						required
+					/>
+					<div className="solver-actions">
+						<button
+							type="button"
+							onClick={() => changeInput(definition.example)}
+						>
+							Load example
+						</button>
+						<button type="submit" disabled={busy || !text.trim()}>
+							Solve
+						</button>
+						<button
+							type="button"
+							disabled={phase !== 'ready'}
+							onClick={next}
+						>
+							Find next solution
+						</button>
+						<button
+							type="button"
+							disabled={!client.current}
+							onClick={() => {
+								stop();
+								setCachedSecond(null);
+								setPhase('idle');
+								setUniqueness((value) =>
+									value === 'checking' ? 'cancelled' : value
+								);
+								setMessage(
+									'Solving cancelled. Displayed solutions are preserved; solve again to start a new session.'
+								);
+							}}
+						>
+							Cancel
+						</button>
+					</div>
+				</form>
 			</section>
-		</main>
+			{divider}
+			<section
+				id="solver-output-pane"
+				className="solver-output"
+				aria-labelledby="solution-status-title"
+			>
+				<h2 id="solution-status-title">Solution status</h2>
+				<div role="status" aria-live="polite">
+					{phase === 'idle' &&
+						solutions.length === 0 &&
+						!message &&
+						!error && (
+							<p>
+								Enter a puzzle and choose Solve to see its
+								solutions.
+							</p>
+						)}
+					{phase === 'first' && (
+						<p>Loading solver and finding the first solution...</p>
+					)}
+					{phase === 'next' && <p>Finding the next solution...</p>}
+					{uniquenessLabels[uniqueness] && (
+						<p>{uniquenessLabels[uniqueness]}</p>
+					)}
+					{message && <p>{message}</p>}
+				</div>
+				{error && <p role="alert">{error}</p>}
+				<section aria-label="Solutions">
+					{solutions.map((output, index) => (
+						<article key={index}>
+							<h3>Solution {index + 1}</h3>
+							<pre aria-label={`Solution ${index + 1} grid`}>
+								{output}
+							</pre>
+						</article>
+					))}
+				</section>
+			</section>
+		</>
 	);
 }

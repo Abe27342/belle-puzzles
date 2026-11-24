@@ -8,7 +8,9 @@ function initializationFailed(error) {
 	}
 	self.postMessage({
 		type: 'error',
-		message: error instanceof Error ? error.message : String(error),
+		message:
+			error && typeof error.message === 'string' ? error.message : '',
+		stage: 'runtime',
 	});
 }
 self.addEventListener('error', (event) => {

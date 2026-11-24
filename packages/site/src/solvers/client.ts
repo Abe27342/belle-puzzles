@@ -1,6 +1,7 @@
 import moduleUrl from './solver.worker.ts?worker&url';
 import type { PuzzleType } from './catalog';
 import type { SolverRequest, SolverResponse } from './protocol';
+import { formatSolverError } from './errors';
 
 export interface SolverClient {
 	next(): void;
@@ -41,11 +42,28 @@ export function createSolverClient(
 			close();
 		} else if (disposed) {
 			if (data.type === 'error') {
-				console.error(data.message);
+				console.error(
+					formatSolverError(
+						data.message,
+						data.stage ?? 'cleanup',
+						puzzleType
+					)
+				);
 				close();
 			}
 		} else {
-			onResponse(data);
+			onResponse(
+				data.type === 'error'
+					? {
+							...data,
+							message: formatSolverError(
+								data.message,
+								data.stage ?? (ready ? 'solve' : 'runtime'),
+								puzzleType
+							),
+					  }
+					: data
+			);
 			if (!ready && data.type === 'error') {
 				close();
 			}
@@ -55,7 +73,11 @@ export function createSolverClient(
 		if (!disposed) {
 			onResponse({
 				type: 'error',
-				message: event.message || 'The solver worker failed to load.',
+				message: formatSolverError(
+					event,
+					ready ? 'solve' : 'runtime',
+					puzzleType
+				),
 			});
 		} else {
 			console.error(
