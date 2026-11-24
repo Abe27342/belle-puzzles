@@ -32,9 +32,11 @@ const uniquenessLabels: Record<Uniqueness, string> = {
 export function SolverNavigation() {
 	const [expanded, setExpanded] = React.useState(true);
 	const [search, setSearch] = React.useState('');
-	const matches = Object.entries(puzzleTypes).filter(([, { name }]) =>
-		name.toLowerCase().includes(search.trim().toLowerCase())
-	);
+	const matches = Object.entries(puzzleTypes)
+		.filter(([, { name }]) =>
+			name.toLowerCase().includes(search.trim().toLowerCase())
+		)
+		.sort(([, left], [, right]) => left.name.localeCompare(right.name));
 	return (
 		<aside
 			className={`solver-menu${expanded ? '' : ' solver-menu-collapsed'}`}
@@ -327,6 +329,7 @@ export function SolverPage({
 					<textarea
 						id="puzzle-input"
 						value={text}
+						placeholder={definition.example}
 						onChange={(event) => changeInput(event.target.value)}
 						aria-describedby="input-help"
 						spellCheck={false}

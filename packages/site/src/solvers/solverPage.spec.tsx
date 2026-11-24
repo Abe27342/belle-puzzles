@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { createSolverClient, prepareSolverWorker } from './client';
-import { SolverPage, SolverRoute } from './solverPage';
+import { SolverNavigation, SolverPage, SolverRoute } from './solverPage';
 import { puzzleTypes } from '@belle-puzzles/solver';
 import type { SolverResponse } from './protocol';
 
@@ -206,6 +206,12 @@ describe('solver page', () => {
 				})
 			).toBeInTheDocument();
 			expect(screen.getByLabelText('Puzzle text')).toBeInTheDocument();
+			expect(screen.getByLabelText('Puzzle text')).toHaveAttribute(
+				'placeholder',
+				puzzleTypes[type].example
+			);
+			expect(screen.getByLabelText('Puzzle text')).toHaveValue('');
+			expect(screen.getByRole('button', { name: 'Solve' })).toBeDisabled();
 			expect(
 				screen.getByText(
 					`${puzzleTypes[type].instructions} Use a dot (".") or single space (" ") for an empty position. Rows must have equal lengths.`
@@ -297,6 +303,34 @@ describe('solver page', () => {
 				screen.getByRole('region', { name: 'Solutions' })
 			).getByRole('status')
 		).toHaveTextContent('Enter a puzzle');
+	});
+
+	it('lists puzzles alphabetically by name, including search results', () => {
+		render(
+			<MemoryRouter>
+				<SolverNavigation />
+			</MemoryRouter>
+		);
+		const names = () =>
+			screen.getAllByRole('link').map((link) => link.textContent);
+		expect(names()).toEqual([
+			'Cave',
+			'Hashi',
+			'Masyu',
+			'Shingoki',
+			'Slitherlink',
+			'Sudoku',
+		]);
+		fireEvent.change(screen.getByLabelText('Search puzzles'), {
+			target: { value: 's' },
+		});
+		expect(names()).toEqual([
+			'Hashi',
+			'Masyu',
+			'Shingoki',
+			'Slitherlink',
+			'Sudoku',
+		]);
 	});
 
 	it('searches the expanded menu and keeps the search when collapsing and reopening', () => {
