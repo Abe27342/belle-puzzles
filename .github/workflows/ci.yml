@@ -19,7 +19,7 @@ jobs:
             - name: Install Node.js
               uses: actions/setup-node@v3
               with:
-                  node-version: 20
+                  node-version: 22
 
             - name: Enable corepack
               run: corepack enable
@@ -43,6 +43,9 @@ jobs:
 
             - name: Run build
               run: npm run build
+
+            - name: Build bot container
+              run: docker build --progress=plain --tag belle-bot:ci .
 
             - name: Run tests
               run: npm run test
