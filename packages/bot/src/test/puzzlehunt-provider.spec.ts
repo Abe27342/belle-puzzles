@@ -6,12 +6,139 @@ import {
 } from '@belle-puzzles/puzzlehunt-model/fluid';
 import { makeFluidClient } from '../fluid/client.js';
 import { createPuzzlehuntProvider } from '../puzzlehunt-provider.js';
+import {
+	applyHuntCommand,
+	HuntCommandError,
+	snowflake,
+	type HuntDocumentClient,
+	type HuntSnapshot,
+} from '@belle-puzzles/puzzlehunt-model/document';
 
 vi.mock('@belle-puzzles/puzzlehunt-model/fluid', async (importOriginal) => {
 	const actual = await importOriginal<
 		typeof import('@belle-puzzles/puzzlehunt-model/fluid')
 	>();
 	return { ...actual, loadExistingPuzzlehunt: vi.fn() };
+});
+
+describe('HTTP model ownership', () => {
+	function fixture() {
+		let snapshot: HuntSnapshot = {
+			huntId: crypto.randomUUID(),
+			guildId: snowflake('guild'),
+			schemaVersion: 1,
+			revision: 0,
+			document: { name: 'HTTP hunt', configuration: {}, nodes: {} },
+		};
+		const documents = {
+			read: vi.fn<HuntDocumentClient['read']>(async (scope) => ({
+				...snapshot,
+				...scope,
+			})),
+			submit: vi.fn<HuntDocumentClient['submit']>(
+				async (_scope, request) => {
+					snapshot = {
+						...snapshot,
+						revision: snapshot.revision + 1,
+						document: applyHuntCommand(
+							snapshot.document,
+							request.command,
+							Date.now()
+						).document,
+					};
+					return {
+						snapshot,
+						receipt: {
+							commandId: request.commandId,
+							committedRevision: snapshot.revision,
+						},
+						replayed: false,
+					};
+				}
+			),
+		};
+		return {
+			snapshot,
+			documents,
+			provider: createPuzzlehuntProvider(documents),
+		};
+	}
+
+	it('shares concurrent initial loads and scopes cached models by guild and hunt', async () => {
+		const { provider, snapshot, documents } = fixture();
+		let release: () => void;
+		documents.read.mockImplementationOnce(async () => {
+			await new Promise<void>((resolve) => {
+				release = resolve;
+			});
+			return snapshot;
+		});
+		const first = provider.getPostgresPuzzlehunt(snapshot);
+		const second = provider.getPostgresPuzzlehunt(snapshot);
+		expect(documents.read).toHaveBeenCalledOnce();
+		release();
+		const [a, b] = await Promise.all([first, second]);
+		expect(a).toBe(b);
+		expect(
+			await provider.getPostgresPuzzlehunt({
+				...snapshot,
+				guildId: snowflake('other-guild'),
+			})
+		).not.toBe(a);
+		expect(
+			await provider.getPostgresPuzzlehunt({
+				...snapshot,
+				huntId: crypto.randomUUID(),
+			})
+		).not.toBe(a);
+		await provider.close();
+	});
+
+	it('keeps uncertain command IDs across inactivity and reports them on shutdown', async () => {
+		const { provider, snapshot, documents } = fixture();
+		const model = await provider.getPostgresPuzzlehunt(snapshot);
+		documents.submit.mockRejectedValueOnce(new Error('Lost response'));
+		model.addRound('Pending', '');
+		await expect(model.flush()).rejects.toThrow('Lost response');
+		const commandId = model.pendingChanges[0].request.commandId;
+		vi.useFakeTimers();
+		try {
+			await vi.advanceTimersByTimeAsync(1000 * 60 * 11);
+			await expect(
+				provider.getPostgresPuzzlehunt(snapshot)
+			).rejects.toThrow(commandId);
+			await expect(provider.close()).rejects.toThrow(
+				'Some hunts failed to settle'
+			);
+			expect(model.pendingChanges[0].request.commandId).toBe(commandId);
+			expect(documents.submit).toHaveBeenCalledOnce();
+			await expect(
+				provider.getPostgresPuzzlehunt(snapshot)
+			).rejects.toThrow('shutting down');
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('refreshes after a definitive rejection instead of trapping the model on the last failed drain', async () => {
+		const { provider, snapshot, documents } = fixture();
+		const model = await provider.getPostgresPuzzlehunt(snapshot);
+		documents.submit.mockRejectedValueOnce(
+			new HuntCommandError('not-found', 'Concurrent deletion')
+		);
+		model.addRound('Rejected', '');
+		await expect(model.flush()).rejects.toThrow(
+			'Puzzlehunt changes failed.'
+		);
+		expect(model.isPending).toBe(false);
+		expect(await provider.getPostgresPuzzlehunt(snapshot)).toBe(model);
+		model.addRound('Next command', '');
+		await model.flush();
+		expect(model.rounds.map((round) => round.name)).toEqual([
+			'Next command',
+		]);
+		await provider.close();
+	});
 });
 
 describe('Puzzlehunt provider lifecycle', () => {

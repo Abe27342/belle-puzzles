@@ -1,12 +1,54 @@
 import express from 'express';
 import cors from 'cors';
-import { Routes, REST } from 'discord.js';
+import { Routes, REST, type Guild } from 'discord.js';
 import { BelleBotClient } from './client.js';
-import { getHuntContext } from './puzzlehunt-context.js';
+import {
+	HuntContextError,
+	resolveHuntDescriptor,
+} from './puzzlehunt-context.js';
 
-export function exposeBelleBotApi(client: BelleBotClient) {
+async function authorizeMember(token: string, guild: Guild): Promise<boolean> {
+	const rest = new REST({ version: '10' }).setToken(token);
+	try {
+		const userInfo = (await rest.get(Routes.user(), {
+			authPrefix: 'Bearer',
+		})) as { id: string };
+		await guild.members.fetch(userInfo.id);
+		return guild.members.cache.has(userInfo.id);
+	} catch (error) {
+		if (
+			error.status === 401 ||
+			error.status === 403 ||
+			error.status === 404
+		)
+			return false;
+		throw new HuntContextError(
+			503,
+			'Discord membership verification is unavailable.',
+			{ cause: error }
+		);
+	}
+}
+
+/**
+ * Constructs the bot metadata API without opening a listener.
+ *
+ * @remarks
+ * `GET /guilds/:guildId/puzzlehunt` requires a Discord bearer token, guild membership,
+ * and the bot's guild allow list before resolving a backend pin or contacting the
+ * puzzlehunt service. It returns only a `PuzzlehuntDescriptor`, never a live context.
+ * JSON errors distinguish unauthorized access (401), missing/out-of-scope guilds or
+ * active hunts (404), disabled PostgreSQL (403), invalid/incomplete setup (409), and
+ * service or membership-verification failures (503).
+ */
+export function createBelleBotApi(
+	client: BelleBotClient,
+	authorize: (
+		token: string,
+		guild: Guild
+	) => Promise<boolean> = authorizeMember
+): express.Express {
 	const app = express();
-	const port = process.env.PORT ?? 3000;
 	app.use(
 		cors({
 			origin: [
@@ -17,73 +59,64 @@ export function exposeBelleBotApi(client: BelleBotClient) {
 			],
 		})
 	);
-	app.listen(port, () => {
-		console.log(`Belle-puzzle API listening on port ${port}.`);
-	});
-
 	// See https://learn.microsoft.com/en-us/azure/container-apps/health-probes?tabs=arm-template
-	app.get('/liveness', (_, res) => {
-		res.status(200);
-	});
-
+	app.get('/liveness', (_, res) => res.sendStatus(200));
 	app.get('/guilds/:guildId/puzzlehunt', async (req, res) => {
-		const guild = client.guilds.cache.get(req.params.guildId);
+		res.set('Cache-Control', 'no-store');
 		const authHeader = req.headers.authorization;
-		if (!authHeader || !authHeader.startsWith('Bearer ')) {
-			res.status(400).json({
+		if (!authHeader?.startsWith('Bearer ') || authHeader.length === 7) {
+			res.status(401).json({
 				body: 'No auth or invalid bearer token provided',
-			});
-		}
-		const userToken = authHeader.substring('Bearer '.length);
-
-		if (!guild) {
-			res.status(404).json({
-				body: 'Puzzlehunt not found: no matching guild',
 			});
 			return;
 		}
-
-		const rest = new REST({ version: '10' }).setToken(userToken);
-		const isUserInGuild = async (): Promise<boolean> => {
-			let userInfo: { id: string };
-			try {
-				userInfo = (await rest.get(Routes.user(), {
-					authPrefix: 'Bearer',
-				})) as { id: string };
-			} catch (err) {
-				if (err.status !== 401) {
-					console.log(JSON.stringify(err));
-				}
-				return false;
-			}
-			await guild.members.fetch(userInfo.id);
-			return guild.members.cache.has(userInfo.id);
-		};
-
+		const guild = client.guilds.cache.get(req.params.guildId);
+		if (!guild || !client.isGuildAllowed(guild.id)) {
+			res.status(404).json({
+				body: 'Puzzlehunt not found: no matching authorized guild',
+			});
+			return;
+		}
 		try {
-			const [context, isAuthorized] = await Promise.all([
-				getHuntContext(client, guild),
-				isUserInGuild(),
-			]);
-			if (!isAuthorized) {
-				res.status(401).json(
-					'User does not have access to this resource.'
-				);
-				return;
-			}
-
-			if (!context) {
-				res.status(404).json({
-					body: 'Puzzlehunt not found: no puzzlehunt created on that server.',
+			if (!(await authorize(authHeader.substring(7), guild))) {
+				res.status(401).json({
+					body: 'User does not have access to this resource.',
 				});
 				return;
 			}
-
-			delete context.puzzlehunt;
-			res.status(200).json(context);
+			const resolved = await resolveHuntDescriptor(client, guild);
+			if (!resolved) {
+				const hasAdminChannel = guild.channels.cache.some(
+					(channel) => channel.name === 'belle-bot-admin'
+				);
+				res.status(hasAdminChannel ? 409 : 404).json({
+					body: hasAdminChannel
+						? 'Incomplete hunt setup: no unique valid admin pin.'
+						: 'Puzzlehunt not found: no puzzlehunt created on that server.',
+				});
+				return;
+			}
+			res.status(200).json(resolved.descriptor);
 		} catch (error) {
-			console.log(error);
-			res.status(500);
+			console.error('Failed to resolve hunt metadata.', error);
+			res.status(
+				error instanceof HuntContextError ? error.status : 503
+			).json({
+				body:
+					error instanceof HuntContextError
+						? error.message
+						: 'Puzzlehunt metadata is unavailable.',
+			});
 		}
 	});
+	return app;
+}
+
+export function exposeBelleBotApi(client: BelleBotClient) {
+	const port = Number(process.env.PORT ?? 3000);
+	return createBelleBotApi(client).listen(
+		port,
+		client.localPostgres ? '127.0.0.1' : '0.0.0.0',
+		() => console.log(`Belle-puzzle API listening on port ${port}.`)
+	);
 }

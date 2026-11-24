@@ -246,31 +246,38 @@ export async function getHuntContextMessage(
 	) as Collection<string, TextBasedChannel>;
 	if (metadataChannels.size === 0) {
 		if (interaction?.isRepliable()) {
-			await interaction.reply(
-				'No puzzle hunt was found on this server. Create one with "/create".'
-			);
+			const content =
+				'No puzzle hunt was found on this server. Create one with "/create".';
+			if (interaction.deferred) await interaction.editReply(content);
+			else await interaction.reply(content);
 		}
 		return;
 	}
 	if (metadataChannels.size > 1) {
 		if (interaction?.isRepliable()) {
-			await interaction.reply(
-				`Multiple candidate admin channels were found. Please delete any excess channels named "${PUZZLE_ADMIN_CHANNEL}.`
-			);
+			const content = `Multiple candidate admin channels were found. Please delete any excess channels named "${PUZZLE_ADMIN_CHANNEL}.`;
+			if (interaction.deferred) await interaction.editReply(content);
+			else await interaction.reply(content);
 		}
 		return;
 	}
 	const channel = metadataChannels.first();
-	const getAdminMessage = () =>
+	const getAdminMessage = () => {
 		// cast is necessary due to bad typescript expansion of boolean type.
-		(channel.messages as MessageManager<true>).cache.find(
+		const messages = (
+			channel.messages as MessageManager<true>
+		).cache.filter(
 			(message) =>
 				message.author.id === process.env.CLIENT_ID && message.pinned
 		);
+		return messages.size === 1 ? messages.first() : undefined;
+	};
 	let adminMessage = getAdminMessage();
 	if (!adminMessage) {
 		await Promise.all([
-			interaction?.isRepliable()
+			interaction?.isRepliable() &&
+			!interaction.deferred &&
+			!interaction.replied
 				? interaction.deferReply({ flags: MessageFlags.Ephemeral })
 				: Promise.resolve(),
 			channel.messages.fetchPins(),

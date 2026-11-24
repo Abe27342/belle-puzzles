@@ -4,7 +4,7 @@ import {
 	MessageFlags,
 	SlashCommandBuilder,
 } from 'discord.js';
-import { PuzzlehuntContext } from '../puzzlehunt-context.js';
+import { PuzzlehuntContext, settleHuntContext } from '../puzzlehunt-context.js';
 import { Command } from './types.js';
 import { puzzleSolvedMessage } from '../sync/logs.js';
 
@@ -21,9 +21,10 @@ export const solve: Command = {
 		)
 		.setDescription('Marks a puzzle as solved with the provided answer.'),
 	async execute(
-		{ puzzlehunt }: PuzzlehuntContext,
+		context: PuzzlehuntContext,
 		interaction: ChatInputCommandInteraction<CacheType>
 	) {
+		const { puzzlehunt } = context;
 		if (!interaction.deferred) {
 			await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		}
@@ -42,11 +43,12 @@ export const solve: Command = {
 		let [puzzle] = matchingPuzzles;
 		const answer = interaction.options.getString(ANSWER_ARG);
 		puzzlehunt.solve(puzzle.id, answer);
-		if (puzzle.status !== undefined) {
+		if (context.backend !== 'postgres' && puzzle.status !== undefined) {
 			puzzlehunt.clearStatus(puzzle);
 		}
 
-		if (puzzlehunt.loggingChannelIds) {
+		await settleHuntContext(context);
+		if (context.backend !== 'postgres' && puzzlehunt.loggingChannelIds) {
 			const { puzzleSolve } = puzzlehunt.loggingChannelIds;
 			const channel = interaction.guild.channels.cache.get(puzzleSolve);
 			if (channel?.isTextBased()) {
