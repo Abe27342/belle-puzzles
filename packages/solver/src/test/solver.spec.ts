@@ -1,5 +1,5 @@
 import { afterAll, expect, it } from 'vitest';
-import { killThreads, z3 } from '../z3.js';
+import { killThreads, z3 } from '../lib/z3.js';
 import {
 	CartesianGridGraph,
 	constant,

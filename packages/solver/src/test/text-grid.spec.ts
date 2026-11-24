@@ -4,7 +4,7 @@ import {
 	parseDigit,
 	parsePearlColor,
 	parseTextGrids,
-} from '../text-grid.js';
+} from '../lib/text-grid.js';
 
 describe('grid character parsing', () => {
 	it.each(['.', ' ', '\t', '\n', '\r'])(

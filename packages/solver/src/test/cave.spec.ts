@@ -1,4 +1,4 @@
-import { CavePuzzle } from '../cave.js';
+import { CavePuzzle } from '../puzzles/cave.js';
 import { describeSuiteFromTestData } from './utils.js';
 
 describeSuiteFromTestData(CavePuzzle, [

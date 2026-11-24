@@ -1,4 +1,4 @@
-import { SlitherlinkPuzzle } from '../slitherlink.js';
+import { SlitherlinkPuzzle } from '../puzzles/slitherlink.js';
 import { describeSuiteFromTestData } from './utils.js';
 
 describeSuiteFromTestData(SlitherlinkPuzzle, [

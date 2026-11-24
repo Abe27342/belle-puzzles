@@ -1,28 +1,28 @@
-import { CartesianCoord, GridVertex } from './graph/index.js';
-import type { Context, Solver } from './z3.js';
+import { CartesianCoord, GridVertex } from '../lib/graph/index.js';
+import type { Context, Solver } from '../lib/z3.js';
 import {
 	CartesianGridPuzzleProps,
 	CartesianGridPuzzle,
 	CartesianGridRenderOptions,
-} from './cartesian-grid-puzzle.js';
+} from '../lib/cartesian-grid-puzzle.js';
 import {
 	createEdgeIndicatorModel,
 	EdgeIndicatorModel,
 	EdgeIndicatorSolution,
-} from './edge-value-model.js';
-import { constant } from './graph-output.js';
+} from '../lib/edge-value-model.js';
+import { constant } from '../lib/graph-output.js';
 import {
 	connectedLoopConstraints,
 	createCartesianGridConstraintUtils,
 	sightLineSumConstraints,
-} from './constraint-utils.js';
+} from '../lib/constraint-utils.js';
 import {
 	isEmptyGridCharacter,
 	parseDigit,
 	parsePearlColor,
 	parseTextGrids,
-} from './text-grid.js';
-import type { TextGridVisitor } from './text-grid.js';
+} from '../lib/text-grid.js';
+import type { TextGridVisitor } from '../lib/text-grid.js';
 
 export interface ShingokiPuzzleProps extends CartesianGridPuzzleProps {
 	pearls: ConstructionPearl[];

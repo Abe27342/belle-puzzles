@@ -1,4 +1,4 @@
-import { HashiPuzzle } from '../hashi.js';
+import { HashiPuzzle } from '../puzzles/hashi.js';
 import { describeSuiteFromTestData } from './utils.js';
 
 describeSuiteFromTestData(HashiPuzzle, [

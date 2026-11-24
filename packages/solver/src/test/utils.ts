@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
 	CartesianGridPuzzle,
 	renderCartesianGrid,
-} from '../cartesian-grid-puzzle.js';
-import { solve } from '../puzzle.js';
+} from '../lib/cartesian-grid-puzzle.js';
+import { solve } from '../lib/puzzle.js';
 
 interface PuzzleClass {
 	name: string;

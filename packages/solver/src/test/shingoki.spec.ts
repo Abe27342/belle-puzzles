@@ -1,4 +1,4 @@
-import { ShingokiPuzzle } from '../shingoki.js';
+import { ShingokiPuzzle } from '../puzzles/shingoki.js';
 import { describeSuiteFromTestData } from './utils.js';
 
 // This set of characters renders better in VSCode editor.

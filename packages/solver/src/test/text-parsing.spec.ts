@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { CavePuzzle } from '../cave.js';
-import { MasyuPuzzle } from '../masyu.js';
-import { ShingokiPuzzle } from '../shingoki.js';
-import { SlitherlinkPuzzle } from '../slitherlink.js';
+import { CavePuzzle } from '../puzzles/cave.js';
+import { MasyuPuzzle } from '../puzzles/masyu.js';
+import { ShingokiPuzzle } from '../puzzles/shingoki.js';
+import { SlitherlinkPuzzle } from '../puzzles/slitherlink.js';
 
 describe('puzzle text parsing', () => {
 	it('Shingoki parses tab-indented color and length grids', () => {

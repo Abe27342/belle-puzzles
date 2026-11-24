@@ -1,4 +1,4 @@
-import { SudokuPuzzle } from '../sudoku.js';
+import { SudokuPuzzle } from '../puzzles/sudoku.js';
 import { describeSuiteFromTestData } from './utils.js';
 
 describeSuiteFromTestData(SudokuPuzzle, [
