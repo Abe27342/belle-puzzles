@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Card, Button, Dialog } from '../../../fast';
 import { IPuzzlehunt, Puzzle, Round } from '@belle-puzzles/puzzlehunt-model';
+import { useMutationSubmission } from './useMutationSubmission';
 
 export interface DeleteModalProps {
 	puzzleObj: Round | Puzzle;
@@ -13,6 +14,7 @@ export const DeleteModal: React.FC<DeleteModalProps> = ({
 	puzzlehunt,
 	close,
 }) => {
+	const submission = useMutationSubmission(close);
 	return (
 		<Dialog
 			modal
@@ -20,7 +22,7 @@ export const DeleteModal: React.FC<DeleteModalProps> = ({
 			style={
 				{
 					'--dialog-width': '480px',
-					'--dialog-height': '240px',
+					'--dialog-height': submission.dialogHeight ?? '240px',
 				} as any /* these are custom properties on fast components */
 			}
 		>
@@ -31,6 +33,7 @@ export const DeleteModal: React.FC<DeleteModalProps> = ({
 			>
 				<h1>Delete "{puzzleObj.name}"</h1>
 				<p>Are you sure you want to delete this {puzzleObj.type}?</p>
+				{submission.status}
 				<Button
 					appearance={'neutral'}
 					style={{
@@ -39,6 +42,7 @@ export const DeleteModal: React.FC<DeleteModalProps> = ({
 						left: 'var(--card-padding)',
 					}}
 					onClick={close}
+					disabled={submission.dismissDisabled}
 				>
 					Cancel
 				</Button>
@@ -49,10 +53,10 @@ export const DeleteModal: React.FC<DeleteModalProps> = ({
 						bottom: 'var(--card-padding)',
 						right: 'var(--card-padding)',
 					}}
-					onClick={() => {
-						puzzlehunt.delete(puzzleObj);
-						close();
-					}}
+					onClick={() =>
+						submission.submit(() => puzzlehunt.delete(puzzleObj))
+					}
+					disabled={submission.disabled}
 				>
 					Delete
 				</Button>

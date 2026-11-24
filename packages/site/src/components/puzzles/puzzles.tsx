@@ -13,7 +13,7 @@ import {
 	Button,
 } from '../../fast';
 import { IPuzzlehunt, Puzzle, Round } from '@belle-puzzles/puzzlehunt-model';
-import { loadExistingPuzzlehunt } from '@belle-puzzles/puzzlehunt-model/fluid';
+import type { PuzzlehuntModel } from '@belle-puzzles/puzzlehunt-model/model';
 import {
 	AddModal,
 	DeleteModal,
@@ -21,127 +21,128 @@ import {
 	EditSheetIdModal,
 	EditUrlModal,
 } from './modals';
-import { useStore } from 'react-redux';
-import type { AppStore } from '../../store/store';
-import { useGetPuzzlehuntContextQuery } from '../../services/belleBotApi';
-import { createClient } from './connection';
+import { errorMessage, usePuzzlehunt } from './usePuzzlehunt';
+import { MutationSettlementContext } from './modals/useMutationSubmission';
 import TimeAgo from './timeAgo';
 import loadingPuzzlehuntUrl from './assets/loading-puzzlehunt.svg';
 import libraLogoUrl from './assets/libralogo.png';
 import { SolveModal } from './modals/solveModal';
 
 export const Puzzles: React.FC = () => {
-	const [puzzlehunt, setPuzzlehunt] = React.useState<IPuzzlehunt>();
-	const [sessionError, setSessionError] = React.useState<string>();
-	const forceRerender = useForceRerender();
-
 	const { guildId } = useParams() as { guildId: string };
-	const {
-		data: puzzlehuntContextData,
-		isLoading,
-		// isSuccess,
-		isError,
-		error,
-	} = useGetPuzzlehuntContextQuery(
-		{ guildId },
-		{
-			refetchOnMountOrArgChange: 10 /* seconds */,
-			/* Note: besides allowing puzzlehunt to auto-reload, this also ensures belle-bot keeps
-			   watching the document to sync it for changes. */
-			pollingInterval: 1000 * 60 * 5,
-		}
+	const hunt = usePuzzlehunt(guildId);
+	const puzzlehunt = hunt.loaded?.model;
+	const http = hunt.loaded?.backend === 'postgres' ? hunt.loaded : undefined;
+	const descriptor = hunt.loaded?.descriptor;
+	const name = descriptor?.name;
+	const googleFolderId =
+		descriptor?.backend === 'postgres'
+			? descriptor.configuration.googleFolderId
+			: descriptor?.googleFolderId;
+	const uncertain = http?.model.pendingChanges.some(
+		(change) => change.status === 'uncertain'
 	);
-	const { fluidFileId, googleFolderId, name } = puzzlehuntContextData ?? {};
-
-	const store: AppStore = useStore();
-	// TODO: use react async util to avoid isActive kludgery
-	React.useEffect(() => {
-		let isActive = true;
-		let disposeFn: () => void;
-		setPuzzlehunt(undefined);
-		setSessionError(undefined);
-		const loadPuzzlehunt = async (fileId: string) => {
-			const authInfo = store.getState().auth.aad;
-			const client = await createClient({
-				userId: authInfo.userId,
-				userName: authInfo.userDetails,
-			});
-			const session = await loadExistingPuzzlehunt(client, fileId);
-			let unsubscribe: (() => void) | undefined;
-			let unsubscribeLifecycle: (() => void) | undefined;
-			disposeFn = () => {
-				unsubscribe?.();
-				unsubscribeLifecycle?.();
-				void session.puzzlehunt
-					.flush()
-					.finally(() => session.close())
-					.catch((error) => {
-						console.error('Failed to save puzzlehunt.', error);
-					});
-			};
-			if (isActive) {
-				unsubscribe = session.puzzlehunt.subscribe(forceRerender);
-				setPuzzlehunt(session.puzzlehunt);
-				const updateLifecycle = () => {
-					const { state } = session;
-					if (
-						state.status === 'closed' ||
-						state.status === 'failed'
-					) {
-						setPuzzlehunt(undefined);
-						setSessionError(
-							state.status === 'failed'
-								? state.error.message
-								: 'Puzzlehunt session closed.'
-						);
-					}
-				};
-				unsubscribeLifecycle =
-					session.subscribeLifecycle(updateLifecycle);
-				updateLifecycle();
-			} else {
-				session.close();
-			}
-		};
-
-		if (fluidFileId) {
-			loadPuzzlehunt(fluidFileId).catch((error: unknown) => {
-				console.error('Failed to load puzzlehunt.', error);
-				if (isActive) {
-					setSessionError(
-						error instanceof Error ? error.message : String(error)
-					);
-				}
-			});
-		}
-		return () => {
-			isActive = false;
-			disposeFn?.();
-		};
-	}, [forceRerender, fluidFileId, store]);
+	const failure = http?.model.failures.at(-1);
+	const settlement = http && {
+		model: http.model,
+		isCurrent: () => hunt.isCurrent() && http.isActive(),
+		canEdit: () =>
+			hunt.isCurrent() &&
+			http.isActive() &&
+			hunt.metadataVerified &&
+			!http.model.isPending &&
+			!hunt.busy &&
+			!hunt.selected &&
+			!hunt.error,
+	};
 
 	const [sortByStatus, setSortByStatus] = React.useState(false);
 
 	const rounds = Array.from(puzzlehunt?.rounds ?? []);
 	rounds.sort((a, b) => a.name.localeCompare(b.name));
-	const { onContextMenu, ui } = useEditingUI(puzzlehunt);
+	const { onContextMenu, ui } = useEditingUI(puzzlehunt, http?.model);
 	return (
-		<>
+		<MutationSettlementContext.Provider value={settlement}>
 			<div id="puzzles" className="page-body">
 				<Card>
 					<img id="libralogo" src={libraLogoUrl} />
-					{!puzzlehunt && !isError && !sessionError && (
-						<LoadingSkeleton />
-					)}
-					{sessionError && <div role="alert">{sessionError}</div>}
-					{isError && (
-						<div>
-							{(error as any).status === 404
-								? 'Puzzlehunt not found.'
-								: `Error loading puzzlehunt content: ${
-										(error as any).message ?? error
-								  }`}
+					{!puzzlehunt && !hunt.error && <LoadingSkeleton />}
+					{hunt.error && (
+						<div role="alert">
+							{hunt.error}
+							<Button
+								disabled={hunt.busy || http?.model.isPending}
+								onClick={hunt.refresh}
+							>
+								Refresh
+							</Button>
 						</div>
+					)}
+					{hunt.navigationBlocked && (
+						<p role="alert">
+							Settle pending edits before leaving this hunt or
+							logging out. Retry uncertain edits below, then
+							navigate again.
+						</p>
+					)}
+					{hunt.selected && (
+						<p role="alert">
+							The active hunt has changed. This view still shows
+							the original hunt; pending edits stay with it.
+							<Button
+								disabled={hunt.busy || http?.model.isPending}
+								onClick={hunt.reopen}
+							>
+								Open selected hunt
+							</Button>
+						</p>
+					)}
+					{http && (
+						<>
+							<p>
+								This is a non-live view. Refresh to see other
+								edits and newly provisioned Discord or Google
+								resources.
+							</p>
+							{!hunt.metadataVerified &&
+								!hunt.busy &&
+								!hunt.selected && (
+									<p>
+										After settling pending edits, refresh to
+										verify the selected hunt before making
+										further edits.
+									</p>
+								)}
+							<Button
+								disabled={hunt.busy || http.model.isPending}
+								onClick={hunt.refresh}
+							>
+								Refresh hunt
+							</Button>
+							{http.model.isPending && (
+								<p role={uncertain ? 'alert' : 'status'}>
+									{uncertain
+										? 'Save outcome uncertain. Keep this tab open and retry the retained edits; do not submit them again.'
+										: 'Saving edits...'}
+								</p>
+							)}
+							{uncertain && !ui && (
+								<Button
+									disabled={hunt.busy}
+									onClick={hunt.retry}
+								>
+									Retry pending edits
+								</Button>
+							)}
+							{failure && (
+								<p role="alert">
+									{failure.request
+										? 'Save rejected: '
+										: 'Refresh failed: '}
+									{errorMessage(failure.error)}
+								</p>
+							)}
+						</>
 					)}
 					{puzzlehunt && (
 						<>
@@ -179,7 +180,11 @@ export const Puzzles: React.FC = () => {
 							{rounds.length === 0 && <div>No puzzles yet!</div>}
 							<TreeView
 								className="puzzle-view"
-								onContextMenu={onContextMenu}
+								onContextMenu={
+									settlement && !settlement.canEdit()
+										? undefined
+										: onContextMenu
+								}
 							>
 								{!sortByStatus &&
 									rounds.map((round) => (
@@ -202,11 +207,14 @@ export const Puzzles: React.FC = () => {
 				</Card>
 			</div>
 			{ui}
-		</>
+		</MutationSettlementContext.Provider>
 	);
 };
 
-function useEditingUI(puzzlehunt: IPuzzlehunt): {
+function useEditingUI(
+	puzzlehunt: IPuzzlehunt,
+	httpModel?: PuzzlehuntModel
+): {
 	onContextMenu: React.MouseEventHandler<HTMLElement>;
 	ui: JSX.Element | undefined;
 } {
@@ -219,6 +227,11 @@ function useEditingUI(puzzlehunt: IPuzzlehunt): {
 	const [modalArgs, setModalArgs] = React.useState<ModalSpec | undefined>(
 		undefined
 	);
+	React.useEffect(() => {
+		setShowMenu(false);
+		setShowModal(false);
+		setModalArgs(undefined);
+	}, [puzzlehunt]);
 
 	const onContextMenu: React.MouseEventHandler<HTMLElement> =
 		React.useCallback(
@@ -265,24 +278,24 @@ function useEditingUI(puzzlehunt: IPuzzlehunt): {
 		const onClick = (event: MouseEvent) => {
 			if (showMenu) {
 				setShowMenu(false);
-			} else if (showModal) {
+			} else if (showModal && !httpModel?.isPending) {
 				setShowModal(false);
 			}
 		};
 		const onKeyUp = (event: KeyboardEvent) => {
 			if (event.key === 'Escape') {
 				setShowMenu(false);
-				setShowModal(false);
+				if (!httpModel?.isPending) setShowModal(false);
 			}
 		};
 
 		window.document.addEventListener('keyup', onKeyUp);
 		window.document.addEventListener('click', onClick);
 		return () => {
-			window.document.addEventListener('keyup', onKeyUp);
+			window.document.removeEventListener('keyup', onKeyUp);
 			window.document.removeEventListener('click', onClick);
 		};
-	}, [showMenu, showModal]);
+	}, [showMenu, showModal, httpModel]);
 
 	const openModal = React.useCallback(
 		(event: React.MouseEvent, args: ModalSpec) => {
@@ -295,9 +308,10 @@ function useEditingUI(puzzlehunt: IPuzzlehunt): {
 	);
 
 	const closeModal = React.useCallback(() => {
+		if (httpModel?.isPending) return;
 		setShowModal(false);
 		setModalArgs(undefined);
-	}, []);
+	}, [httpModel]);
 	let ui: JSX.Element | undefined;
 	if (showMenu) {
 		ui = (
@@ -487,6 +501,11 @@ const PuzzleObjCommonListItems: React.FC<{
 	guildId: string;
 }> = ({ puzzleObj, guildId }) => {
 	const { name, url, type, discord: discordInfo } = puzzleObj;
+	const settlement = React.useContext(MutationSettlementContext);
+	const channelId =
+		type === 'puzzle'
+			? discordInfo?.channelId
+			: discordInfo?.indexChannelId;
 	return (
 		<>
 			<div className="puzzle-or-round-info" />
@@ -494,18 +513,15 @@ const PuzzleObjCommonListItems: React.FC<{
 			<Anchor href={url} target="_blank">
 				{type === 'puzzle' ? 'Puzzle' : 'Round'} Link
 			</Anchor>
-			{discordInfo && (
+			{channelId && (
 				<Anchor
-					href={`discord://discord.com/channels/${guildId}/${
-						type === 'puzzle'
-							? discordInfo.channelId
-							: discordInfo.indexChannelId
-					}`}
+					href={`discord://discord.com/channels/${guildId}/${channelId}`}
 					target="_blank"
 				>
 					Discord
 				</Anchor>
 			)}
+			{settlement && !channelId && <span>Discord pending</span>}
 		</>
 	);
 };
@@ -514,6 +530,7 @@ const PuzzleListItems: React.FC<{
 	puzzleObj: Puzzle;
 	guildId: string;
 }> = ({ puzzleObj, guildId }) => {
+	const settlement = React.useContext(MutationSettlementContext);
 	return (
 		<>
 			<PuzzleObjCommonListItems puzzleObj={puzzleObj} guildId={guildId} />
@@ -524,6 +541,9 @@ const PuzzleListItems: React.FC<{
 				>
 					Spreadsheet
 				</Anchor>
+			)}
+			{settlement && !puzzleObj.sheetId && (
+				<span>Spreadsheet pending</span>
 			)}
 			{puzzleObj.answer && (
 				<p className="unselectable">Answer: {puzzleObj.answer}</p>
@@ -595,11 +615,6 @@ const MostRecentlyUsed: React.FC<{
 		</>
 	);
 };
-
-function useForceRerender(): () => void {
-	const [, setVal] = React.useState(0);
-	return React.useCallback(() => setVal((prev) => prev + 1), []);
-}
 
 const LoadingSkeleton: React.FC = () => {
 	const [visibility, setVisibility] = React.useState<'hidden' | undefined>(
