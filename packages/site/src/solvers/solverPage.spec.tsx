@@ -90,6 +90,48 @@ describe('solver page', () => {
 		expect(dispose).toHaveBeenCalledTimes(1);
 	});
 
+	it('keeps progress below existing solutions and preserves selected solution text', () => {
+		start();
+		send({ type: 'solution', output: 'first' });
+		const first = screen.getByLabelText('Solution 1 grid');
+		const status = screen.getByRole('status');
+		expect(status).toHaveTextContent(
+			'Checking whether the solution is unique'
+		);
+		expect(
+			first.compareDocumentPosition(status) &
+				Node.DOCUMENT_POSITION_FOLLOWING
+		).not.toBe(0);
+
+		const selection = window.getSelection();
+		if (!selection) throw new Error('Text selection is unavailable');
+		const range = document.createRange();
+		range.selectNodeContents(first);
+		selection.removeAllRanges();
+		selection.addRange(range);
+
+		send({ type: 'solution', output: 'second' });
+		fireEvent.click(
+			screen.getByRole('button', { name: 'Find next solution' })
+		);
+		fireEvent.click(
+			screen.getByRole('button', { name: 'Find next solution' })
+		);
+		const second = screen.getByLabelText('Solution 2 grid');
+		expect(status).toHaveTextContent('Finding the next solution');
+		expect(
+			second.compareDocumentPosition(status) &
+				Node.DOCUMENT_POSITION_FOLLOWING
+		).not.toBe(0);
+		expect(screen.getByLabelText('Solution 1 grid')).toBe(first);
+		expect(selection.toString()).toBe('first');
+
+		send({ type: 'solution', output: 'third' });
+		expect(screen.getByLabelText('Solution 1 grid')).toBe(first);
+		expect(selection.toString()).toBe('first');
+		selection.removeAllRanges();
+	});
+
 	it('proves uniqueness by exhausting the second-solution search', () => {
 		start();
 		send({ type: 'solution', output: 'only' });
@@ -211,7 +253,9 @@ describe('solver page', () => {
 				`Example:\n\n${puzzleTypes[type].example}`
 			);
 			expect(screen.getByLabelText('Puzzle text')).toHaveValue('');
-			expect(screen.getByRole('button', { name: 'Solve' })).toBeDisabled();
+			expect(
+				screen.getByRole('button', { name: 'Solve' })
+			).toBeDisabled();
 			expect(
 				screen.getByText(
 					`${puzzleTypes[type].instructions} Use a dot (".") or single space (" ") for an empty position. Rows must have equal lengths.`
@@ -299,9 +343,9 @@ describe('solver page', () => {
 			).getByLabelText('Puzzle text')
 		).toBeInTheDocument();
 		expect(
-			within(
-				screen.getByRole('region', { name: 'Solutions' })
-			).getByRole('status')
+			within(screen.getByRole('region', { name: 'Solutions' })).getByRole(
+				'status'
+			)
 		).toHaveTextContent('Enter a puzzle');
 	});
 

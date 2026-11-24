@@ -380,6 +380,16 @@ export function SolverPage({
 				aria-labelledby="solutions-title"
 			>
 				<h2 id="solutions-title">Solutions</h2>
+				<div>
+					{solutions.map((output, index) => (
+						<article key={index}>
+							<h3>Solution {index + 1}</h3>
+							<pre aria-label={`Solution ${index + 1} grid`}>
+								{output}
+							</pre>
+						</article>
+					))}
+				</div>
 				<div role="status" aria-live="polite">
 					{phase === 'idle' &&
 						solutions.length === 0 &&
@@ -400,16 +410,6 @@ export function SolverPage({
 					{message && <p>{message}</p>}
 				</div>
 				{error && <p role="alert">{error}</p>}
-				<div>
-					{solutions.map((output, index) => (
-						<article key={index}>
-							<h3>Solution {index + 1}</h3>
-							<pre aria-label={`Solution ${index + 1} grid`}>
-								{output}
-							</pre>
-						</article>
-					))}
-				</div>
 			</section>
 		</>
 	);
