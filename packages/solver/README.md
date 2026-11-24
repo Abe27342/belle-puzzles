@@ -1,9 +1,9 @@
 # Solver
 
 `@belle-puzzles/solver` is the starting point for logic puzzle solving in Belle
-Puzzles. It exports a shared, initialized `z3` runtime and re-exports the upstream
-[`z3-solver`](https://github.com/Z3Prover/z3/tree/master/src/api/js) API and types,
-without introducing a separate modeling API or puzzle-specific solvers.
+Puzzles. It provides graph-based puzzle models, solver sessions, parsers, rendering
+helpers, and puzzle-specific solvers built on the upstream
+[`z3-solver`](https://github.com/Z3Prover/z3/tree/master/src/api/js) library.
 
 ## Development
 
@@ -19,14 +19,17 @@ Other workspace packages can depend on it using `"@belle-puzzles/solver": "works
 
 ## Usage
 
-The module initializes Z3 once using top-level await. Importers receive a ready
-runtime without calling `init()` themselves; initialization failures reject the
-import. This requires an ESM environment with top-level await support.
+Puzzle helpers initialize a shared Z3 runtime internally using top-level await,
+so callers do not need to call `init()` themselves. Initialization failures reject
+the import. This requires an ESM environment with top-level await support.
 
-For example, this Node.js program finds two distinct digits with a sum of three:
+For direct Z3 modeling with your own runtime, use the upstream API. For example,
+this Node.js program finds two distinct digits with a sum of three:
 
 ```ts
-import { killThreads, z3 } from '@belle-puzzles/solver';
+import { init, killThreads } from 'z3-solver';
+
+const z3 = await init();
 
 try {
 	const { Solver, Int, Distinct } = new z3.Context('puzzle');
@@ -55,7 +58,7 @@ try {
 }
 ```
 
-Keep the shared runtime alive while any consumer is using it; only the application
+Keep the runtime alive while any consumer is using it; only the application
 or test-suite owner should call `killThreads(z3.em)` when finished so Node.js can
 exit, not individual puzzle solvers. Solver results can be `sat`, `unsat`, or
 `unknown`; do not treat `unknown` as proof that a puzzle has no solution.

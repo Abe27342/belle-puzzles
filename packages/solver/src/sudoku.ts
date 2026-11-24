@@ -40,7 +40,7 @@ interface ConstructionGiven {
 
 type SudokuDigit = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 
-type SudokuEdgeModel = VertexValueModel<SudokuDigit>;
+type SudokuModel = VertexValueModel<SudokuDigit>;
 
 type SudokuSolution = VertexValueSolution<SudokuDigit>;
 
@@ -63,7 +63,7 @@ export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 		}));
 		for (const given of this.#givens) {
 			if (!given.vertex.isInBounds()) {
-				throw new Error(`Pearl at ${given.vertex} is out of bounds`);
+				throw new Error(`Given at ${given.vertex} is out of bounds`);
 			}
 		}
 
@@ -90,17 +90,16 @@ export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 
 	/**
 	 * @param text Text representation of the Sudoku puzzle grid.
-	 * @returns
 	 */
 	public static fromText(
 		text: string,
 		renderOptions?: CartesianGridRenderOptions
 	) {
 		const givens: ConstructionGiven[] = [];
-		const visitor: TextGridVisitor = ([count], coord) => {
+		const visitor: TextGridVisitor = ([value], coord) => {
 			givens.push({
 				coord,
-				value: parseDigit(count, coord),
+				value: parseDigit(value, coord),
 			});
 		};
 		const { width, height } = parseTextGrids(text, visitor, {
@@ -122,7 +121,7 @@ export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 	public override build(
 		context: Context<string>,
 		solver: Solver<string>
-	): SudokuEdgeModel {
+	): SudokuModel {
 		const model = createVertexValueModel(context, solver, this, {
 			values: [1, 2, 3, 4, 5, 6, 7, 8, 9] as const,
 		});

@@ -26,7 +26,7 @@ export interface CavePuzzleProps extends CartesianGridPuzzleProps {
 interface Given {
 	face: GridFace;
 	/**
-	 * Number of faces that can be seen in all cardinal directions from this face
+	 * Number of visible faces in cardinal directions, including this face.
 	 */
 	count: number;
 }
@@ -40,7 +40,7 @@ interface Given {
 interface ConstructionGivens {
 	coord: CartesianCoord;
 	/**
-	 * Number of faces that can be seen in all cardinal directions from this face
+	 * Number of visible faces in cardinal directions, including this face.
 	 */
 	count: number;
 }

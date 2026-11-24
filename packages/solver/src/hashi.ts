@@ -98,20 +98,19 @@ export class HashiPuzzle extends CartesianGridPuzzle<HashiSolution> {
 			vertex: this.grid.getVertex(p.coord),
 			count: p.count,
 		}));
-		for (const pearl of this.#givens) {
-			if (!pearl.vertex.isInBounds()) {
-				throw new Error(`Pearl at ${pearl.vertex} is out of bounds`);
+		for (const given of this.#givens) {
+			if (!given.vertex.isInBounds()) {
+				throw new Error(`Island at ${given.vertex} is out of bounds`);
 			}
 			this.output.vertices.set(
-				pearl.vertex,
-				constant(pearl.count, String)
+				given.vertex,
+				constant(given.count, String)
 			);
 		}
 	}
 
 	/**
 	 * @param text Text representation of the Hashi puzzle grid.
-	 * @returns
 	 */
 	public static fromText(text: string, renderOptions?: HashiRenderOptions) {
 		const givens: ConstructionGiven[] = [];
@@ -149,7 +148,7 @@ export class HashiPuzzle extends CartesianGridPuzzle<HashiSolution> {
 			edgeVariables
 		);
 
-		const bridgeVertices = new Set<GridVertex>();
+		const islandVertices = new Set<GridVertex>();
 		const { getEdgeVar, goesHorizontallyThrough, goesVerticallyThrough } =
 			gridUtils.edges;
 		for (const { vertex, count } of this.#givens) {
@@ -161,12 +160,12 @@ export class HashiPuzzle extends CartesianGridPuzzle<HashiSolution> {
 					)
 				).eq(count)
 			);
-			bridgeVertices.add(vertex);
+			islandVertices.add(vertex);
 		}
 
 		for (const v of this.grid.vertices()) {
-			if (!bridgeVertices.has(v)) {
-				// Non-bridge vertices must have equal opposite edges and cannot have both horizontal and vertical edges.
+			if (!islandVertices.has(v)) {
+				// Non-island vertices must have equal opposite edges and cannot have both horizontal and vertical edges.
 				const [upEdge, downEdge, leftEdge, rightEdge] = [
 					[v, v.up],
 					[v, v.down],

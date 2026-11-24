@@ -1,16 +1,3 @@
-/**
- * Map-like interface for a grid structure storing values, keyed on some coordinate.
- */
-export interface GridData<TCoord, T> {
-	get(coord: TCoord): T;
-
-	set(coord: TCoord, value: T): void;
-
-	entries(): Iterable<[TCoord, T]>;
-
-	values(): Iterable<T>;
-}
-
 export interface ConcreteGraphTypes {
 	coord: unknown;
 	vertex: unknown;
@@ -31,7 +18,6 @@ export interface ConcreteGraphTypes {
 export interface PlanarGraph<TConcrete extends ConcreteGraphTypes> {
 	vertices(): Iterable<TConcrete['vertex']>;
 	edges(): Iterable<TConcrete['edge']>;
-	// directedEdges: Iterable<DirectedEdge<TConcrete>>;
 	faces(): Iterable<TConcrete['face']>;
 }
 
@@ -48,7 +34,6 @@ export interface Vertex<TConcrete extends ConcreteGraphTypes>
 	coord: TConcrete['coord'];
 
 	incidentEdges(): Iterable<TConcrete['edge']>;
-	// faces: Iterable<Face<TConcrete>>;
 }
 
 /**
@@ -58,18 +43,6 @@ export interface Edge<TConcrete extends ConcreteGraphTypes>
 	extends HasNeighbors<TConcrete['edge']> {
 	type: 'edge';
 	vertices: [TConcrete['vertex'], TConcrete['vertex']];
-	/**
-	 * Faces incident to this edge (i.e. the faces that have this edge as part of their boundary).
-	 */
-	// faces: Iterable<Face<TCoord>>;
-}
-
-/**
- * Represents a directed edge in a planar graph.
- */
-export interface DirectedEdge<TConcrete extends ConcreteGraphTypes> {
-	from: TConcrete['vertex'];
-	to: TConcrete['vertex'];
 }
 
 export interface Face<TConcrete extends ConcreteGraphTypes>
