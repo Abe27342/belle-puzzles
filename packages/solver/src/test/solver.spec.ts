@@ -19,7 +19,7 @@ afterAll(async () => {
 	await killThreads(z3.em);
 });
 
-it('loads Z3 and solves puzzle constraints through the package entry point', async () => {
+it('loads the shared Z3 runtime and solves constraints', async () => {
 	const { Solver, Int, Distinct } = new z3.Context('test');
 	const solver = new Solver();
 	const row = Array.from({ length: 4 }, (_, i) => Int.const(`cell_${i}`));

@@ -93,8 +93,6 @@ export class ShingokiPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 	 * This should come in the form of two grids: first, the colors grid (B/W), then the lengths (digits) grid.
 	 * The grids should be separated by one or more blank lines.
 	 * The parser does not currently support multi-digit lengths for pearls.
-	 * @param renderOptions
-	 * @returns
 	 */
 	public static fromText(text: string, renderOptions?: PearlRenderOptions) {
 		const pearls: ConstructionPearl[] = [];

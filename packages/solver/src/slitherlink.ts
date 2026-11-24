@@ -24,7 +24,7 @@ export interface SlitherlinkPuzzleProps extends CartesianGridPuzzleProps {
 interface Given {
 	face: GridFace;
 	/**
-	 * Number of adjacent edges to this face
+	 * Number of enabled edges bordering this face.
 	 */
 	count: number;
 }
@@ -38,7 +38,7 @@ interface Given {
 interface ConstructionGivens {
 	coord: CartesianCoord;
 	/**
-	 * Number of adjacent edges to this face
+	 * Number of enabled edges bordering this face.
 	 */
 	count: number;
 }

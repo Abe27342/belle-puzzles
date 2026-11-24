@@ -1,5 +1,5 @@
 import { getOrCreate } from '../utils.js';
-import type { Edge, GridData, PlanarGraph, Vertex, Face } from './grid.js';
+import type { Edge, PlanarGraph, Vertex, Face } from './grid.js';
 
 export type CartesianCoord = [x: number, y: number];
 
@@ -17,67 +17,6 @@ interface CartesianGraphTypes {
 	vertex: GridVertex;
 	edge: GridEdge;
 	face: GridFace;
-}
-
-export class CartesianGridData<T> implements GridData<CartesianCoord, T> {
-	#grid: T[][];
-	public readonly width: number;
-	public readonly height: number;
-
-	constructor(grid: T[][]) {
-		this.height = grid.length;
-		// Copy for safety
-		this.#grid = [...grid].map((row) => [...row]);
-		this.width = grid[0]?.length ?? 0;
-
-		for (const row of this.#grid) {
-			if (row.length !== this.width) {
-				throw new Error('All rows must have the same length');
-			}
-		}
-	}
-
-	public static fromDimensions<T>(
-		width: number,
-		height: number,
-		filledValue: () => T
-	): CartesianGridData<T> {
-		const grid: T[][] = Array.from({ length: height }, () =>
-			Array.from({ length: width }, () => filledValue())
-		);
-		return new CartesianGridData(grid);
-	}
-
-	#validateCoord(coord: CartesianCoord): void {
-		const [x, y] = coord;
-		if (y < 0 || y >= this.height || x < 0 || x >= this.width) {
-			throw new RangeError('Coordinate out of bounds');
-		}
-	}
-
-	public set(coord: CartesianCoord, value: T): void {
-		this.#validateCoord(coord);
-		const [x, y] = coord;
-		this.#grid[y][x] = value;
-	}
-
-	public get(coord: CartesianCoord): T {
-		this.#validateCoord(coord);
-		const [x, y] = coord;
-		return this.#grid[y][x];
-	}
-
-	public *entries(): Iterable<[CartesianCoord, T]> {
-		for (let y = 0; y < this.height; y++) {
-			for (let x = 0; x < this.width; x++) {
-				yield [[x, y], this.#grid[y][x]];
-			}
-		}
-	}
-
-	public values(): Iterable<T> {
-		return this.#grid.flat();
-	}
 }
 
 /**
@@ -200,9 +139,6 @@ const compareCoords = (start: CartesianCoord, end: CartesianCoord) => {
 	return 0;
 };
 
-const equalCoord = (a: CartesianCoord, b: CartesianCoord) =>
-	a[0] === b[0] && a[1] === b[1];
-
 export interface GridVertex extends Vertex<CartesianGraphTypes> {
 	x: number;
 	y: number;
@@ -299,10 +235,6 @@ class GridVertexImpl
 
 	public toString(): string {
 		return `(${this.x}, ${this.y})`;
-	}
-
-	public equal(other: GridVertex): boolean {
-		return equalCoord(this.coord, other.coord);
 	}
 
 	public compare(other: GridVertex): number {
@@ -427,10 +359,6 @@ class GridFaceImpl extends CartesianTranslatable<GridFace> implements GridFace {
 
 	public toString(): string {
 		return `(${this.x}, ${this.y})`;
-	}
-
-	public equal(other: GridFaceImpl): boolean {
-		return equalCoord(this.coord, other.coord);
 	}
 
 	public compare(other: GridFace): number {
