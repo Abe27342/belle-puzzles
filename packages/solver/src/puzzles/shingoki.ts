@@ -1,3 +1,4 @@
+import { registerPuzzle } from '../catalog.js';
 import {
 	CartesianGridPuzzle,
 	constant,
@@ -49,6 +50,17 @@ interface ConstructionPearl {
 }
 
 export class ShingokiPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
+	static {
+		registerPuzzle('shingoki', {
+			name: 'Shingoki',
+			instructions:
+				'Enter two equally sized grids separated by a blank line: B/W pearl colors, then single-digit lengths at the same positions.',
+			example:
+				'.W....\n..B...\n......\nB....W\nWB..B.\n......\n\n.3....\n..2...\n......\n6....5\n22..2.\n......',
+			parser: ShingokiPuzzle,
+		});
+	}
+
 	/**
 	 * Note: the indexing model assumes pearls are placed go-style.
 	 *

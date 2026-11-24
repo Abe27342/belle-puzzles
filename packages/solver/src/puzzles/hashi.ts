@@ -1,3 +1,4 @@
+import { registerPuzzle } from '../catalog.js';
 import {
 	CartesianGridPuzzle,
 	constant,
@@ -88,6 +89,16 @@ export function createHashiEdgeModel(
 }
 
 export class HashiPuzzle extends CartesianGridPuzzle<HashiSolution> {
+	static {
+		registerPuzzle('hashi', {
+			name: 'Hashi',
+			instructions:
+				'Enter a rectangular grid of islands, using digits 1-8 for their bridge counts.',
+			example: '23.4.2.\n......2\n11..133\n2..8.52\n3.3...1\n..2..34\n3..31.2',
+			parser: HashiPuzzle,
+		});
+	}
+
 	#givens: Given[];
 
 	constructor(props: HashiPuzzleProps) {

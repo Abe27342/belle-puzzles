@@ -1,4 +1,4 @@
-import type { Context, Solver } from './z3.js';
+import type { Context, Solver } from 'z3-solver';
 import { CartesianGridGraph } from './graph/index.js';
 import { createGraphOutput, GraphDisplay } from './graph-output.js';
 import type { BuiltPuzzle, PuzzleDefinition } from './puzzle.js';

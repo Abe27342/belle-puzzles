@@ -19,9 +19,10 @@ Other workspace packages can depend on it using `"@belle-puzzles/solver": "works
 
 ## Usage
 
-Puzzle helpers initialize a shared Z3 runtime internally using top-level await,
-so callers do not need to call `init()` themselves. Initialization failures reject
-the import. This requires an ESM environment with top-level await support.
+The main entry point provides puzzle definitions and helpers without initializing
+Z3. Execution helpers live in `@belle-puzzles/solver/runtime`, which initializes a
+shared runtime using top-level await. Initialization failures reject the import;
+an ESM environment with top-level await support is required.
 
 For direct Z3 modeling with your own runtime, use the upstream API. For example,
 this Node.js program finds two distinct digits with a sum of three:
@@ -68,13 +69,3 @@ runtime. Long-running operations are serialized within a runtime. Separate
 runtimes are useful for parallel solves, different initialization options, or
 independent worker lifetimes, at the cost of additional initialization and memory.
 The upstream `init()` remains available for those cases.
-
-## Browser integration
-
-The website does not load this package yet. A dynamic `import()` can defer loading
-and initialization until a solver is needed. Z3 includes a browser runtime, but
-integrating it requires serving its WASM and worker assets and enabling
-cross-origin isolation (`Cross-Origin-Opener-Policy: same-origin` and
-`Cross-Origin-Embedder-Policy: require-corp`). Those headers must be checked
-against the site's authentication and cross-origin resources before enabling them.
-See the upstream documentation for bundler and runtime requirements.

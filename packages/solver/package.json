@@ -8,6 +8,10 @@
 		".": {
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
+		},
+		"./runtime": {
+			"types": "./dist/runtime/index.d.ts",
+			"import": "./dist/runtime/index.js"
 		}
 	},
 	"type": "module",
@@ -15,7 +19,9 @@
 		"node": ">=20.15.0"
 	},
 	"sideEffects": [
-		"./dist/index.js"
+		"./dist/index.js",
+		"./dist/puzzles/*.js",
+		"./dist/runtime/*.js"
 	],
 	"scripts": {
 		"build": "tsc",

@@ -1,10 +1,18 @@
 {
 	"navigationFallback": {
 		"rewrite": "/index.html",
-		"exclude": ["/*.{png,jpg,gif,svg,ico,webmanifest}"]
+		"exclude": [
+			"/*.{png,jpg,gif,svg,ico,webmanifest}",
+			"/solver-assets/*",
+			"/assets/*"
+		]
 	},
 	"platform": {
 		"apiRuntime": "node:20"
+	},
+	"globalHeaders": {
+		"Cross-Origin-Opener-Policy": "same-origin",
+		"Cross-Origin-Embedder-Policy": "require-corp"
 	},
 	"routes": [{ "route": "/api/*", "allowedRoles": ["authenticated"] }]
 }

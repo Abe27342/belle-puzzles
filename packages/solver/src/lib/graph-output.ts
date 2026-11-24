@@ -1,4 +1,4 @@
-import type { Expr, Model } from './z3.js';
+import type { Expr, Model } from 'z3-solver';
 import type { GridEdge, GridFace, GridVertex } from './graph/index.js';
 
 /**

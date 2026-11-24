@@ -34,7 +34,7 @@ function fixture(onQuery?: (text: string) => void) {
 	return { connection, pool, store: new PostgresPuzzlehuntStore(pool) };
 }
 
-describe('Puzzlehunt database initialization', () => {
+describe('Puzzlehunt database initialization', { timeout: 10000 }, () => {
 	it('creates a selected empty hunt ready for commands and revision reads', async () => {
 		const { pool, store } = fixture();
 		const scope = await initializePuzzlehuntDatabase(

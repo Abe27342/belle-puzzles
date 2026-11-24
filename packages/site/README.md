@@ -1,5 +1,10 @@
 # Belle Puzzles Website
 
+## Public logic puzzle solvers
+
+The public `/solvers/:puzzle` route provides a client-side logic puzzle solver
+powered by Z3. Puzzle input and solving stay in the browser.
+
 ## Running against a local belle-bot
 
 TODO: restore this flow

@@ -221,6 +221,9 @@ importers:
       '@belle-puzzles/puzzlehunt-model':
         specifier: workspace:0.0.1
         version: link:../puzzlehunt-model
+      '@belle-puzzles/solver':
+        specifier: workspace:0.0.1
+        version: link:../solver
       '@bity/oauth2-auth-code-pkce':
         specifier: ^2.13.0
         version: 2.13.0

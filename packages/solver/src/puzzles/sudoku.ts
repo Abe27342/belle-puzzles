@@ -1,3 +1,4 @@
+import { registerPuzzle } from '../catalog.js';
 import {
 	CartesianGridPuzzle,
 	constant,
@@ -47,6 +48,17 @@ type SudokuModel = VertexValueModel<SudokuDigit>;
 type SudokuSolution = VertexValueSolution<SudokuDigit>;
 
 export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
+	static {
+		registerPuzzle('sudoku', {
+			name: 'Sudoku',
+			instructions:
+				'Enter nine rows of nine characters. Use digits 1-9 for givens.',
+			example:
+				'53..7....\n6..195...\n.98....6.\n8...6...3\n4..8.3..1\n7...2...6\n.6....28.\n...419..5\n....8..79',
+			parser: SudokuPuzzle,
+		});
+	}
+
 	#givens: Given[];
 
 	constructor(props: SudokuPuzzleProps) {

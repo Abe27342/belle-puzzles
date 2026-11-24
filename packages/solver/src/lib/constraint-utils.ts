@@ -2,7 +2,7 @@
  * Utility functions for defining commonly occurring constraints in puzzles.
  */
 
-import { Arith, Bool, Context, Solver } from 'z3-solver';
+import type { Arith, Bool, Context, Solver } from 'z3-solver';
 import { ensureNonEmpty, oob } from './utils.js';
 import {
 	CartesianGridGraph,

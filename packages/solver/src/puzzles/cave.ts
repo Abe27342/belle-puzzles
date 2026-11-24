@@ -1,3 +1,4 @@
+import { registerPuzzle } from '../catalog.js';
 import {
 	CartesianGridPuzzle,
 	constant,
@@ -45,6 +46,16 @@ interface ConstructionGivens {
 }
 
 export class CavePuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
+	static {
+		registerPuzzle('cave', {
+			name: 'Cave',
+			instructions:
+				'Enter a rectangular grid of single-digit cell clues (0-9). Multi-digit clues are not supported.',
+			example: '...3\n.4..\n5.6.\n...2',
+			parser: CavePuzzle,
+		});
+	}
+
 	#givens: Given[];
 
 	constructor(props: CavePuzzleProps) {
