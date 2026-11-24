@@ -1,4 +1,4 @@
-FROM node:18
+FROM node:22
 
 WORKDIR /usr/src/app
 
@@ -14,7 +14,7 @@ COPY . .
 
 RUN pnpm install --frozen-lockfile -r --offline
 
-RUN npm run build
+RUN pnpm --filter @belle-puzzles/bot... build
 
 EXPOSE 3000
 CMD npm run start:bot
