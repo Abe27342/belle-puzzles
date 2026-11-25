@@ -566,7 +566,13 @@ export async function commitHuntCommand(
 			};
 		}
 		if (workId !== undefined) {
-			await validateIntegrationWork(connection, scope, workId, command);
+			await validateIntegrationWork(
+				connection,
+				scope,
+				workId,
+				command,
+				snapshot
+			);
 		}
 
 		const { rows: clock } = await connection.query<{ now_ms: string }>(
