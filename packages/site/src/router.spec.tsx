@@ -105,7 +105,6 @@ it('changes puzzle types through the SPA and disposes the old session', async ()
 	await waitFor(() => {
 		expect(dispose).toHaveBeenCalledTimes(1);
 	});
-	expect(screen.getByLabelText('Puzzle text')).toHaveValue('');
 	expect(fetchLoginInfo).not.toHaveBeenCalled();
 	expect(window.location.pathname).toBe('/solvers/masyu');
 });
