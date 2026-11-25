@@ -222,6 +222,7 @@ export function SolverNavigation() {
 
 export function SolverRoute() {
 	const { puzzleType } = useParams();
+	const [text, setText] = React.useState('');
 	const prepared = React.useRef<PreparedSolverWorker>();
 	const stopPreparing = React.useCallback(() => {
 		prepared.current?.dispose();
@@ -275,6 +276,8 @@ export function SolverRoute() {
 				<SolverPage
 					key={puzzleType}
 					puzzleType={puzzleType}
+					initialText={text}
+					onTextChange={setText}
 					divider={divider}
 					createClient={createClient}
 				/>
@@ -312,17 +315,38 @@ export function SolverRoute() {
 	);
 }
 
+function ElapsedText() {
+	const [elapsedSeconds, setElapsedSeconds] = React.useState(0);
+	React.useEffect(() => {
+		const startedAt = Date.now();
+		const interval = window.setInterval(() => {
+			setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+		}, 1000);
+		return () => window.clearInterval(interval);
+	}, []);
+	return (
+		<>
+			({elapsedSeconds} {elapsedSeconds === 1 ? 'second' : 'seconds'}{' '}
+			elapsed)
+		</>
+	);
+}
+
 export function SolverPage({
 	puzzleType,
+	initialText = '',
+	onTextChange,
 	divider,
 	createClient = createSolverClient,
 }: {
 	puzzleType: string;
+	initialText?: string;
+	onTextChange?: (text: string) => void;
 	divider?: React.ReactNode;
 	createClient?: typeof createSolverClient;
 }) {
 	const definition = puzzleTypes[puzzleType];
-	const [text, setText] = React.useState('');
+	const [text, setText] = React.useState(initialText);
 	const [solutions, setSolutions] = React.useState<string[]>([]);
 	const [cachedSecond, setCachedSecond] = React.useState<string | null>(null);
 	const [phase, setPhase] = React.useState<Phase>('idle');
@@ -356,6 +380,7 @@ export function SolverPage({
 	const changeInput = (value: string) => {
 		stop();
 		setText(value);
+		onTextChange?.(value);
 		setSolutions([]);
 		setCachedSecond(null);
 		setPhase('idle');
@@ -551,13 +576,26 @@ export function SolverPage({
 							</p>
 						)}
 					{phase === 'first' && (
-						<p className="solver-visually-hidden">
-							Loading solver and finding the first solution...
+						<p>
+							Solving... <ElapsedText key={phase} />
 						</p>
 					)}
-					{phase === 'next' && <p>Finding the next solution...</p>}
+					{phase === 'next' && (
+						<p>
+							Finding the next solution...{' '}
+							<ElapsedText key={phase} />
+						</p>
+					)}
 					{uniquenessLabels[uniqueness] && (
-						<p>{uniquenessLabels[uniqueness]}</p>
+						<p>
+							{uniquenessLabels[uniqueness]}
+							{phase === 'uniqueness' && (
+								<>
+									{' '}
+									<ElapsedText key={phase} />
+								</>
+							)}
+						</p>
 					)}
 					{message && <p>{message}</p>}
 				</div>

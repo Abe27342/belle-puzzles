@@ -68,9 +68,9 @@ describe('solver page', () => {
 		expect(
 			screen.queryByLabelText('Solution 1 grid')
 		).not.toBeInTheDocument();
-		expect(screen.getByRole('status').firstElementChild).toHaveClass(
-			'solver-visually-hidden'
-		);
+		expect(
+			screen.getByText('Solving... (0 seconds elapsed)')
+		).toBeVisible();
 		send({ type: 'solution', output: 'first' });
 		expect(
 			view.container.querySelector('.solver-grid-skeleton')
@@ -79,6 +79,80 @@ describe('solver page', () => {
 			'first'
 		);
 	});
+
+	it('updates elapsed time every second and resets it for each search phase', () => {
+		vi.useFakeTimers();
+		const view = start();
+		try {
+			act(() => vi.advanceTimersByTime(1000));
+			expect(screen.getByRole('status')).toHaveTextContent(
+				'Solving... (1 second elapsed)'
+			);
+			act(() => vi.advanceTimersByTime(4000));
+			expect(screen.getByRole('status')).toHaveTextContent(
+				'Solving... (5 seconds elapsed)'
+			);
+			send({ type: 'solution', output: 'first' });
+			expect(screen.getByRole('status')).toHaveTextContent(
+				'0 seconds elapsed'
+			);
+			act(() => vi.advanceTimersByTime(2000));
+			expect(screen.getByRole('status')).toHaveTextContent(
+				'2 seconds elapsed'
+			);
+			send({ type: 'solution', output: 'second' });
+			expect(vi.getTimerCount()).toBe(0);
+			fireEvent.click(
+				screen.getByRole('button', { name: 'Find next solution' })
+			);
+			fireEvent.click(
+				screen.getByRole('button', { name: 'Find next solution' })
+			);
+			expect(screen.getByRole('status')).toHaveTextContent(
+				'Finding the next solution... (0 seconds elapsed)'
+			);
+			act(() => vi.advanceTimersByTime(1000));
+			expect(screen.getByRole('status')).toHaveTextContent(
+				'1 second elapsed'
+			);
+		} finally {
+			view.unmount();
+			vi.useRealTimers();
+		}
+	});
+
+	it.each(['cancel', 'terminal', 'error', 'edit', 'pagehide', 'unmount'])(
+		'stops the elapsed timer on %s',
+		(action) => {
+			vi.useFakeTimers();
+			const view = start();
+			try {
+				act(() => vi.advanceTimersByTime(2000));
+				if (action === 'cancel')
+					fireEvent.click(
+						screen.getByRole('button', { name: 'Cancel' })
+					);
+				if (action === 'terminal')
+					send({ type: 'terminal', status: 'unsat' });
+				if (action === 'error')
+					send({ type: 'error', message: 'Search failed' });
+				if (action === 'edit')
+					fireEvent.change(screen.getByLabelText('Puzzle text'), {
+						target: { value: '.' },
+					});
+				if (action === 'pagehide')
+					act(() => window.dispatchEvent(new Event('pagehide')));
+				if (action === 'unmount') view.unmount();
+				expect(vi.getTimerCount()).toBe(0);
+				expect(
+					screen.queryByText(/seconds? elapsed/)
+				).not.toBeInTheDocument();
+			} finally {
+				view.unmount();
+				vi.useRealTimers();
+			}
+		}
+	);
 
 	it('offers one next-solution action after all grids and removes it when enumeration is exhausted', () => {
 		start();
@@ -396,6 +470,36 @@ describe('solver page', () => {
 			screen.getByRole('heading', { name: 'Solutions', level: 2 })
 		).toBeInTheDocument();
 		expect(prepareSolverWorker).not.toHaveBeenCalled();
+	});
+
+	it('preserves puzzle text across type switches while clearing results and stopping the solver', () => {
+		render(
+			<MemoryRouter initialEntries={['/solvers/sudoku']}>
+				<Routes>
+					<Route
+						path="/solvers/:puzzleType"
+						element={<SolverRoute />}
+					/>
+				</Routes>
+			</MemoryRouter>
+		);
+		const text = '1..\n.2.\n..3';
+		fireEvent.change(screen.getByLabelText('Puzzle text'), {
+			target: { value: text },
+		});
+		fireEvent.click(screen.getByRole('button', { name: 'Solve' }));
+		send({ type: 'solution', output: 'old solution' });
+		fireEvent.click(screen.getByRole('link', { name: 'Hashi' }));
+		expect(screen.getByLabelText('Puzzle text')).toHaveValue(text);
+		expect(
+			screen.queryByLabelText('Solution 1 grid')
+		).not.toBeInTheDocument();
+		expect(dispose).toHaveBeenCalledTimes(1);
+		fireEvent.click(screen.getByRole('button', { name: 'Load example' }));
+		fireEvent.click(screen.getByRole('link', { name: 'Sudoku' }));
+		expect(screen.getByLabelText('Puzzle text')).toHaveValue(
+			puzzleTypes.hashi.example
+		);
 	});
 
 	it('shows an explanation for unknown puzzle types', () => {
