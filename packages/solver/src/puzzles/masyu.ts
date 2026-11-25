@@ -49,7 +49,7 @@ export class MasyuPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 		registerPuzzle('masyu', {
 			name: 'Masyu',
 			instructions:
-				'Enter B for black pearls and W for white pearls, one character per grid vertex.',
+				'Enter B for black pearls and W for white pearls, one cell per grid vertex.',
 			example: 'B.W...\n..W..W\n....B.\n.B....\n......\n....B.',
 			parser: MasyuPuzzle,
 		});

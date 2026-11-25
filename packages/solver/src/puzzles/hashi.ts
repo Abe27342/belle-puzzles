@@ -7,7 +7,7 @@ import {
 	createEdgeValueModel,
 	defaultCartesianGridRenderOptions,
 	ensureNonEmpty,
-	parseDigit,
+	parseNumber,
 	parseTextGrids,
 	type CartesianCoord,
 	type CartesianGridPuzzleProps,
@@ -131,7 +131,7 @@ export class HashiPuzzle extends CartesianGridPuzzle<HashiSolution> {
 		const visitor: TextGridVisitor = ([count], coord) => {
 			givens.push({
 				coord,
-				count: parseDigit(count, coord),
+				count: parseNumber(count, coord),
 			});
 		};
 		const { width, height } = parseTextGrids(text, visitor, {

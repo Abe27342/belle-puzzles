@@ -4,7 +4,7 @@ import {
 	constant,
 	connectedLoopConstraints,
 	createEdgeIndicatorModel,
-	parseDigit,
+	parseNumber,
 	parseTextGrids,
 	sightLineSumConstraints,
 	type CartesianCoord,
@@ -49,8 +49,7 @@ export class CavePuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 	static {
 		registerPuzzle('cave', {
 			name: 'Cave',
-			instructions:
-				'Enter a rectangular grid of single-digit cell clues (0-9). Multi-digit clues are not supported.',
+			instructions: 'Enter a rectangular grid of numeric cell clues.',
 			example: '...3\n.4..\n5.6.\n...2',
 			parser: CavePuzzle,
 		});
@@ -79,7 +78,7 @@ export class CavePuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 	) {
 		const givens: ConstructionGivens[] = [];
 		const visitor: TextGridVisitor = ([char], coord) => {
-			givens.push({ coord, count: parseDigit(char, coord) });
+			givens.push({ coord, count: parseNumber(char, coord) });
 		};
 		const { width, height } = parseTextGrids(text, visitor, {
 			gridCount: 1,

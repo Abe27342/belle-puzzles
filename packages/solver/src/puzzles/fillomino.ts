@@ -7,7 +7,7 @@ import {
 	createVertexValueModel,
 	ensureNonEmpty,
 	oob,
-	parseBase36Digit,
+	parseNumber,
 	parseTextGrids,
 	variable,
 	type CartesianCoord,
@@ -52,10 +52,9 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 	static {
 		registerPuzzle('fillomino', {
 			name: 'Fillomino',
-			instructions:
-				'Enter a rectangular grid of single-digit cell clues. Clues are parsed in base36 (a=10, b=11, etc).',
+			instructions: 'Enter a rectangular grid of numeric cell clues.',
 			example:
-				'...3....5\n..83a..5.\n.3...44..\n13.3..2..\n.2..3..2.\n..2..3.13\n..44...3.\n.4..433..\n6....1...',
+				'...3 .   ...5\n..83[10] ..5.\n.3.. .   44..\n13.3 .   .2..\n.2.. 3   ..2.\n..2. .   3.13\n..44 .   ..3.\n.4.. 4   33..\n6... .   1...',
 			parser: FillominoPuzzle,
 		});
 	}
@@ -98,7 +97,7 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 		const visitor: TextGridVisitor = ([value], coord) => {
 			givens.push({
 				coord,
-				value: parseBase36Digit(value, coord),
+				value: parseNumber(value, coord),
 			});
 		};
 		const { width, height } = parseTextGrids(text, visitor, {
@@ -124,9 +123,7 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 			solver,
 			{ grid, output: this.output },
 			{
-				// The 36 here means no region larger than size 36 will ever be considered.
-				values: Array.from({ length: 36 }, (_, i) => i),
-				glyphs: '0123456789abcdefghijklmnopqrstuvwxyz'.split(''),
+				values: Array.from({ length: max }, (_, i) => i + 1),
 			}
 		);
 		const { Not, And, Sum, Implies, If } = context;

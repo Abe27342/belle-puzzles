@@ -35,6 +35,23 @@ exports[`FillominoPuzzle solver > should solve for input: complex 1 2`] = `
 "
 `;
 
+exports[`FillominoPuzzle solver > should solve for input: multidigit cells 1`] = `
+"
+. [10] {10} (10) .
+.  .    .    .   .
+"
+`;
+
+exports[`FillominoPuzzle solver > should solve for input: multidigit cells 2`] = `
+"
+·-·-·-·-·-·
+|a a a a a|
+· · · · · ·
+|a a a a a|
+·-·-·-·-·-·
+"
+`;
+
 exports[`FillominoPuzzle solver > should solve for input: simple 1`] = `
 "
 	15.

@@ -6,7 +6,7 @@ import {
 	createEdgeIndicatorModel,
 	ensureNonEmpty,
 	oob,
-	parseDigit,
+	parseNumber,
 	parseTextGrids,
 	type CartesianCoord,
 	type CartesianGridPuzzleProps,
@@ -80,7 +80,7 @@ export class SlitherlinkPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution
 	) {
 		const givens: ConstructionGivens[] = [];
 		const visitor: TextGridVisitor = ([char], coord) => {
-			const digit = parseDigit(char, coord);
+			const digit = parseNumber(char, coord);
 			if (digit > 4) {
 				throw new Error(`Slitherlink clue at ${coord} must be 0-4`);
 			}

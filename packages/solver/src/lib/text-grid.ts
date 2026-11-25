@@ -12,24 +12,15 @@ export interface TextGridParseOptions {
 
 /** Whether a grid character is an empty placeholder. */
 export function isEmptyGridCharacter(value: string): boolean {
-	return value === '.' || /^\s$/.test(value);
+	return value === '.';
 }
 
-/** Parse exactly one ASCII digit, throwing with its grid coordinate otherwise. */
-export function parseDigit(value: string, coord: CartesianCoord): number {
-	if (!/^[0-9]$/.test(value)) {
-		throw new Error(`Invalid digit at ${coord}: ${JSON.stringify(value)}`);
+/** Parse a nonnegative decimal integer, throwing with its grid coordinate otherwise. */
+export function parseNumber(value: string, coord: CartesianCoord): number {
+	if (!/^[0-9]+$/.test(value) || !Number.isSafeInteger(Number(value))) {
+		throw new Error(`Invalid number at ${coord}: ${JSON.stringify(value)}`);
 	}
 	return Number(value);
-}
-
-export function parseBase36Digit(value: string, coord: CartesianCoord): number {
-	if (!/^[0-9a-zA-Z]$/.test(value)) {
-		throw new Error(
-			`Invalid base36 digit at ${coord}: ${JSON.stringify(value)}`
-		);
-	}
-	return Number.parseInt(value, 36);
 }
 
 /** Parse a B/W pearl color, case-insensitively, or throw with its coordinate. */
@@ -52,19 +43,18 @@ export function parsePearlColor(
 }
 
 /**
- * Parse rectangular character grids separated by one or more blank lines.
- * Surrounding blank lines and each grid's common leading whitespace indentation
- * are ignored; LF and CRLF line endings are supported. Other whitespace remains
- * an empty grid value, including trailing spaces.
- * All grids must have the same dimensions. Each character is one value, so
- * multi-digit clues need a different format.
+ * Parse rectangular cell grids separated by one or more blank lines.
+ * Whitespace other than line endings is ignored; LF, CRLF, and CR are supported.
+ * Each character is one cell, except values enclosed in matching {}, (), or []
+ * delimiters, whose contents form one cell. All grids must have the same dimensions.
+ * A dot is empty; a hash is a dark-square clue, passed through to the visitor.
  *
  * The visitor runs in row-major order at each position where any grid contains a
- * non-empty character (anything other than "." or whitespace). The visitor
+ * non-empty value (anything other than "."). The visitor
  * receives the values from all grids in input order, including empty values,
  * and a zero-based [x, y] coordinate with y increasing downwards.
  *
- * Returned width and height count character positions, using vertex (go-style)
+ * Returned width and height count cell positions, using vertex (go-style)
  * dimensions, not edge spans or face counts. Vertex-clue puzzles can use them
  * directly. If characters represent faces, add 1 to both dimensions when
  * constructing a CartesianGridGraph; clue coordinates themselves stay unchanged.
@@ -77,18 +67,48 @@ export function parseTextGrids(
 ): { width: number; height: number } {
 	const normalized = text
 		.replace(/\r\n?/g, '\n')
-		.replace(/^(?:[ \t]*\n)+/, '')
-		.replace(/(?:\n[ \t]*)+$/, '');
-	if (normalized.trim().length === 0) {
+		.replace(/[^\S\n]/g, '')
+		.replace(/^\n+|\n+$/g, '');
+	if (normalized.length === 0) {
 		throw new Error('Expected at least one non-empty text grid');
 	}
-	const grids = normalized.split(/\n[ \t]*\n(?:[ \t]*\n)*/).map((grid) => {
-		const lines = grid.split('\n');
-		const indentation = Math.min(
-			...lines.map((line) => line.length - line.trimStart().length)
-		);
-		return lines.map((line) => line.slice(indentation));
-	});
+	const grids = normalized.split(/\n{2,}/).map((grid) =>
+		grid.split('\n').map((line, row) => {
+			const values: string[] = [];
+			const pairs: Record<string, string> = {
+				'{': '}',
+				'(': ')',
+				'[': ']',
+			};
+			for (let index = 0; index < line.length; index++) {
+				const character = line[index];
+				const closing = pairs[character];
+				if (closing !== undefined) {
+					const end = line.indexOf(closing, index + 1);
+					const value = line.slice(index + 1, end);
+					if (
+						end < 0 ||
+						value.length === 0 ||
+						/[{}()[\]]/.test(value)
+					) {
+						throw new Error(
+							`Invalid bracketed clue at ${values.length},${row}`
+						);
+					}
+					values.push(value);
+					index = end;
+				} else {
+					if (/[})\]]/.test(character)) {
+						throw new Error(
+							`Unexpected closing bracket at ${values.length},${row}`
+						);
+					}
+					values.push(character);
+				}
+			}
+			return values;
+		})
+	);
 	if (options.gridCount !== undefined && grids.length !== options.gridCount) {
 		throw new Error(
 			`Expected ${options.gridCount} text grids, received ${grids.length}`
