@@ -7,6 +7,8 @@ import { ensureNonEmpty, oob } from './utils.js';
 import {
 	CartesianGridGraph,
 	HasNeighbors,
+	PlanarGraph,
+	ConcreteGraphTypes,
 	GridVertex,
 	GridEdge,
 	GridFace,
@@ -33,7 +35,6 @@ export interface ConstraintExtensions {
 	 * @returns A boolean expression representing the logical equivalence of `a` and `b`.
 	 */
 	iff: (a: Bool<string>, b: Bool<string>) => Bool<string>;
-
 }
 
 export function createConstraintExtensions(
@@ -78,9 +79,9 @@ export function createConstraintExtensions(
  * (such that "vertex" variable naming in the code below actually refers to edges in the original puzzle graph).
  */
 export function* connectedConstraints<T extends HasNeighbors<T>>(
+	context: Context<string>,
 	valueVariables: Map<HasNeighbors<T>, Arith<string>>,
-	minimalEnabledVariables: Iterable<HasNeighbors<T>>,
-	context: Context<string>
+	minimalEnabledVariables: Iterable<HasNeighbors<T>>
 ) {
 	const vertices = Array.from(valueVariables.keys());
 	const connectivityVariables = new Map<HasNeighbors<T>, Arith<string>>();
@@ -155,15 +156,16 @@ export function* connectedConstraints<T extends HasNeighbors<T>>(
  * @remarks
  * When used on the line graph, this is the "one connected loop" constraint used in slitherlink, masyu, etc.
  */
-export function* connectedLoopConstraints<T extends HasNeighbors<T>>(
-	indicatorVariables: Map<HasNeighbors<T>, Arith<string>>,
-	minimalEnabledVariables: Iterable<HasNeighbors<T>>,
-	context: Context<string>
+export function* connectedLoopConstraints<T extends ConcreteGraphTypes<T>>(
+	context: Context<string>,
+	graph: PlanarGraph<T>,
+	indicatorVariables: Map<T['edge'], Arith<string>>,
+	minimalEnabledVariables: Iterable<T['edge']>
 ) {
 	yield* connectedConstraints(
+		context,
 		indicatorVariables,
-		minimalEnabledVariables,
-		context
+		minimalEnabledVariables
 	);
 
 	const { Or, Int } = context;
@@ -171,13 +173,16 @@ export function* connectedLoopConstraints<T extends HasNeighbors<T>>(
 	const zeroVar = Int.const('zero');
 	yield zeroVar.eq(0);
 
-	for (const [edge, edgeVar] of indicatorVariables) {
-		const degree = Array.from(
-			edge.neighbors(),
-			(e) => indicatorVariables.get(e) ?? oob(e)
-		).reduce((acc, curr) => acc.add(curr), zeroVar);
+	for (const v of graph.vertices()) {
+		const degree = context.Sum(
+			...ensureNonEmpty(
+				Array.from(v.incidentEdges()).map(
+					(e) => indicatorVariables.get(e) ?? oob(e)
+				)
+			)
+		);
 
-		yield Or(edgeVar.eq(0), degree.eq(2));
+		yield Or(degree.eq(0), degree.eq(2));
 	}
 }
 

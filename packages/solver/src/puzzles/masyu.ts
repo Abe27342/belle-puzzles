@@ -132,9 +132,10 @@ export class MasyuPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 		const { coord } = this.#pearls[0];
 		solver.add(
 			...connectedLoopConstraints(
+				context,
+				this.grid,
 				edgeVariables,
-				coord.incidentEdges(),
-				context
+				coord.incidentEdges() ?? this.grid.edges()
 			)
 		);
 		return model;

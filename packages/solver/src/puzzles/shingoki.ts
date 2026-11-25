@@ -166,9 +166,10 @@ export class ShingokiPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 		const { vertex: coord } = this.#pearls[0];
 		solver.add(
 			...connectedLoopConstraints(
+				context,
+				this.grid,
 				edgeVariables,
-				coord.incidentEdges(),
-				context
+				coord.incidentEdges()
 			)
 		);
 		return model;
