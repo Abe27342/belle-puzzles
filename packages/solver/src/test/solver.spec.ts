@@ -1,9 +1,5 @@
 import { afterAll, expect, it } from 'vitest';
-import {
-	shutdownSolverRuntime,
-	SolverSession,
-	z3,
-} from '../runtime/index.js';
+import { shutdownSolverRuntime, SolverSession, z3 } from '../runtime/index.js';
 import {
 	CartesianGridGraph,
 	constant,
@@ -16,10 +12,75 @@ import {
 	resolveGraphOutput,
 	variable,
 } from '../index.js';
-import type { PuzzleDefinition, VertexValueSolution } from '../index.js';
+import type {
+	GridEdge,
+	GridFace,
+	GridVertex,
+	PuzzleDefinition,
+	VertexValueSolution,
+} from '../index.js';
 
 afterAll(async () => {
 	await shutdownSolverRuntime();
+});
+
+it('aligns face columns independently and extends their horizontal edges', () => {
+	const grid = new CartesianGridGraph({ width: 3, height: 3 });
+	const display = {
+		vertices: new Map<GridVertex, string>(),
+		edges: new Map<GridEdge, string>(),
+		faces: new Map<GridFace, string>(),
+	};
+	for (const edge of grid.edges()) {
+		const [start, end] = edge.vertices;
+		display.edges.set(edge, start.y === end.y ? '-' : '|');
+	}
+	display.faces.set(grid.getFace([0, 0]), '1');
+	display.faces.set(grid.getFace([1, 0]), '123');
+	display.faces.set(grid.getFace([0, 1]), '10');
+	display.faces.set(grid.getFace([1, 1]), '2');
+	const middle = grid.getVertex([1, 1]);
+	display.edges.set(grid.getEdge(middle, middle.right), ' ');
+	expect(renderCartesianGrid(grid, display)).toBe(
+		'·--·---·\n|1 |123|\n·--·   ·\n|10|2  |\n·--·---·\n'
+	);
+});
+
+it('aligns multi-digit vertex values with vertical edges', () => {
+	const grid = new CartesianGridGraph({ width: 2, height: 2 });
+	const display = {
+		vertices: new Map<GridVertex, string>(),
+		edges: new Map<GridEdge, string>(),
+		faces: new Map<GridFace, string>(),
+	};
+	for (const edge of grid.edges()) {
+		const [start, end] = edge.vertices;
+		display.edges.set(edge, start.y === end.y ? '-' : '|');
+	}
+	display.vertices.set(grid.getVertex([0, 0]), '1');
+	display.vertices.set(grid.getVertex([1, 0]), '22');
+	display.vertices.set(grid.getVertex([0, 1]), '333');
+	display.vertices.set(grid.getVertex([1, 1]), '4');
+	display.faces.set(grid.getFace([0, 0]), '');
+	expect(renderCartesianGrid(grid, display)).toBe('1  -22\n|   | \n333-4 \n');
+});
+
+it('keeps explicitly empty separator rows and columns collapsed', () => {
+	const grid = new CartesianGridGraph({ width: 2, height: 2 });
+	const display = {
+		vertices: new Map<GridVertex, string>(),
+		edges: new Map<GridEdge, string>(),
+		faces: new Map<GridFace, string>(),
+	};
+	for (const edge of grid.edges()) {
+		display.edges.set(edge, '');
+	}
+	display.vertices.set(grid.getVertex([0, 0]), '10');
+	display.vertices.set(grid.getVertex([1, 0]), '2');
+	display.vertices.set(grid.getVertex([0, 1]), '3');
+	display.vertices.set(grid.getVertex([1, 1]), '4');
+	display.faces.set(grid.getFace([0, 0]), '');
+	expect(renderCartesianGrid(grid, display)).toBe('102\n3 4\n');
 });
 
 it('loads the shared Z3 runtime and solves constraints', async () => {

@@ -44,11 +44,11 @@ exports[`FillominoPuzzle solver > should solve for input: multidigit cells 1`] =
 
 exports[`FillominoPuzzle solver > should solve for input: multidigit cells 2`] = `
 "
-·-·-·-·-·-·
-|a a a a a|
-· · · · · ·
-|a a a a a|
-·-·-·-·-·-·
+·--·--·--·--·--·
+|10 10 10 10 10|
+·  ·  ·  ·  ·  ·
+|10 10 10 10 10|
+·--·--·--·--·--·
 "
 `;
 
