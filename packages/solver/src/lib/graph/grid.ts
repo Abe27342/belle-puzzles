@@ -1,9 +1,11 @@
-export interface ConcreteGraphTypes {
+export interface ConcreteGraphTypes<
+	TConcrete extends ConcreteGraphTypes<TConcrete>
+> {
 	coord: unknown;
-	vertex: unknown;
-	directedEdge: unknown;
-	edge: unknown;
-	face: unknown;
+	vertex: Vertex<TConcrete>;
+	directedEdge: DirectedEdge<TConcrete>;
+	edge: Edge<TConcrete>;
+	face: Face<TConcrete>;
 }
 
 /**
@@ -16,7 +18,7 @@ export interface ConcreteGraphTypes {
  *
  * It should be an object that "looks up" the concrete types for coordinates, vertices, edges, and faces within the graph.
  */
-export interface PlanarGraph<TConcrete extends ConcreteGraphTypes> {
+export interface PlanarGraph<TConcrete extends ConcreteGraphTypes<TConcrete>> {
 	vertices(): Iterable<TConcrete['vertex']>;
 	directedEdges(): Iterable<TConcrete['directedEdge']>;
 	edges(): Iterable<TConcrete['edge']>;
@@ -30,7 +32,7 @@ export interface HasNeighbors<T> {
 	neighbors(): Iterable<T>;
 }
 
-export interface Vertex<TConcrete extends ConcreteGraphTypes>
+export interface Vertex<TConcrete extends ConcreteGraphTypes<TConcrete>>
 	extends HasNeighbors<TConcrete['vertex']> {
 	type: 'vertex';
 	coord: TConcrete['coord'];
@@ -41,13 +43,13 @@ export interface Vertex<TConcrete extends ConcreteGraphTypes>
 /**
  * Represents an undirected edge in a planar graph.
  */
-export interface Edge<TConcrete extends ConcreteGraphTypes>
+export interface Edge<TConcrete extends ConcreteGraphTypes<TConcrete>>
 	extends HasNeighbors<TConcrete['edge']> {
 	type: 'edge';
 	vertices: [TConcrete['vertex'], TConcrete['vertex']];
 }
 
-export interface DirectedEdge<TConcrete extends ConcreteGraphTypes>
+export interface DirectedEdge<TConcrete extends ConcreteGraphTypes<TConcrete>>
 	extends HasNeighbors<TConcrete['directedEdge']> {
 	type: 'directedEdge';
 
@@ -70,7 +72,7 @@ export interface DirectedEdge<TConcrete extends ConcreteGraphTypes>
 	invert(): TConcrete['directedEdge'];
 }
 
-export interface Face<TConcrete extends ConcreteGraphTypes>
+export interface Face<TConcrete extends ConcreteGraphTypes<TConcrete>>
 	extends HasNeighbors<TConcrete['face']> {
 	type: 'face';
 	/**

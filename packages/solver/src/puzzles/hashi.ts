@@ -202,9 +202,9 @@ export class HashiPuzzle extends CartesianGridPuzzle<HashiSolution> {
 		const selectedGiven = this.#givens.find((given) => given.count > 0);
 		solver.add(
 			...connectedConstraints(
+				context,
 				edgeVariables,
-				selectedGiven?.vertex.incidentEdges() ?? this.grid.edges(),
-				context
+				selectedGiven?.vertex.incidentEdges() ?? this.grid.edges()
 			)
 		);
 

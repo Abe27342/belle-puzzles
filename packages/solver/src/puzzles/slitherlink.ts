@@ -118,9 +118,10 @@ export class SlitherlinkPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution
 		const given = this.#givens.find((g) => g.count > 0);
 		solver.add(
 			...connectedLoopConstraints(
+				context,
+				this.grid,
 				edgeVariables,
-				given?.face.incidentEdges() ?? this.grid.edges(),
-				context
+				given?.face.incidentEdges() ?? this.grid.edges()
 			)
 		);
 		return model;
