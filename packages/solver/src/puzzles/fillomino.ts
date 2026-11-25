@@ -1,12 +1,15 @@
 import { registerPuzzle } from '../catalog.js';
 import {
 	Arith,
+	CartesianGridGraph,
 	CartesianGridPuzzle,
+	constant,
 	createVertexValueModel,
 	ensureNonEmpty,
 	oob,
 	parseBase36Digit,
 	parseTextGrids,
+	variable,
 	type CartesianCoord,
 	type CartesianGridPuzzleProps,
 	type CartesianGridRenderOptions,
@@ -58,10 +61,13 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 	}
 
 	#givens: Given[];
+	#cellGrid: CartesianGridGraph;
 
 	constructor(props: FillominoPuzzleProps) {
 		super({
 			...props,
+			width: props.width + 1,
+			height: props.height + 1,
 			renderOptions: {
 				horizontal: '-',
 				vertical: '|',
@@ -69,8 +75,9 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 			},
 		});
 
+		this.#cellGrid = new CartesianGridGraph(props);
 		this.#givens = props.givens.map((p) => ({
-			vertex: this.grid.getVertex(p.coord),
+			vertex: this.#cellGrid.getVertex(p.coord),
 			value: p.value,
 		}));
 		for (const given of this.#givens) {
@@ -110,12 +117,18 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 		context: Context<string>,
 		solver: Solver<string>
 	): FillominoModel {
-		const max = this.grid.width * this.grid.height;
-		const model = createVertexValueModel(context, solver, this, {
-			// The 36 here means no region larger than size 36 will ever be considered.
-			values: Array.from({ length: 36 }, (_, i) => i),
-			glyphs: '0123456789abcdefghijklmnopqrstuvwxyz'.split(''),
-		});
+		const grid = this.#cellGrid;
+		const max = grid.width * grid.height;
+		const model = createVertexValueModel(
+			context,
+			solver,
+			{ grid, output: this.output },
+			{
+				// The 36 here means no region larger than size 36 will ever be considered.
+				values: Array.from({ length: 36 }, (_, i) => i),
+				glyphs: '0123456789abcdefghijklmnopqrstuvwxyz'.split(''),
+			}
+		);
 		const { Not, And, Sum, Implies, If } = context;
 
 		// Idea behind constraints:
@@ -129,7 +142,7 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 			Sum(
 				...ensureNonEmpty(
 					[...v.neighbors()].map((n) =>
-						treeIndicators.forceGet(this.grid.getDirectedEdge(n, v))
+						treeIndicators.forceGet(grid.getDirectedEdge(n, v))
 					)
 				)
 			);
@@ -143,14 +156,14 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 		const treeIndicators = createVariableMap(
 			context,
 			'edgePresence',
-			this.grid.directedEdges(),
+			grid.directedEdges(),
 			(variable) => {
 				solver.add(variable.ge(0).and(variable.le(1)));
 			}
 		);
 
 		// Enforce the indicator variables form a tree.
-		for (const edge of this.grid.directedEdges()) {
+		for (const edge of grid.directedEdges()) {
 			// At most one of an edge and its inversion can be enabled.
 			solver.add(
 				Not(
@@ -169,13 +182,13 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 		const subtreeCounts = createVariableMap(
 			context,
 			'rootedSubtreeSize',
-			this.grid.vertices(),
+			grid.vertices(),
 			(variable) => {
 				solver.add(variable.ge(1).and(variable.le(max)));
 			}
 		);
 
-		for (const vertex of this.grid.vertices()) {
+		for (const vertex of grid.vertices()) {
 			const neighbors = [...vertex.neighbors()];
 			solver.add(
 				subtreeCounts.forceGet(vertex).eq(
@@ -186,7 +199,7 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 						...ensureNonEmpty(
 							neighbors.map((v) => {
 								const outgoingEdge = treeIndicators.forceGet(
-									this.grid.getDirectedEdge(vertex, v)
+									grid.getDirectedEdge(vertex, v)
 								);
 								return If(
 									outgoingEdge.eq(1),
@@ -203,15 +216,15 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 		const rootAssignments = createVariableMap(
 			context,
 			'rootOf',
-			this.grid.vertices(),
+			grid.vertices(),
 			(variable) => {
 				solver.add(variable.ge(0).and(variable.lt(max)));
 			}
 		);
 
-		for (const vertex of this.grid.vertices()) {
+		for (const vertex of grid.vertices()) {
 			const [x, y] = vertex.coord;
-			const flattenedVertexIndex = y * this.grid.width + x;
+			const flattenedVertexIndex = y * grid.width + x;
 			solver.add(
 				// Each root vertex is identified by its flattened index.
 				Implies(
@@ -231,7 +244,7 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 			);
 		}
 
-		for (const edge of this.grid.directedEdges()) {
+		for (const edge of grid.directedEdges()) {
 			solver.add(
 				// All vertices that are part of the same tree must be assigned the same unique root.
 				Implies(
@@ -259,6 +272,40 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 			);
 		}
 
+		// Render fillomino values in faces
+		for (const [vertex, binding] of model.output.vertices) {
+			model.output.faces.set(this.grid.getFace(vertex.coord), binding);
+		}
+		model.output.vertices.clear();
+		for (const vertex of this.grid.vertices()) {
+			model.output.vertices.set(
+				vertex,
+				constant(this.renderOptions.vertex)
+			);
+		}
+		for (const edge of this.grid.edges()) {
+			const [start, end] = edge.vertices;
+			const horizontal = start.y === end.y;
+			const glyph = horizontal
+				? this.renderOptions.horizontal
+				: this.renderOptions.vertical;
+			const first = vertexNumbers.get(
+				grid.getVertex(
+					horizontal ? [start.x, start.y - 1] : [start.x - 1, start.y]
+				)
+			);
+			const second = vertexNumbers.get(grid.getVertex(start.coord));
+			model.output.edges.set(
+				edge,
+				first === undefined || second === undefined
+					? constant(glyph)
+					: variable(
+							first.neq(second),
+							(assignment) => context.isTrue(assignment),
+							(boundary) => (boundary ? glyph : ' ')
+					  )
+			);
+		}
 		return model;
 	}
 }
