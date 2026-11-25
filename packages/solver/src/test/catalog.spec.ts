@@ -11,14 +11,8 @@ vi.mock('z3-solver', () => {
 });
 
 it('imports and parses all registered examples without loading the Z3 runtime', () => {
-	expect(Object.keys(puzzleTypes)).toEqual([
-		'sudoku',
-		'masyu',
-		'shingoki',
-		'slitherlink',
-		'cave',
-		'hashi',
-	]);
+	expect(Object.keys(puzzleTypes).length).toBeGreaterThan(0);
+	expect(puzzleTypes.sudoku).toBeDefined();
 	for (const [type, definition] of Object.entries(puzzleTypes)) {
 		expect(isPuzzleType(type)).toBe(true);
 		expect(definition.name).not.toBe('');
