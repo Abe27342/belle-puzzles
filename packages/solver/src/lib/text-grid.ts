@@ -23,6 +23,15 @@ export function parseDigit(value: string, coord: CartesianCoord): number {
 	return Number(value);
 }
 
+export function parseBase36Digit(value: string, coord: CartesianCoord): number {
+	if (!/^[0-9a-zA-Z]$/.test(value)) {
+		throw new Error(
+			`Invalid base36 digit at ${coord}: ${JSON.stringify(value)}`
+		);
+	}
+	return Number.parseInt(value, 36);
+}
+
 /** Parse a B/W pearl color, case-insensitively, or throw with its coordinate. */
 export function parsePearlColor(
 	value: string,
@@ -73,15 +82,13 @@ export function parseTextGrids(
 	if (normalized.trim().length === 0) {
 		throw new Error('Expected at least one non-empty text grid');
 	}
-	const grids = normalized
-		.split(/\n[ \t]*\n(?:[ \t]*\n)*/)
-		.map((grid) => {
-			const lines = grid.split('\n');
-			const indentation = Math.min(
-				...lines.map((line) => line.length - line.trimStart().length)
-			);
-			return lines.map((line) => line.slice(indentation));
-		});
+	const grids = normalized.split(/\n[ \t]*\n(?:[ \t]*\n)*/).map((grid) => {
+		const lines = grid.split('\n');
+		const indentation = Math.min(
+			...lines.map((line) => line.length - line.trimStart().length)
+		);
+		return lines.map((line) => line.slice(indentation));
+	});
 	if (options.gridCount !== undefined && grids.length !== options.gridCount) {
 		throw new Error(
 			`Expected ${options.gridCount} text grids, received ${grids.length}`
