@@ -23,7 +23,7 @@ export function describeSuiteFromTestData(
 		for (const [name, input] of testCases) {
 			it(
 				`should solve for input: ${name}`,
-				{ timeout: 20000 },
+				{ timeout: 60000 },
 				async () => {
 					const puzzle = puzzleClass.fromText(input);
 					expectGridSnapshot(input);

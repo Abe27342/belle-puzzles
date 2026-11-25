@@ -2,13 +2,10 @@ import { registerPuzzle } from '../catalog.js';
 import {
 	Arith,
 	CartesianGridPuzzle,
-	constant,
-	createGraphOutput,
 	createVertexValueModel,
 	ensureNonEmpty,
 	oob,
 	parseBase36Digit,
-	parseDigit,
 	parseTextGrids,
 	type CartesianCoord,
 	type CartesianGridPuzzleProps,
@@ -81,26 +78,6 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 				throw new Error(`Given at ${given.vertex} is out of bounds`);
 			}
 		}
-
-		// Setup constant values in the output grid to render the sudoku nicely
-		// const needsSeparator = (position: number) => (position + 1) % 3 === 0;
-		// for (const edge of this.grid.edges()) {
-		// 	const [start, end] = edge.vertices;
-		// 	const horizontal = start.y === end.y;
-		// 	const position = horizontal ? start.x : start.y;
-		// 	const separator = horizontal
-		// 		? this.renderOptions.vertical
-		// 		: this.renderOptions.horizontal;
-		// 	this.output.edges.set(
-		// 		edge,
-		// 		constant(needsSeparator(position) ? separator : '')
-		// 	);
-		// }
-		// for (const face of this.grid.faces()) {
-		// 	const [x, y] = face.coord;
-		// 	const intersection = needsSeparator(x) && needsSeparator(y);
-		// 	this.output.faces.set(face, constant(intersection ? '+' : ''));
-		// }
 	}
 
 	/**
@@ -135,13 +112,17 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 	): FillominoModel {
 		const max = this.grid.width * this.grid.height;
 		const model = createVertexValueModel(context, solver, this, {
+			// The 36 here means no region larger than size 36 will ever be considered.
 			values: Array.from({ length: 36 }, (_, i) => i),
-			glyphs: '0123456789abcdefghijklmnopqrstuvwxyzOOOOOOOOOOOOO'.split(
-				''
-			),
+			glyphs: '0123456789abcdefghijklmnopqrstuvwxyz'.split(''),
 		});
 		const { Not, And, Sum, Implies, If } = context;
 
+		// Idea behind constraints:
+		// - Each region is given a spanning tree. WLOG, the minimum index vertex is chosen to be the root.
+		// - Region sizes can be enforced via local constraints by summing outdegrees of children in that spanning tree
+		// - Each vertex is associated with the root of its component, which allows enforcing adjacent cells are only given
+		//   the same number when they are part of the same component.
 		const vertexNumbers = model.variables;
 
 		const inDegree = (v: GridVertex) =>
@@ -303,66 +284,3 @@ function createVariableMap<TKey>(
 	};
 	return map;
 }
-
-// function createFillominoModel<TKey, const TValue extends number>(
-// 	context: Context<string>,
-// 	solver: Solver<string>,
-// 	options: ValueModelOptions<TKey, TValue>
-// ): ValueModel<TKey, TValue> {
-// 	const values = [...options.values];
-// 	const decode = createValueDecoder(values);
-// 	const domain = [...new Set(values)].sort((a, b) => a - b);
-// 	const minimum = domain[0];
-// 	const maximum = domain[domain.length - 1];
-// 	const contiguous = domain.every(
-// 		(value, index) => value === minimum + index
-// 	);
-// 	const entries = Array.from(options.keys, (key) => ({
-// 		key,
-// 		name: options.name(key),
-// 		glyphs: options.glyphs?.(key),
-// 	}));
-// 	for (const { glyphs } of entries) {
-// 		if (options.glyphs !== undefined) {
-// 			for (const value of domain) {
-// 				if (typeof glyphs?.[value] !== 'string') {
-// 					throw new Error(`Missing value glyph for value ${value}`);
-// 				}
-// 			}
-// 		}
-// 	}
-
-// 	const output = createGraphOutput(options.output);
-// 	const bindings = options.bindings(output);
-// 	const variables = new Map<TKey, Arith<string>>();
-// 	for (const { key, name, glyphs } of entries) {
-// 		const expression = context.Int.const(name);
-// 		solver.add(
-// 			contiguous
-// 				? expression.ge(minimum).and(expression.le(maximum))
-// 				: context.Or(...domain.map((value) => expression.eq(value)))
-// 		);
-// 		variables.set(key, expression);
-// 		bindings.set(
-// 			key,
-// 			variable(
-// 				expression,
-// 				decode,
-// 				glyphs === undefined ? undefined : (value) => glyphs[value]
-// 			)
-// 		);
-// 	}
-// 	return {
-// 		variables,
-// 		output,
-// 		keyAssignments: [...variables.values()],
-// 		decodeSolution(model) {
-// 			return new Map(
-// 				Array.from(variables, ([key, expression]) => [
-// 					key,
-// 					decode(model.eval(expression, true)),
-// 				])
-// 			);
-// 		},
-// 	};
-// }
