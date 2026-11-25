@@ -25,14 +25,22 @@ describe('grid character parsing', () => {
 		}
 	);
 
-	it.each(['.', ' ', 'A', 'a', 'z', '', '1x', '-1', '1.0', '9007199254740992'])(
-		'rejects invalid number %j with its coordinate',
-		(value) => {
-			expect(() => parseNumber(value, [2, 3])).toThrow(
-				'Invalid number at 2,3'
-			);
-		}
-	);
+	it.each([
+		'.',
+		' ',
+		'A',
+		'a',
+		'z',
+		'',
+		'1x',
+		'-1',
+		'1.0',
+		'9007199254740992',
+	])('rejects invalid number %j with its coordinate', (value) => {
+		expect(() => parseNumber(value, [2, 3])).toThrow(
+			'Invalid number at 2,3'
+		);
+	});
 
 	it('parses multi-digit decimal clues', () => {
 		expect(parseNumber('123', [0, 0])).toBe(123);
