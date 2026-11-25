@@ -1,24 +1,17 @@
 import * as React from 'react';
 import { NavLink, useParams } from 'react-router-dom';
 import { isPuzzleType, puzzleTypes } from '@belle-puzzles/solver';
+import { createSolverClient } from './client';
 import {
-	createSolverClient,
-	prepareSolverWorker,
-	type PreparedSolverWorker,
-	type SolverClient,
-} from './client';
-import { formatSolverError } from './errors';
+	canCancel,
+	isSolving,
+	type SolverSessionState,
+	type Uniqueness,
+} from './solverSession';
+import { useSolverSession } from './useSolverSession';
+import { usePreparedSolverClient } from './usePreparedSolverClient';
 import { SolverDivider } from './solverDivider';
 import './solvers.css';
-
-type Phase = 'idle' | 'first' | 'uniqueness' | 'ready' | 'next' | 'done';
-type Uniqueness =
-	| 'unchecked'
-	| 'checking'
-	| 'unique'
-	| 'multiple'
-	| 'unknown'
-	| 'cancelled';
 
 const uniquenessLabels: Record<Uniqueness, string> = {
 	unchecked: '',
@@ -223,40 +216,8 @@ export function SolverNavigation() {
 export function SolverRoute() {
 	const { puzzleType } = useParams();
 	const [text, setText] = React.useState('');
-	const prepared = React.useRef<PreparedSolverWorker>();
-	const stopPreparing = React.useCallback(() => {
-		prepared.current?.dispose();
-		prepared.current = undefined;
-	}, []);
-	React.useEffect(() => {
-		if (puzzleType && isPuzzleType(puzzleType)) {
-			if (!prepared.current) {
-				try {
-					prepared.current = prepareSolverWorker();
-				} catch (error) {
-					console.error(error);
-				}
-			}
-		} else {
-			stopPreparing();
-		}
-	}, [puzzleType, stopPreparing]);
-	React.useEffect(() => {
-		window.addEventListener('pagehide', stopPreparing);
-		return () => {
-			window.removeEventListener('pagehide', stopPreparing);
-			stopPreparing();
-		};
-	}, [stopPreparing]);
-	const createClient = React.useCallback<typeof createSolverClient>(
-		(type, text, onResponse) => {
-			const idle = prepared.current;
-			prepared.current = undefined;
-			return idle
-				? idle.start(type, text, onResponse)
-				: createSolverClient(type, text, onResponse);
-		},
-		[]
+	const createClient = usePreparedSolverClient(
+		puzzleType && isPuzzleType(puzzleType) ? puzzleType : undefined
 	);
 	const [inputShare, setInputShare] = React.useState(50);
 	const style: React.CSSProperties & {
@@ -276,7 +237,7 @@ export function SolverRoute() {
 				<SolverPage
 					key={puzzleType}
 					puzzleType={puzzleType}
-					initialText={text}
+					text={text}
 					onTextChange={setText}
 					divider={divider}
 					createClient={createClient}
@@ -334,273 +295,221 @@ function ElapsedText() {
 
 export function SolverPage({
 	puzzleType,
-	initialText = '',
+	text,
 	onTextChange,
 	divider,
 	createClient = createSolverClient,
 }: {
 	puzzleType: string;
-	initialText?: string;
-	onTextChange?: (text: string) => void;
+	text: string;
+	onTextChange: (text: string) => void;
 	divider?: React.ReactNode;
 	createClient?: typeof createSolverClient;
 }) {
 	const definition = puzzleTypes[puzzleType];
-	const [text, setText] = React.useState(initialText);
-	const [solutions, setSolutions] = React.useState<string[]>([]);
-	const [cachedSecond, setCachedSecond] = React.useState<string | null>(null);
-	const [phase, setPhase] = React.useState<Phase>('idle');
-	const [uniqueness, setUniqueness] = React.useState<Uniqueness>('unchecked');
-	const [exhausted, setExhausted] = React.useState(false);
-	const [message, setMessage] = React.useState('');
-	const [error, setError] = React.useState('');
-	const client = React.useRef<SolverClient>();
-	const generation = React.useRef(0);
-	const stop = React.useCallback(() => {
-		generation.current++;
-		client.current?.dispose();
-		client.current = undefined;
-	}, []);
-	React.useEffect(() => {
-		const onPageHide = () => {
-			stop();
-			setCachedSecond(null);
-			setPhase('idle');
-			setUniqueness((value) =>
-				value === 'checking' ? 'cancelled' : value
-			);
-		};
-		window.addEventListener('pagehide', onPageHide);
-		return () => {
-			window.removeEventListener('pagehide', onPageHide);
-			stop();
-		};
-	}, [stop]);
-
+	const { state, solve, next, cancel, reset } = useSolverSession(
+		puzzleType,
+		createClient
+	);
 	const changeInput = (value: string) => {
-		stop();
-		setText(value);
-		onTextChange?.(value);
-		setSolutions([]);
-		setCachedSecond(null);
-		setPhase('idle');
-		setUniqueness('unchecked');
-		setExhausted(false);
-		setMessage('');
-		setError('');
+		reset();
+		onTextChange(value);
 	};
-	const reportError = (message: string) => {
-		stop();
-		setError(message);
-		setPhase('done');
-		setUniqueness((value) => (value === 'checking' ? 'unknown' : value));
-	};
-	const start = (event: React.FormEvent) => {
-		event.preventDefault();
-		stop();
-		const id = generation.current;
-		setSolutions([]);
-		setCachedSecond(null);
-		setUniqueness('unchecked');
-		setExhausted(false);
-		setMessage('');
-		setError('');
-		setPhase('first');
-		let receivedFirst = false;
-		let probing = false;
-		try {
-			client.current = createClient(puzzleType, text, (response) => {
-				if (generation.current !== id) return;
-				if (response.type === 'solution') {
-					if (!receivedFirst) {
-						receivedFirst = true;
-						probing = true;
-						setSolutions([response.output]);
-						setPhase('uniqueness');
-						setUniqueness('checking');
-						client.current.next();
-					} else if (probing) {
-						probing = false;
-						setCachedSecond(response.output);
-						setUniqueness('multiple');
-						setPhase('ready');
-					} else {
-						setSolutions((previous) => [
-							...previous,
-							response.output,
-						]);
-						setPhase('ready');
-					}
-				} else if (response.type === 'terminal') {
-					setExhausted(response.status === 'unsat' && receivedFirst);
-					stop();
-					setPhase('done');
-					if (response.status === 'unknown') {
-						if (probing) setUniqueness('unknown');
-						setMessage(
-							'The solver returned unknown. This does not prove that no further solutions exist.'
-						);
-					} else if (!receivedFirst) {
-						setMessage(
-							'This puzzle has no solutions. Check that the clues are correct and do not contradict each other.'
-						);
-					} else if (probing) {
-						setUniqueness('unique');
-					} else {
-						setMessage('No more solutions.');
-					}
-				} else if (response.type === 'error') {
-					reportError(response.message);
-				}
-			});
-		} catch (error) {
-			reportError(formatSolverError(error, 'runtime', puzzleType));
-		}
-	};
-	const next = () => {
-		if (cachedSecond !== null) {
-			setSolutions((previous) => [...previous, cachedSecond]);
-			setCachedSecond(null);
-			return;
-		}
-		setPhase('next');
-		try {
-			client.current.next();
-		} catch (error) {
-			console.log(error);
-			reportError(formatSolverError(error, 'solve', puzzleType));
-		}
-	};
-	const busy =
-		phase === 'first' || phase === 'uniqueness' || phase === 'next';
 	return (
 		<>
-			<section
-				id="solver-input-pane"
-				className="solver-input"
-				aria-labelledby="puzzle-title"
-			>
-				<h1 id="puzzle-title">{definition.name}</h1>
-				<p id="input-help">
-					{definition.instructions} Use a dot (".") or single space ("
-					") for an empty position. Rows must have equal lengths.
-				</p>
-				<form onSubmit={start}>
-					<label htmlFor="puzzle-input">Puzzle text</label>
-					<textarea
-						id="puzzle-input"
-						value={text}
-						placeholder={`${definition.example}\n\n(example)`}
-						onChange={(event) => changeInput(event.target.value)}
-						aria-describedby="input-help"
-						spellCheck={false}
-						rows={12}
-						required
-					/>
-					<div className="solver-actions">
-						<button
-							type="button"
-							onClick={() => changeInput(definition.example)}
-						>
-							Load example
-						</button>
-						<button type="submit" disabled={busy || !text.trim()}>
-							Solve
-						</button>
-						<button
-							type="button"
-							disabled={phase !== 'ready'}
-							onClick={next}
-						>
-							Find next solution
-						</button>
-						<button
-							type="button"
-							disabled={!client.current}
-							onClick={() => {
-								stop();
-								setCachedSecond(null);
-								setPhase('idle');
-								setUniqueness((value) =>
-									value === 'checking' ? 'cancelled' : value
-								);
-								setMessage(
-									'Solving cancelled. Displayed solutions are preserved; solve again to start a new session.'
-								);
-							}}
-						>
-							Cancel
-						</button>
-					</div>
-				</form>
-			</section>
+			<SolverInput
+				definition={definition}
+				text={text}
+				onTextChange={changeInput}
+				onSolve={() => solve(text)}
+				onNext={next}
+				onCancel={cancel}
+				busy={isSolving(state)}
+				canNext={state.phase === 'ready'}
+				canCancel={canCancel(state)}
+			/>
 			{divider}
-			<section
-				id="solver-output-pane"
-				className="solver-output"
-				aria-labelledby="solutions-title"
-			>
-				<h2 id="solutions-title">Solutions</h2>
-				<div>
-					{solutions.map((output, index) => (
-						<article key={index}>
-							<h3>Solution {index + 1}</h3>
-							<pre aria-label={`Solution ${index + 1} grid`}>
-								{output}
-							</pre>
-						</article>
-					))}
-					{uniqueness === 'multiple' && !exhausted && (
-						<p className="solver-solution-more">
-							This puzzle has multiple solutions.{' '}
-							<button
-								type="button"
-								className="solver-next-link"
-								aria-label="Find another solution"
-								disabled={phase !== 'ready'}
-								onClick={next}
-							>
-								Find next...
-							</button>
-						</p>
-					)}
-				</div>
-				<div role="status" aria-live="polite">
-					{phase === 'idle' &&
-						solutions.length === 0 &&
-						!message &&
-						!error && (
-							<p>
-								Enter a puzzle and choose Solve to see its
-								solutions.
-							</p>
-						)}
-					{phase === 'first' && (
-						<p>
-							Solving... <ElapsedText key={phase} />
-						</p>
-					)}
-					{phase === 'next' && (
-						<p>
-							Finding the next solution...{' '}
-							<ElapsedText key={phase} />
-						</p>
-					)}
-					{uniquenessLabels[uniqueness] && (
-						<p>
-							{uniquenessLabels[uniqueness]}
-							{phase === 'uniqueness' && (
-								<>
-									{' '}
-									<ElapsedText key={phase} />
-								</>
-							)}
-						</p>
-					)}
-					{message && <p>{message}</p>}
-				</div>
-				{error && <p role="alert">{error}</p>}
-			</section>
+			<SolverResults state={state} onNext={next} />
 		</>
+	);
+}
+
+function SolverInput({
+	definition,
+	text,
+	onTextChange,
+	onSolve,
+	onNext,
+	onCancel,
+	busy,
+	canNext,
+	canCancel,
+}: {
+	definition: (typeof puzzleTypes)[string];
+	text: string;
+	onTextChange: (text: string) => void;
+	onSolve: () => void;
+	onNext: () => void;
+	onCancel: () => void;
+	busy: boolean;
+	canNext: boolean;
+	canCancel: boolean;
+}) {
+	return (
+		<section
+			id="solver-input-pane"
+			className="solver-input"
+			aria-labelledby="puzzle-title"
+		>
+			<h1 id="puzzle-title">{definition.name}</h1>
+			<p id="input-help">
+				{definition.instructions} Use a dot (".") or single space (" ")
+				for an empty position. Rows must have equal lengths.
+			</p>
+			<form
+				onSubmit={(event) => {
+					event.preventDefault();
+					onSolve();
+				}}
+			>
+				<label htmlFor="puzzle-input">Puzzle text</label>
+				<textarea
+					id="puzzle-input"
+					value={text}
+					placeholder={`${definition.example}\n\n(example)`}
+					onChange={(event) => onTextChange(event.target.value)}
+					aria-describedby="input-help"
+					spellCheck={false}
+					rows={12}
+					required
+				/>
+				<div className="solver-actions">
+					<button
+						type="button"
+						onClick={() => onTextChange(definition.example)}
+					>
+						Load example
+					</button>
+					<button type="submit" disabled={busy || !text.trim()}>
+						Solve
+					</button>
+					<button type="button" disabled={!canNext} onClick={onNext}>
+						Find next solution
+					</button>
+					<button
+						type="button"
+						disabled={!canCancel}
+						onClick={onCancel}
+					>
+						Cancel
+					</button>
+				</div>
+			</form>
+		</section>
+	);
+}
+
+function sessionMessage(state: SolverSessionState): string {
+	if (state.phase === 'idle' && state.cancelled) {
+		return 'Solving cancelled. Displayed solutions are preserved; solve again to start a new session.';
+	}
+	const result =
+		state.phase === 'done'
+			? state
+			: state.phase === 'idle'
+			? state.result
+			: undefined;
+	if (!result) return '';
+	switch (result.outcome) {
+		case 'unknown':
+			return 'The solver returned unknown. This does not prove that no further solutions exist.';
+		case 'no-solutions':
+			return 'This puzzle has no solutions. Check that the clues are correct and do not contradict each other.';
+		case 'exhausted':
+			return state.uniqueness === 'unique' ? '' : 'No more solutions.';
+		case 'error':
+			return '';
+	}
+}
+
+function SolverResults({
+	state,
+	onNext,
+}: {
+	state: SolverSessionState;
+	onNext: () => void;
+}) {
+	const { phase, solutions, uniqueness } = state;
+	const result =
+		phase === 'done' ? state : phase === 'idle' ? state.result : undefined;
+	const exhausted = result?.outcome === 'exhausted';
+	const error = result?.outcome === 'error' ? result.error : '';
+	const message = sessionMessage(state);
+	return (
+		<section
+			id="solver-output-pane"
+			className="solver-output"
+			aria-labelledby="solutions-title"
+		>
+			<h2 id="solutions-title">Solutions</h2>
+			<div>
+				{solutions.map((output, index) => (
+					<article key={index}>
+						<h3>Solution {index + 1}</h3>
+						<pre aria-label={`Solution ${index + 1} grid`}>
+							{output}
+						</pre>
+					</article>
+				))}
+				{uniqueness === 'multiple' && !exhausted && (
+					<p className="solver-solution-more">
+						This puzzle has multiple solutions.{' '}
+						<button
+							type="button"
+							className="solver-next-link"
+							aria-label="Find another solution"
+							disabled={phase !== 'ready'}
+							onClick={onNext}
+						>
+							Find next...
+						</button>
+					</p>
+				)}
+			</div>
+			<div role="status" aria-live="polite">
+				{phase === 'idle' &&
+					solutions.length === 0 &&
+					!message &&
+					!error && (
+						<p>
+							Enter a puzzle and choose Solve to see its
+							solutions.
+						</p>
+					)}
+				{phase === 'first' && (
+					<p>
+						Solving... <ElapsedText key={phase} />
+					</p>
+				)}
+				{phase === 'next' && (
+					<p>
+						Finding the next solution... <ElapsedText key={phase} />
+					</p>
+				)}
+				{uniquenessLabels[uniqueness] && (
+					<p>
+						{uniquenessLabels[uniqueness]}
+						{phase === 'uniqueness' && (
+							<>
+								{' '}
+								<ElapsedText key={phase} />
+							</>
+						)}
+					</p>
+				)}
+				{message && <p>{message}</p>}
+			</div>
+			{error && <p role="alert">{error}</p>}
+		</section>
 	);
 }

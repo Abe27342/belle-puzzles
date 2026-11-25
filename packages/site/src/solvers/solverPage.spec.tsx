@@ -33,8 +33,15 @@ beforeEach(() => {
 
 afterEach(() => vi.restoreAllMocks());
 
+function TestSolverPage() {
+	const [text, setText] = React.useState('');
+	return (
+		<SolverPage puzzleType="sudoku" text={text} onTextChange={setText} />
+	);
+}
+
 function start() {
-	const view = render(<SolverPage puzzleType="sudoku" />);
+	const view = render(<TestSolverPage />);
 	fireEvent.click(screen.getByRole('button', { name: 'Load example' }));
 	fireEvent.click(screen.getByRole('button', { name: 'Solve' }));
 	return view;
@@ -394,6 +401,113 @@ describe('solver page', () => {
 		expect(screen.getByRole('alert')).toHaveTextContent(
 			'SharedArrayBuffer unavailable'
 		);
+	});
+
+	it('ignores responses from an earlier solve after restarting', () => {
+		start();
+		const previousRespond = respond;
+		fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Solve' }));
+		act(() => previousRespond({ type: 'solution', output: 'stale' }));
+		expect(
+			screen.queryByLabelText('Solution 1 grid')
+		).not.toBeInTheDocument();
+		expect(next).not.toHaveBeenCalled();
+		send({ type: 'solution', output: 'current' });
+		expect(screen.getByLabelText('Solution 1 grid')).toHaveTextContent(
+			'current'
+		);
+		expect(next).toHaveBeenCalledTimes(1);
+	});
+
+	it('preserves next-request error reporting and logging', () => {
+		start();
+		send({ type: 'solution', output: 'first' });
+		send({ type: 'solution', output: 'second' });
+		fireEvent.click(
+			screen.getByRole('button', { name: 'Find next solution' })
+		);
+		const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+		const error = new Error('Request failed');
+		next.mockImplementationOnce(() => {
+			throw error;
+		});
+		fireEvent.click(
+			screen.getByRole('button', { name: 'Find next solution' })
+		);
+		expect(screen.getByRole('alert')).toHaveTextContent(
+			'The solver could not finish this Sudoku puzzle.'
+		);
+		expect(log).toHaveBeenCalledWith(error);
+		expect(dispose).toHaveBeenCalledTimes(1);
+		expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+	});
+
+	it.each([
+		{ type: 'terminal', status: 'unsat' },
+		{ type: 'terminal', status: 'unknown' },
+		{ type: 'error', message: 'Invalid Sudoku grid size: 1x1' },
+	] as const)(
+		'preserves completed diagnostics on pagehide: $type $status',
+		(response) => {
+			start();
+			send(response);
+			const output = screen.getByRole('region', {
+				name: 'Solutions',
+			}).textContent;
+			act(() => window.dispatchEvent(new Event('pagehide')));
+			expect(
+				screen.getByRole('region', { name: 'Solutions' }).textContent
+			).toBe(output);
+			expect(
+				screen.getByRole('button', { name: 'Cancel' })
+			).toBeDisabled();
+		}
+	);
+
+	it('transfers a preloaded worker to the session without disposing it twice', () => {
+		const idle = { start: createSolverClient, dispose: vi.fn() };
+		vi.mocked(prepareSolverWorker).mockReturnValueOnce(idle);
+		const view = render(
+			<MemoryRouter initialEntries={['/solvers/sudoku']}>
+				<Routes>
+					<Route
+						path="/solvers/:puzzleType"
+						element={<SolverRoute />}
+					/>
+				</Routes>
+			</MemoryRouter>
+		);
+		fireEvent.click(screen.getByRole('button', { name: 'Load example' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Solve' }));
+		expect(createSolverClient).toHaveBeenCalledTimes(1);
+		view.unmount();
+		expect(idle.dispose).not.toHaveBeenCalled();
+		expect(dispose).toHaveBeenCalledTimes(1);
+	});
+
+	it('preserves the original startup error without adding a cleanup step', () => {
+		const idle = {
+			start: vi.fn(() => {
+				throw new Error('Startup failed');
+			}),
+			dispose: vi.fn(),
+		};
+		vi.mocked(prepareSolverWorker).mockReturnValueOnce(idle);
+		render(
+			<MemoryRouter initialEntries={['/solvers/sudoku']}>
+				<Routes>
+					<Route
+						path="/solvers/:puzzleType"
+						element={<SolverRoute />}
+					/>
+				</Routes>
+			</MemoryRouter>
+		);
+		fireEvent.click(screen.getByRole('button', { name: 'Load example' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Solve' }));
+		expect(screen.getByRole('alert')).toHaveTextContent('Startup failed');
+		expect(idle.dispose).not.toHaveBeenCalled();
 	});
 
 	it.each(['unmount', 'pagehide'])('releases the runtime on %s', (action) => {
