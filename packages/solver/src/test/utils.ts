@@ -11,9 +11,7 @@ interface PuzzleClass {
 }
 
 function expectGridSnapshot(text: string) {
-	const content = text
-		.replace(/\r\n?/g, '\n')
-		.replace(/^\s*\n|\n\s*$/g, '');
+	const content = text.replace(/\r\n?/g, '\n').replace(/^\s*\n|\n\s*$/g, '');
 	expect(`\n${content}\n`).toMatchSnapshot();
 }
 

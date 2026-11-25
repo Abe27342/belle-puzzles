@@ -1,6 +1,7 @@
 export interface ConcreteGraphTypes {
 	coord: unknown;
 	vertex: unknown;
+	directedEdge: unknown;
 	edge: unknown;
 	face: unknown;
 }
@@ -17,6 +18,7 @@ export interface ConcreteGraphTypes {
  */
 export interface PlanarGraph<TConcrete extends ConcreteGraphTypes> {
 	vertices(): Iterable<TConcrete['vertex']>;
+	directedEdges(): Iterable<TConcrete['directedEdge']>;
 	edges(): Iterable<TConcrete['edge']>;
 	faces(): Iterable<TConcrete['face']>;
 }
@@ -43,6 +45,29 @@ export interface Edge<TConcrete extends ConcreteGraphTypes>
 	extends HasNeighbors<TConcrete['edge']> {
 	type: 'edge';
 	vertices: [TConcrete['vertex'], TConcrete['vertex']];
+}
+
+export interface DirectedEdge<TConcrete extends ConcreteGraphTypes>
+	extends HasNeighbors<TConcrete['directedEdge']> {
+	type: 'directedEdge';
+
+	from: TConcrete['vertex'];
+	to: TConcrete['vertex'];
+
+	/**
+	 * Edges that are successors of this directed edge (i.e., edges that continue from the `to` vertex to an adjacent vertex)
+	 */
+	successors(): Iterable<TConcrete['directedEdge']>;
+
+	/**
+	 * Edges that are predecessors of this directed edge (i.e., edges that lead into the `from` vertex from an adjacent vertex)
+	 */
+	predecessors(): Iterable<TConcrete['directedEdge']>;
+
+	/**
+	 * Returns the directed edge with the `from` and `to` vertices swapped (i.e., the edge in the opposite direction).
+	 */
+	invert(): TConcrete['directedEdge'];
 }
 
 export interface Face<TConcrete extends ConcreteGraphTypes>

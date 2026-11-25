@@ -1,5 +1,5 @@
 import { getOrCreate } from '../utils.js';
-import type { Edge, PlanarGraph, Vertex, Face } from './grid.js';
+import type { Edge, PlanarGraph, Vertex, Face, DirectedEdge } from './grid.js';
 
 export type CartesianCoord = [x: number, y: number];
 
@@ -16,6 +16,7 @@ interface CartesianGraphTypes {
 	coord: CartesianCoord;
 	vertex: GridVertex;
 	edge: GridEdge;
+	directedEdge: GridDirectedEdge;
 	face: GridFace;
 }
 
@@ -28,6 +29,7 @@ interface CartesianGraphTypes {
 export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 	#vertexCache = new Map<string, GridVertex>();
 	#edgeCache = new Map<string, GridEdge>();
+	#directedEdgeCache = new Map<string, GridDirectedEdge>();
 	#faceCache = new Map<string, GridFace>();
 
 	/**
@@ -72,6 +74,16 @@ export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 		}
 	}
 
+	public *directedEdges(): Iterable<GridDirectedEdge> {
+		for (const vertex of this.vertices()) {
+			for (const neighbor of vertex.neighbors()) {
+				if (neighbor.isInBounds()) {
+					yield this.getDirectedEdge(vertex.coord, neighbor.coord);
+				}
+			}
+		}
+	}
+
 	public getVertex(coord: CartesianCoord): GridVertex {
 		return getOrCreate(
 			this.#vertexCache,
@@ -97,6 +109,26 @@ export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 				new GridEdgeImpl(
 					this.getVertex(normalizedStart),
 					this.getVertex(normalizedEnd),
+					this
+				)
+		);
+	}
+
+	public getDirectedEdge(
+		from: CartesianCoord | GridVertex,
+		to: CartesianCoord | GridVertex
+	): GridDirectedEdge {
+		let normalizedFrom: CartesianCoord = this.#normalizeToCoord(from);
+		let normalizedTo: CartesianCoord = this.#normalizeToCoord(to);
+		return getOrCreate(
+			this.#directedEdgeCache,
+			`${JSON.stringify(normalizedFrom)}->${JSON.stringify(
+				normalizedTo
+			)}`,
+			() =>
+				new GridDirectedEdgeImpl(
+					this.getVertex(normalizedFrom),
+					this.getVertex(normalizedTo),
 					this
 				)
 		);
@@ -467,5 +499,80 @@ class GridEdgeImpl implements GridEdge {
 			);
 		}
 		throw new Error(`Unsupported incident type: ${incident}`);
+	}
+}
+
+export interface GridDirectedEdge extends DirectedEdge<CartesianGraphTypes> {
+	translate(vector: Vector): GridDirectedEdge;
+}
+
+class GridDirectedEdgeImpl implements GridDirectedEdge {
+	#from: GridVertex;
+	#to: GridVertex;
+	#grid: CartesianGridGraph;
+
+	constructor(from: GridVertex, to: GridVertex, grid: CartesianGridGraph) {
+		this.#from = from;
+		this.#to = to;
+		this.#grid = grid;
+
+		// Cannot use neighbors() as it does not yield out-of-bounds neighbors,
+		// and we generally allow constructing out-of-bounds edges/vertices as it allows
+		// simpler handling of boundary conditions
+		const { up, left, down, right } = this.#from;
+		if (![up, down, left, right].some((v) => v === this.#to)) {
+			throw new Error(
+				`Invalid edge: vertices are not neighbors: ${this.#from} - ${
+					this.#to
+				}`
+			);
+		}
+	}
+
+	public get from(): GridVertex {
+		return this.#from;
+	}
+
+	public get to(): GridVertex {
+		return this.#to;
+	}
+
+	public get type(): 'directedEdge' {
+		return 'directedEdge';
+	}
+
+	public get vertices(): [GridVertex, GridVertex] {
+		return [this.#from, this.#to];
+	}
+
+	public toString(): string {
+		return `(${this.#from}->${this.#to})`;
+	}
+
+	public *neighbors(): Iterable<GridDirectedEdge> {
+		yield* this.predecessors();
+		yield* this.successors();
+	}
+
+	public *successors(): Iterable<GridDirectedEdge> {
+		for (const neighbor of this.#to.neighbors()) {
+			yield this.#grid.getDirectedEdge(this.#to.coord, neighbor.coord);
+		}
+	}
+
+	public *predecessors(): Iterable<GridDirectedEdge> {
+		for (const neighbor of this.#from.neighbors()) {
+			yield this.#grid.getDirectedEdge(neighbor.coord, this.#from.coord);
+		}
+	}
+
+	public translate(vector: Vector): GridDirectedEdge {
+		const newStart = this.#from.translate(vector);
+		const newEnd = this.#to.translate(vector);
+		return this.#grid.getDirectedEdge(newStart.coord, newEnd.coord);
+	}
+
+	public invert(): GridDirectedEdge {
+		return this.#grid.getDirectedEdge(this.#to.coord, this.#from.coord);
 	}
 }
