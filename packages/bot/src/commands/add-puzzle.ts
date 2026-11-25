@@ -5,7 +5,7 @@ import {
 	SlashCommandBuilder,
 } from 'discord.js';
 import { Command } from './types.js';
-import { PuzzlehuntContext } from '../puzzlehunt-context.js';
+import { PuzzlehuntContext, settleHuntContext } from '../puzzlehunt-context.js';
 import { computeParentRound, ROUND_ARG } from '../utils/index.js';
 
 const NAME_ARG = 'name';
@@ -35,9 +35,10 @@ export const addPuzzle: Command = {
 			'Adds a puzzle as a child of this channel (or sibling, if this channel is a puzzle channel).'
 		),
 	async execute(
-		{ puzzlehunt }: PuzzlehuntContext,
+		context: PuzzlehuntContext,
 		interaction: ChatInputCommandInteraction<CacheType>
 	) {
+		const { puzzlehunt } = context;
 		if (!interaction.deferred) {
 			await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		}
@@ -63,6 +64,7 @@ export const addPuzzle: Command = {
 			parentRound
 		);
 
+		await settleHuntContext(context);
 		await interaction.editReply(`Puzzle "${name}" added.`);
 	},
 };

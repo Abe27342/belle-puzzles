@@ -36,14 +36,17 @@
 		"fluid-framework": "^1.2.5",
 		"google-auth-library": "^8.5.1",
 		"googleapis": "^107.0.0",
+		"pg": "^8.23.1",
 		"uuid": "^9.0.0"
 	},
 	"devDependencies": {
+		"@belle-puzzles/puzzlehunt-service": "workspace:0.0.1",
 		"@types/async": "^3.2.20",
 		"@types/debug": "^4.1.5",
 		"@types/cors": "^2.8.13",
 		"@types/express": "^4.17.14",
 		"@types/node": "^16.9.0",
+		"@types/pg": "^8.15.5",
 		"@types/uuid": "^8.3.4",
 		"cross-env": "^7.0.3",
 		"prettier": "^2.7.1",

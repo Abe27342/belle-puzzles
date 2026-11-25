@@ -4,7 +4,7 @@ import {
 	MessageFlags,
 	SlashCommandBuilder,
 } from 'discord.js';
-import { PuzzlehuntContext } from '../puzzlehunt-context.js';
+import { PuzzlehuntContext, settleHuntContext } from '../puzzlehunt-context.js';
 import { Command } from './types.js';
 import { puzzleStatusMessage } from '../sync/logs.js';
 
@@ -22,9 +22,10 @@ export const updateStatus: Command = {
 		)
 		.setDescription("Updates a puzzle's status."),
 	async execute(
-		{ puzzlehunt }: PuzzlehuntContext,
+		context: PuzzlehuntContext,
 		interaction: ChatInputCommandInteraction<CacheType>
 	) {
+		const { puzzlehunt } = context;
 		if (!interaction.deferred) {
 			await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 		}
@@ -48,7 +49,8 @@ export const updateStatus: Command = {
 			puzzlehunt.clearStatus(puzzle);
 		}
 
-		if (puzzlehunt.loggingChannelIds) {
+		await settleHuntContext(context);
+		if (context.backend !== 'postgres' && puzzlehunt.loggingChannelIds) {
 			const { puzzleStatusUpdate } = puzzlehunt.loggingChannelIds;
 			const channel =
 				interaction.guild.channels.cache.get(puzzleStatusUpdate);

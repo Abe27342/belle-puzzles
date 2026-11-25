@@ -68,10 +68,16 @@ importers:
       googleapis:
         specifier: ^107.0.0
         version: 107.0.0
+      pg:
+        specifier: ^8.23.1
+        version: 8.23.1
       uuid:
         specifier: ^9.0.0
         version: 9.0.1
     devDependencies:
+      '@belle-puzzles/puzzlehunt-service':
+        specifier: workspace:0.0.1
+        version: link:../puzzlehunt-service
       '@types/async':
         specifier: ^3.2.20
         version: 3.2.25
@@ -87,6 +93,9 @@ importers:
       '@types/node':
         specifier: ^16.9.0
         version: 16.18.126
+      '@types/pg':
+        specifier: ^8.15.5
+        version: 8.23.1
       '@types/uuid':
         specifier: ^8.3.4
         version: 8.3.4

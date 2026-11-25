@@ -9,6 +9,7 @@ import type {
 	PuzzlehuntContext,
 	SerializedPuzzlehuntContext,
 } from '../puzzlehunt-context.js';
+import { HuntContextError } from '../puzzlehunt-context.js';
 
 const ID_ARG = 'id';
 
@@ -30,6 +31,12 @@ export const changeBackingFluidFile: Command = {
 		context: PuzzlehuntContext,
 		interaction: ChatInputCommandInteraction<CacheType>
 	) {
+		if (context.backend === 'postgres') {
+			throw new HuntContextError(
+				409,
+				'PostgreSQL hunts cannot change backing Fluid files.'
+			);
+		}
 		const previousFileId = context.fluidFileId;
 		const contextMessage = context.huntContextMessage;
 		if (!interaction.replied && !interaction.deferred) {
