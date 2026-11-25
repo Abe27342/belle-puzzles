@@ -1,20 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
 	isEmptyGridCharacter,
-	parseDigit,
+	parseNumber,
 	parsePearlColor,
 	parseTextGrids,
 } from '../lib/text-grid.js';
 
 describe('grid character parsing', () => {
-	it.each(['.', ' ', '\t', '\n', '\r'])(
-		'recognizes the empty placeholder %j',
-		(value) => {
-			expect(isEmptyGridCharacter(value)).toBe(true);
-		}
-	);
+	it.each(['.'])('recognizes the empty placeholder %j', (value) => {
+		expect(isEmptyGridCharacter(value)).toBe(true);
+	});
 
-	it.each(['0', 'B', '?', '', '  '])(
+	it.each(['0', 'B', '#', '?', '', ' ', '\t', '\n', '\r', '  '])(
 		'does not treat %j as an empty character',
 		(value) => {
 			expect(isEmptyGridCharacter(value)).toBe(false);
@@ -24,18 +21,31 @@ describe('grid character parsing', () => {
 	it.each(Array.from({ length: 10 }, (_, digit) => digit))(
 		'parses digit %i',
 		(digit) => {
-			expect(parseDigit(String(digit), [2, 3])).toBe(digit);
+			expect(parseNumber(String(digit), [2, 3])).toBe(digit);
 		}
 	);
 
-	it.each(['.', ' ', 'A', '', '12', '1x', '-1', '1.0'])(
-		'rejects non-digit %j with its coordinate',
-		(value) => {
-			expect(() => parseDigit(value, [2, 3])).toThrow(
-				'Invalid digit at 2,3'
-			);
-		}
-	);
+	it.each([
+		'.',
+		' ',
+		'A',
+		'a',
+		'z',
+		'',
+		'1x',
+		'-1',
+		'1.0',
+		'9007199254740992',
+	])('rejects invalid number %j with its coordinate', (value) => {
+		expect(() => parseNumber(value, [2, 3])).toThrow(
+			'Invalid number at 2,3'
+		);
+	});
+
+	it('parses multi-digit decimal clues', () => {
+		expect(parseNumber('123', [0, 0])).toBe(123);
+		expect(parseNumber('10', [0, 0])).toBe(10);
+	});
 
 	it.each([
 		['B', 'black'],
@@ -84,14 +94,20 @@ describe('parseTextGrids', () => {
 			)
 		).toEqual({ width: 2, height: 2 });
 		expect(visitor.mock.calls).toEqual([
-			[['W', '3'], [1, 0]],
-			[['B', '2'], [0, 1]],
+			[
+				['W', '3'],
+				[1, 0],
+			],
+			[
+				['B', '2'],
+				[0, 1],
+			],
 		]);
 	});
 
-	it('preserves empty cells after indentation, including trailing spaces', () => {
+	it('ignores whitespace anywhere in a row without creating empty cells', () => {
 		const visitor = vi.fn();
-		expect(parseTextGrids('  .A \n  B  ', visitor)).toEqual({
+		expect(parseTextGrids('  .\tA \u00a0.\n  B . . ', visitor)).toEqual({
 			width: 3,
 			height: 2,
 		});
@@ -111,7 +127,7 @@ describe('parseTextGrids', () => {
 
 	it('visits non-empty positions in row-major order with zero-based coordinates', () => {
 		const visitor = vi.fn();
-		expect(parseTextGrids('\n.A.\nB  \n..C\n', visitor)).toEqual({
+		expect(parseTextGrids('\n.A.\nB..\n..C\n', visitor)).toEqual({
 			width: 3,
 			height: 3,
 		});
@@ -120,6 +136,59 @@ describe('parseTextGrids', () => {
 			[['B'], [0, 1]],
 			[['C'], [2, 2]],
 		]);
+	});
+
+	it('counts matching bracket groups as single cells across multiple grids', () => {
+		const visitor = vi.fn();
+		expect(
+			parseTextGrids('. [10] {123}\n(12) . 3\n\n. A B\nC . D', visitor)
+		).toEqual({ width: 3, height: 2 });
+		expect(visitor.mock.calls).toEqual([
+			[
+				['10', 'A'],
+				[1, 0],
+			],
+			[
+				['123', 'B'],
+				[2, 0],
+			],
+			[
+				['12', 'C'],
+				[0, 1],
+			],
+			[
+				['3', 'D'],
+				[2, 1],
+			],
+		]);
+	});
+
+	it('passes hashes through as dark-square clues rather than empty cells', () => {
+		const visitor = vi.fn();
+		expect(parseTextGrids('. #\n# .', visitor)).toEqual({
+			width: 2,
+			height: 2,
+		});
+		expect(visitor.mock.calls).toEqual([
+			[['#'], [1, 0]],
+			[['#'], [0, 1]],
+		]);
+	});
+
+	it.each([
+		'[10',
+		'(10]',
+		'{10)',
+		'[]',
+		'{}',
+		'()',
+		'[{10}]',
+		'10]',
+		'[10\n]',
+	])('rejects malformed bracket groups before visiting: %j', (text) => {
+		const visitor = vi.fn();
+		expect(() => parseTextGrids(text, visitor)).toThrow(/bracket/);
+		expect(visitor).not.toHaveBeenCalled();
 	});
 
 	it('passes values from any number of grids to the visitor', () => {

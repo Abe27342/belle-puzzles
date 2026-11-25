@@ -6,7 +6,7 @@ import {
 	createCartesianGridConstraintUtils,
 	createEdgeIndicatorModel,
 	isEmptyGridCharacter,
-	parseDigit,
+	parseNumber,
 	parsePearlColor,
 	parseTextGrids,
 	sightLineSumConstraints,
@@ -54,7 +54,7 @@ export class ShingokiPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 		registerPuzzle('shingoki', {
 			name: 'Shingoki',
 			instructions:
-				'Enter two equally sized grids separated by a blank line: B/W pearl colors, then single-digit lengths at the same positions.',
+				'Enter two equally sized grids separated by a blank line: B/W pearl colors, then numeric lengths at the same positions.',
 			example:
 				'.W....\n..B...\n......\nB....W\nWB..B.\n......\n\n.3....\n..2...\n......\n6....5\n22..2.\n......',
 			parser: ShingokiPuzzle,
@@ -100,7 +100,7 @@ export class ShingokiPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 	 * @param text Text representation of the Shingoki puzzle grid.
 	 * This should come in the form of two grids: first, the colors grid (B/W), then the lengths (digits) grid.
 	 * The grids should be separated by one or more blank lines.
-	 * The parser does not currently support multi-digit lengths for pearls.
+	 * Enclose multi-digit lengths in matching braces, brackets, or parentheses.
 	 */
 	public static fromText(
 		text: string,
@@ -117,7 +117,7 @@ export class ShingokiPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 			pearls.push({
 				coord,
 				color: parsePearlColor(char, coord),
-				length: parseDigit(lengthChar, coord),
+				length: parseNumber(lengthChar, coord),
 			});
 		};
 		const { width, height } = parseTextGrids(text, visitor, {

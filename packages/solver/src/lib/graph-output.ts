@@ -24,7 +24,8 @@ export interface GraphOutput {
 /**
  * Maps each grid vertex/edge/face to a string for display purposes.
  * @remarks
- * Empty strings collapse gaps. Multi-character strings do not automatically align.
+ * Empty strings collapse otherwise empty columns. Multi-character strings are
+ * padded to column widths, and horizontal edge glyphs repeat to fill their columns.
  */
 export interface GraphDisplay {
 	vertices: ReadonlyMap<GridVertex, string>;

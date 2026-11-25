@@ -482,8 +482,10 @@ export function SolverPage({
 			>
 				<h1 id="puzzle-title">{definition.name}</h1>
 				<p id="input-help">
-					{definition.instructions} Use a dot (".") or single space ("
-					") for an empty position. Rows must have equal lengths.
+					{definition.instructions}
+					{
+						' Use a dot (".") for an empty position and "#" for dark-square givens where supported. Whitespace other than line endings is ignored. Enclose multi-digit clues in [], (), or {} (for example, [10]). Rows must have equal numbers of cells.'
+					}
 				</p>
 				<form onSubmit={start}>
 					<label htmlFor="puzzle-input">Puzzle text</label>

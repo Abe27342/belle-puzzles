@@ -64,30 +64,50 @@ export function renderCartesianGrid(
 ): string {
 	const vertexChar =
 		options.vertex ?? defaultCartesianGridRenderOptions.vertex;
-	let result = '';
+	const rows: { values: string[]; horizontalEdges: boolean }[] = [];
 	for (let y = 0; y < grid.height; y++) {
-		let contentLine = '';
-		let verticalEdgeLine = '';
+		const contentLine: string[] = [];
+		const verticalEdgeLine: string[] = [];
 		for (let x = 0; x < grid.width; x++) {
 			const current = grid.getVertex([x, y]);
-			contentLine += display.vertices.get(current) ?? vertexChar;
+			contentLine.push(display.vertices.get(current) ?? vertexChar);
 			if (x < grid.width - 1) {
 				const edge = grid.getEdge(current, current.right);
-				contentLine += display.edges.get(edge) ?? ' ';
+				contentLine.push(display.edges.get(edge) ?? ' ');
 			}
 			if (y < grid.height - 1) {
 				const edge = grid.getEdge(current, current.down);
-				verticalEdgeLine += display.edges.get(edge) ?? ' ';
+				verticalEdgeLine.push(display.edges.get(edge) ?? ' ');
 				if (x < grid.width - 1) {
-					verticalEdgeLine +=
-						display.faces.get(grid.getFace([x, y])) ?? ' ';
+					verticalEdgeLine.push(
+						display.faces.get(grid.getFace([x, y])) ?? ' '
+					);
 				}
 			}
 		}
-		result += contentLine + '\n';
-		if (y < grid.height - 1 && verticalEdgeLine.length > 0) {
-			result += verticalEdgeLine + '\n';
+		rows.push({ values: contentLine, horizontalEdges: true });
+		if (verticalEdgeLine.some((value) => value.length > 0)) {
+			rows.push({ values: verticalEdgeLine, horizontalEdges: false });
 		}
 	}
-	return result;
+	const widths: number[] = [];
+	for (const { values } of rows) {
+		values.forEach((value, column) => {
+			widths[column] = Math.max(widths[column] ?? 0, value.length);
+		});
+	}
+	return rows
+		.map(
+			({ values, horizontalEdges }) =>
+				values
+					.map((value, column) =>
+						horizontalEdges &&
+						column % 2 === 1 &&
+						value.length === 1
+							? value.repeat(widths[column])
+							: value.padEnd(widths[column])
+					)
+					.join('') + '\n'
+		)
+		.join('');
 }

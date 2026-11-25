@@ -439,7 +439,7 @@ describe('solver page', () => {
 			).toBeDisabled();
 			expect(
 				screen.getByText(
-					`${puzzleTypes[type].instructions} Use a dot (".") or single space (" ") for an empty position. Rows must have equal lengths.`
+					`${puzzleTypes[type].instructions} Use a dot (".") for an empty position and "#" for dark-square givens where supported. Whitespace other than line endings is ignored. Enclose multi-digit clues in [], (), or {} (for example, [10]). Rows must have equal numbers of cells.`
 				)
 			).toBeInTheDocument();
 			expect(

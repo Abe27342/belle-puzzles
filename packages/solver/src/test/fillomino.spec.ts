@@ -1,4 +1,6 @@
 import { FillominoPuzzle } from '../puzzles/fillomino.js';
+import { expect, it } from 'vitest';
+import { solve } from '../runtime/index.js';
 import { describeSuiteFromTestData } from './utils.js';
 
 describeSuiteFromTestData(FillominoPuzzle, [
@@ -23,5 +25,12 @@ describeSuiteFromTestData(FillominoPuzzle, [
 	65.77.27
 	........
 	        `,
+	],
+	[
+		'multidigit cells',
+		`
+. [10] {10} (10) .
+.  .    .    .   .
+	`,
 	],
 ]);
