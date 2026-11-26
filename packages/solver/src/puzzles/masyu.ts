@@ -112,7 +112,6 @@ export class MasyuPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 
 		const gridUtils = createCartesianGridConstraintUtils(
 			context,
-			solver,
 			this.grid,
 			edgeVariables
 		);

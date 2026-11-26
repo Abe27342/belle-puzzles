@@ -3,7 +3,7 @@
  */
 
 import type { Arith, Bool, Context, Solver } from 'z3-solver';
-import { ensureNonEmpty, oob } from './utils.js';
+import { ensureNonEmpty, ForceGetMap, oob } from './utils.js';
 import {
 	CartesianGridGraph,
 	HasNeighbors,
@@ -143,7 +143,7 @@ export function* connectedConstraints<T extends HasNeighbors<T>>(
 export function* connectedLoopConstraints<T extends ConcreteGraphTypes<T>>(
 	context: ContextExtended<string>,
 	graph: PlanarGraph<T>,
-	indicatorVariables: Map<T['edge'], Arith<string>>,
+	indicatorVariables: ForceGetMap<T['edge'], Arith<string>>,
 	minimalEnabledVariables: Iterable<T['edge']>
 ) {
 	yield* connectedConstraints(
@@ -152,21 +152,14 @@ export function* connectedLoopConstraints<T extends ConcreteGraphTypes<T>>(
 		minimalEnabledVariables
 	);
 
-	const { Or, Int } = context;
-
-	const zeroVar = Int.const('zero');
-	yield zeroVar.eq(0);
-
 	for (const v of graph.vertices()) {
-		const degree = context.Sum(
-			...ensureNonEmpty(
-				Array.from(v.incidentEdges()).map(
-					(e) => indicatorVariables.get(e) ?? oob(e)
-				)
+		const degree = context.SumArray(
+			Array.from(v.incidentEdges()).map((e) =>
+				indicatorVariables.forceGet(e)
 			)
 		);
 
-		yield Or(degree.eq(0), degree.eq(2));
+		yield context.Or(degree.eq(0), degree.eq(2));
 	}
 }
 
@@ -184,14 +177,12 @@ export function* connectedLoopConstraints<T extends ConcreteGraphTypes<T>>(
  * translating an edge follows successive face boundaries along the sight line.
  */
 export function* sightLineSumConstraints(
-	context: Context<string>,
+	context: ContextExtended<string>,
 	v: GridFace | GridVertex,
 	count: number,
 	edgeIndicators: Map<GridEdge, Arith<string>>
 ) {
-	const { Int, Sum, Implies, And, Not } = context;
-	const zero = Int.const('zero');
-	yield zero.eq(0);
+	const { Int, SumArray, Implies, And, Not, zero } = context;
 
 	const allowsVisibility =
 		v.type === 'face'
@@ -232,7 +223,7 @@ export function* sightLineSumConstraints(
 	}
 
 	// The RHS of this fixes the fact that we overcounted the starting vertex or face (we counted it once for each direction).
-	yield Sum(...ensureNonEmpty(variables)).eq(count + variables.length - 1);
+	yield SumArray(variables).eq(count + variables.length - 1);
 }
 
 /**
@@ -270,6 +261,12 @@ export interface CartesianGridConstraintUtils {
 	 * Shingoki constraints on edge variables used to construct the utils.
 	 */
 	shingoki: ShingokiConstraints;
+
+	/**
+	 * @param v The vertex whose degree is being calculated.
+	 * @returns The degree of the vertex as per edge indicator variables for edges incident to the vertex.
+	 */
+	degree: (v: GridVertex) => Arith<string>;
 }
 
 /**
@@ -298,17 +295,12 @@ export interface ShingokiConstraints {
 }
 
 export function createCartesianGridConstraintUtils(
-	context: Context<string>,
-	solver: Solver<string>,
+	context: ContextExtended<string>,
 	grid: CartesianGridGraph,
 	edgeValues: Map<GridEdge, Arith<string>>
 ): CartesianGridConstraintUtils {
-	const { Int, And, Or } = context;
-
-	const zeroVar = Int.const('zero');
-	solver.add(zeroVar.eq(0));
-
-	const getEdgeVar = (edge: GridEdge) => edgeValues.get(edge) ?? zeroVar;
+	const { And, Or, SumArray, zero } = context;
+	const getEdgeVar = (edge: GridEdge) => edgeValues.get(edge) ?? zero;
 	const getEdgeVarFromEndpoints = (a: GridVertex, b: GridVertex) => {
 		const edge = grid.getEdge(a, b);
 		return getEdgeVar(edge);
@@ -386,6 +378,9 @@ export function createCartesianGridConstraintUtils(
 		},
 	};
 
+	const degree = (v: GridVertex) =>
+		SumArray(Array.from(v.incidentEdges(), getEdgeVar));
+
 	return {
 		edges: {
 			getEdgeVar,
@@ -396,5 +391,6 @@ export function createCartesianGridConstraintUtils(
 		},
 		masyu,
 		shingoki,
+		degree,
 	};
 }

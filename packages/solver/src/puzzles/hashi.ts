@@ -154,11 +154,10 @@ export class HashiPuzzle extends CartesianGridPuzzle<HashiSolution> {
 
 		const edgeVariables = model.variables;
 
-		const { And, Sum, Not } = context;
+		const { And, Not } = context;
 
 		const gridUtils = createCartesianGridConstraintUtils(
 			context,
-			solver,
 			this.grid,
 			edgeVariables
 		);
@@ -167,14 +166,7 @@ export class HashiPuzzle extends CartesianGridPuzzle<HashiSolution> {
 		const { getEdgeVar, goesHorizontallyThrough, goesVerticallyThrough } =
 			gridUtils.edges;
 		for (const { vertex, count } of this.#givens) {
-			// Outgoing edge sums match the givens
-			solver.add(
-				Sum(
-					...ensureNonEmpty(
-						Array.from(vertex.incidentEdges(), getEdgeVar)
-					)
-				).eq(count)
-			);
+			solver.add(gridUtils.degree(vertex).eq(count));
 			islandVertices.add(vertex);
 		}
 

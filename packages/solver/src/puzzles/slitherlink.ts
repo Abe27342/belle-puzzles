@@ -104,14 +104,12 @@ export class SlitherlinkPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution
 		const model = createEdgeIndicatorModel(context, solver, this);
 		const edgeVariables = model.variables;
 
-		const { Sum } = context;
-
 		for (const { count, face } of this.#givens) {
 			const adjacentFaceVariables = Array.from(
 				face.incidentEdges(),
 				(e) => edgeVariables.get(e) ?? oob(e)
 			);
-			solver.add(Sum(...ensureNonEmpty(adjacentFaceVariables)).eq(count));
+			solver.add(context.SumArray(adjacentFaceVariables).eq(count));
 		}
 
 		// Pick an arbitrary nonzero constraint to use for the minimalEnabledVariables.
