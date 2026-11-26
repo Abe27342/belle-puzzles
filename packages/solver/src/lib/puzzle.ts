@@ -1,6 +1,7 @@
 import type { Solver, Context, Expr, Model, Arith, Bool } from 'z3-solver';
 import type { GraphOutput, GraphDisplay } from './graph-output.js';
 import { ForceGetMap } from './utils.js';
+import { ConcreteGraphTypes, PlanarGraph } from './graph/index.js';
 
 export interface PuzzleDefinition<TSolution = GraphDisplay> {
 	build(
@@ -50,6 +51,36 @@ export interface ContextExtended<Name extends string> extends Context<Name> {
 		keys: Iterable<TKey>,
 		options?: Partial<{ name: string }>
 	) => ForceGetMap<TKey, Arith<Name>>;
+
+	/**
+	 * Expressions for constraints and expressions related to a planar graph structure.
+	 */
+	graphConstraints: <TConcrete extends ConcreteGraphTypes<TConcrete>>(
+		graph: PlanarGraph<TConcrete>
+	) => GraphConstraintExtensions<TConcrete, Name>;
+}
+
+export interface GraphConstraintExtensions<
+	TConcrete extends ConcreteGraphTypes<TConcrete>,
+	Name extends string
+> {
+	/**
+	 * @returns The degree of the vertex as per edge indicator variables for edges incident to the vertex.
+	 */
+	degree: (
+		v: TConcrete['vertex'],
+		edgeIndicators: ForceGetMap<TConcrete['edge'], Arith<Name>>
+	) => Arith<Name>;
+
+	inDegree: (
+		v: TConcrete['vertex'],
+		edgeIndicators: ForceGetMap<TConcrete['directedEdge'], Arith<Name>>
+	) => Arith<Name>;
+
+	outDegree: (
+		v: TConcrete['vertex'],
+		edgeIndicators: ForceGetMap<TConcrete['directedEdge'], Arith<Name>>
+	) => Arith<Name>;
 }
 
 export interface BuiltPuzzle<TSolution = GraphDisplay> {

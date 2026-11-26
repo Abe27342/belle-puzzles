@@ -19,7 +19,7 @@ import {
 	GridFace,
 	CartesianGraphTypes,
 } from './graph/index.js';
-import type { ContextExtended } from './puzzle.js';
+import type { ContextExtended, GraphConstraintExtensions } from './puzzle.js';
 
 export function createConstraintExtensions<Name extends string>(
 	context: Context<Name>,
@@ -63,7 +63,7 @@ export function createConstraintExtensions<Name extends string>(
 		return ints(keys, { min: 0, max: 1, name: optionsArg?.name });
 	};
 
-	return {
+	const extendedContext: Omit<ContextExtended<Name>, 'graphConstraints'> = {
 		...context,
 		Bound: bound,
 		SumArray: (arr: Arith<Name>[]) =>
@@ -71,6 +71,12 @@ export function createConstraintExtensions<Name extends string>(
 		zero,
 		ints,
 		indicators,
+	};
+
+	return {
+		...extendedContext,
+		graphConstraints: (graph) =>
+			createGraphConstraintUtils(extendedContext, graph),
 	};
 }
 
@@ -192,14 +198,10 @@ export function* connectedLoopConstraints<T extends ConcreteGraphTypes<T>>(
 		minimalEnabledVariables
 	);
 
-	const graphUtils = createGraphConstraintUtils(
-		context,
-		graph,
-		indicatorVariables
-	);
-
 	for (const v of graph.vertices()) {
-		const degree = graphUtils.degree(v);
+		const degree = context
+			.graphConstraints(graph)
+			.degree(v, indicatorVariables);
 		yield context.Or(degree.eq(0), degree.eq(2));
 	}
 }
@@ -267,21 +269,10 @@ export function* sightLineSumConstraints(
 	yield SumArray(variables).eq(count + variables.length - 1);
 }
 
-export interface GraphConstraintUtils<
-	TConcrete extends ConcreteGraphTypes<TConcrete>
-> {
-	/**
-	 * @param v The vertex whose degree is being calculated.
-	 * @returns The degree of the vertex as per edge indicator variables for edges incident to the vertex.
-	 */
-	degree: (v: TConcrete['vertex']) => Arith<string>;
-}
-
 /**
  * Utility functions for defining constraints on a Cartesian grid in terms of nonnegative edge values.
  */
-export interface CartesianGridConstraintUtils
-	extends GraphConstraintUtils<CartesianGraphTypes> {
+export interface CartesianGridConstraintUtils {
 	/** Constraints and utility functions on edge values used to construct the utils */
 	edges: {
 		/**
@@ -345,7 +336,7 @@ export function createCartesianGridConstraintUtils(
 	grid: CartesianGridGraph,
 	edgeIndicators: ForceGetMap<GridEdge, Arith<string>>
 ): CartesianGridConstraintUtils {
-	const { And, Or, SumArray, zero } = context;
+	const { And, Or, zero } = context;
 	const getEdgeVar = (edge: GridEdge) => edgeIndicators.get(edge) ?? zero;
 	const getEdgeVarFromEndpoints = (a: GridVertex, b: GridVertex) => {
 		const edge = grid.getEdge(a, b);
@@ -425,7 +416,6 @@ export function createCartesianGridConstraintUtils(
 	};
 
 	return {
-		...createGraphConstraintUtils(context, grid, edgeIndicators),
 		edges: {
 			getEdgeVar,
 			goesVerticallyThrough,
@@ -438,20 +428,32 @@ export function createCartesianGridConstraintUtils(
 	};
 }
 
-export function createGraphConstraintUtils<
-	TConcrete extends ConcreteGraphTypes<TConcrete>
+function createGraphConstraintUtils<
+	TConcrete extends ConcreteGraphTypes<TConcrete>,
+	Name extends string
 >(
-	context: ContextExtended<string>,
-	grid: PlanarGraph<TConcrete>,
-	edgeIndicators: ForceGetMap<TConcrete['edge'], Arith<string>>
-): GraphConstraintUtils<TConcrete> {
+	context: Omit<ContextExtended<Name>, 'graphConstraints'>,
+	grid: PlanarGraph<TConcrete>
+): GraphConstraintExtensions<TConcrete, Name> {
 	const { SumArray } = context;
-	const degree = (v: TConcrete['vertex']) =>
-		SumArray(
-			Array.from(v.incidentEdges(), (e) => edgeIndicators.forceGet(e))
-		);
+	const degree = (
+		v: TConcrete['vertex'],
+		map: ForceGetMap<TConcrete['edge'], Arith<Name>>
+	) => SumArray(Array.from(v.incidentEdges(), (e) => map.forceGet(e)));
+
+	const inDegree = (
+		v: TConcrete['vertex'],
+		map: ForceGetMap<TConcrete['directedEdge'], Arith<Name>>
+	) => SumArray(Array.from(v.incomingEdges(), (e) => map.forceGet(e)));
+
+	const outDegree = (
+		v: TConcrete['vertex'],
+		map: ForceGetMap<TConcrete['directedEdge'], Arith<Name>>
+	) => SumArray(Array.from(v.outgoingEdges(), (e) => map.forceGet(e)));
 
 	return {
 		degree,
+		inDegree,
+		outDegree,
 	};
 }

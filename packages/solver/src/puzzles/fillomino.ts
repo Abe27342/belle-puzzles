@@ -124,7 +124,7 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 				values: Array.from({ length: max }, (_, i) => i + 1),
 			}
 		);
-		const { Not, And, Sum, SumArray, Implies, If } = context;
+		const { Not, And, SumArray, Implies, If } = context;
 
 		// Idea behind constraints:
 		// - Each region is given a spanning tree. WLOG, the minimum index vertex is chosen to be the root.
@@ -134,11 +134,7 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 		const vertexNumbers = model.variables;
 
 		const inDegree = (v: GridVertex) =>
-			SumArray(
-				Array.from(v.neighbors(), (n) =>
-					treeIndicators.forceGet(grid.getDirectedEdge(n, v))
-				)
-			);
+			context.graphConstraints(grid).inDegree(v, treeIndicators);
 
 		// Solution agrees with provided constraints.
 		for (const { vertex, value } of this.#givens) {

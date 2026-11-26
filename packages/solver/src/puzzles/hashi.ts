@@ -161,12 +161,13 @@ export class HashiPuzzle extends CartesianGridPuzzle<HashiSolution> {
 			this.grid,
 			edgeVariables
 		);
+		const { degree } = context.graphConstraints(this.grid);
 
 		const islandVertices = new Set<GridVertex>();
 		const { getEdgeVar, goesHorizontallyThrough, goesVerticallyThrough } =
 			gridUtils.edges;
 		for (const { vertex, count } of this.#givens) {
-			solver.add(gridUtils.degree(vertex).eq(count));
+			solver.add(degree(vertex, edgeVariables).eq(count));
 			islandVertices.add(vertex);
 		}
 
