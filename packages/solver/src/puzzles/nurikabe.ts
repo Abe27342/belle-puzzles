@@ -1,17 +1,14 @@
 import { registerPuzzle } from '../catalog.js';
 import {
 	Arith,
-	CartesianGridGraph,
 	CartesianGridPuzzle,
 	connectedConstraints,
 	constant,
-	constantGraphOutput,
 	ContextExtended,
 	createVertexValueModel,
-	// ensureNonEmpty,
+	outputFactories,
 	parseNumber,
 	parseTextGrids,
-	variable,
 	type CartesianCoord,
 	type CartesianGridPuzzleProps,
 	type GridVertex,
@@ -62,7 +59,7 @@ export class NurikabePuzzle extends CartesianGridPuzzle<NurikabeSolution> {
 	#givens: Given[];
 
 	constructor(props: NurikabePuzzleProps) {
-		super(props);
+		super(props, outputFactories.vertexOnlyGrid);
 
 		this.#givens = props.givens.map((p) => ({
 			vertex: this.grid.getVertex(p.coord),
@@ -102,31 +99,18 @@ export class NurikabePuzzle extends CartesianGridPuzzle<NurikabeSolution> {
 		solver: Solver<string>
 	): NurikabeModel {
 		const grid = this.grid;
-		const { Implies, Iff, And, Or, Bound, If, SumArray, Not, All } =
-			context;
+		const { And, Or, Bound, If, SumArray, Not, All } = context;
 
 		const islandIds = Array.from(
 			{ length: this.#givens.length + 1 },
 			(_, i) => i
 		);
-		const model = createVertexValueModel(
-			context,
-			solver,
-			{
-				grid,
-				output: constantGraphOutput(grid, {
-					vertices: '.',
-					edges: '',
-					faces: '',
-				}),
-			},
-			{
-				values: islandIds,
-				glyphs: Array.from({ length: islandIds.length }, (_, i) =>
-					i === this.#givens.length ? '#' : '.'
-				),
-			}
-		);
+		const model = createVertexValueModel(context, solver, this, {
+			values: islandIds,
+			glyphs: Array.from({ length: islandIds.length }, (_, i) =>
+				i === this.#givens.length ? '#' : '.'
+			),
+		});
 
 		for (const { vertex, value } of this.#givens) {
 			model.output.vertices.set(vertex, constant(value));

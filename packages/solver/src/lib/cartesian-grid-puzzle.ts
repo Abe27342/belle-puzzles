@@ -1,12 +1,54 @@
 import type { Context, Solver } from 'z3-solver';
 import { CartesianGraphTypes, CartesianGridGraph } from './graph/index.js';
-import { createGraphOutput, GraphDisplay } from './graph-output.js';
+import {
+	constantGraphOutput,
+	constant,
+	GraphDisplay,
+	GraphOutput,
+} from './graph-output.js';
 import type { BuiltPuzzle, PuzzleDefinition } from './puzzle.js';
 
 export interface CartesianGridPuzzleProps {
 	width: number;
 	height: number;
 }
+
+export type CreateOutput = (
+	grid: CartesianGridGraph
+) => GraphOutput<CartesianGraphTypes>;
+
+export const cdot = '·';
+
+const linedGrid: CreateOutput = (grid) => {
+	const output = constantGraphOutput<CartesianGraphTypes>(grid, {
+		vertices: cdot,
+		edges: '',
+		faces: ' ',
+	});
+
+	for (const edge of grid.edges()) {
+		output.edges.set(edge, constant(edge.isHorizontal ? '-' : '|'));
+	}
+
+	return output;
+};
+
+const vertexOnlyGrid: CreateOutput = (grid) =>
+	constantGraphOutput<CartesianGraphTypes>(grid, {
+		vertices: cdot,
+		edges: '',
+		faces: '',
+	});
+export const outputFactories = {
+	/**
+	 * @returns A factory for rendering vertices, edges, and faces.
+	 */
+	linedGrid,
+	/**
+	 * @returns A factory for rendering output only for vertices.
+	 */
+	vertexOnlyGrid,
+} as const;
 
 /**
  * Convenience class for Cartesian grid puzzles.
@@ -16,10 +58,14 @@ export abstract class CartesianGridPuzzle<
 > implements PuzzleDefinition<CartesianGraphTypes, TSolution>
 {
 	public readonly grid: CartesianGridGraph;
-	public readonly output = createGraphOutput<CartesianGraphTypes>();
+	public readonly output: GraphOutput<CartesianGraphTypes>;
 
-	constructor(props: CartesianGridPuzzleProps) {
+	constructor(
+		props: CartesianGridPuzzleProps,
+		createOutput: CreateOutput = linedGrid
+	) {
 		this.grid = new CartesianGridGraph(props);
+		this.output = createOutput(this.grid);
 	}
 
 	public get width() {
@@ -50,7 +96,7 @@ export function renderCartesianGrid(
 		const verticalEdgeLine: string[] = [];
 		for (let x = 0; x < grid.width; x++) {
 			const current = grid.getVertex([x, y]);
-			contentLine.push(display.vertices.get(current) ?? '·');
+			contentLine.push(display.vertices.get(current) ?? cdot);
 			if (x < grid.width - 1) {
 				const edge = grid.getEdge(current, current.right);
 				contentLine.push(display.edges.get(edge) ?? ' ');
