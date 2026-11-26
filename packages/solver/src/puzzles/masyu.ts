@@ -10,12 +10,12 @@ import {
 	type CartesianCoord,
 	type CartesianGridPuzzleProps,
 	type CartesianGridRenderOptions,
-	type Context,
 	type EdgeIndicatorModel,
 	type EdgeIndicatorSolution,
 	type GridVertex,
 	type Solver,
 	type TextGridVisitor,
+	ContextExtended,
 } from '../lib/index.js';
 
 export interface MasyuPuzzleProps extends CartesianGridPuzzleProps {
@@ -104,7 +104,7 @@ export class MasyuPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 	}
 
 	public override build(
-		context: Context<string>,
+		context: ContextExtended<string>,
 		solver: Solver<string>
 	): EdgeIndicatorModel {
 		const model = createEdgeIndicatorModel(context, solver, this);
@@ -112,7 +112,6 @@ export class MasyuPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 
 		const gridUtils = createCartesianGridConstraintUtils(
 			context,
-			solver,
 			this.grid,
 			edgeVariables
 		);

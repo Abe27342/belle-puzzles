@@ -11,12 +11,12 @@ import {
 	type CartesianCoord,
 	type CartesianGridPuzzleProps,
 	type CartesianGridRenderOptions,
-	type Context,
 	type EdgeIndicatorModel,
 	type EdgeIndicatorSolution,
 	type GridFace,
 	type Solver,
 	type TextGridVisitor,
+	ContextExtended,
 } from '../lib/index.js';
 
 export interface SlitherlinkPuzzleProps extends CartesianGridPuzzleProps {
@@ -98,20 +98,18 @@ export class SlitherlinkPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution
 	}
 
 	public override build(
-		context: Context<string>,
+		context: ContextExtended<string>,
 		solver: Solver<string>
 	): EdgeIndicatorModel {
 		const model = createEdgeIndicatorModel(context, solver, this);
 		const edgeVariables = model.variables;
 
-		const { Sum } = context;
-
 		for (const { count, face } of this.#givens) {
 			const adjacentFaceVariables = Array.from(
 				face.incidentEdges(),
-				(e) => edgeVariables.get(e) ?? oob(e)
+				(e) => edgeVariables.forceGet(e)
 			);
-			solver.add(Sum(...ensureNonEmpty(adjacentFaceVariables)).eq(count));
+			solver.add(context.SumArray(adjacentFaceVariables).eq(count));
 		}
 
 		// Pick an arbitrary nonzero constraint to use for the minimalEnabledVariables.

@@ -2,10 +2,12 @@ import type { Context, Expr, Solver } from 'z3-solver';
 import { resolveGraphOutput } from '../lib/graph-output.js';
 import type {
 	BuiltPuzzle,
+	ContextExtended,
 	PuzzleDefinition,
 	SolveResult,
 } from '../lib/puzzle.js';
 import { z3 } from './z3.js';
+import { createConstraintExtensions } from '../lib/constraint-utils.js';
 
 export { shutdownSolverRuntime, z3 } from './z3.js';
 
@@ -13,7 +15,7 @@ export { shutdownSolverRuntime, z3 } from './z3.js';
  * Builds a puzzle once and allows enumeration of unique solutions to the puzzle.
  */
 export class SolverSession<TSolution> {
-	readonly #context: Context<string>;
+	readonly #context: ContextExtended<string>;
 	readonly #solver: Solver<string>;
 	readonly #puzzle: BuiltPuzzle<TSolution>;
 	readonly #keys: readonly Expr<string>[];
@@ -22,8 +24,9 @@ export class SolverSession<TSolution> {
 	#running = false;
 
 	constructor(puzzle: PuzzleDefinition<TSolution>) {
-		this.#context = new z3.Context<string>('puzzle');
-		this.#solver = new this.#context.Solver();
+		const context = new z3.Context<string>('puzzle');
+		this.#solver = new context.Solver();
+		this.#context = createConstraintExtensions(context, this.#solver);
 		this.#puzzle = puzzle.build(this.#context, this.#solver);
 		this.#keys = [...this.#puzzle.keyAssignments];
 	}

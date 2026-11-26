@@ -12,7 +12,7 @@ export class Direction {
 	public static readonly Right: Vector = [1, 0];
 }
 
-interface CartesianGraphTypes {
+export interface CartesianGraphTypes {
 	coord: CartesianCoord;
 	vertex: GridVertex;
 	edge: GridEdge;
@@ -262,6 +262,18 @@ class GridVertexImpl
 	public *incidentEdges() {
 		for (const neighbor of this.neighbors()) {
 			yield this.#grid.getEdge(this, neighbor);
+		}
+	}
+
+	public *outgoingEdges() {
+		for (const neighbor of this.neighbors()) {
+			yield this.#grid.getDirectedEdge(this, neighbor);
+		}
+	}
+
+	public *incomingEdges() {
+		for (const neighbor of this.neighbors()) {
+			yield this.#grid.getDirectedEdge(neighbor, this);
 		}
 	}
 

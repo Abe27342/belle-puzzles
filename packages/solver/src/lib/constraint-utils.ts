@@ -3,7 +3,12 @@
  */
 
 import type { Arith, Bool, Context, Solver } from 'z3-solver';
-import { ensureNonEmpty, oob } from './utils.js';
+import {
+	createForceGetMap,
+	ensureNonEmpty,
+	ForceGetMap,
+	oob,
+} from './utils.js';
 import {
 	CartesianGridGraph,
 	HasNeighbors,
@@ -12,41 +17,68 @@ import {
 	GridVertex,
 	GridEdge,
 	GridFace,
+	CartesianGraphTypes,
 } from './graph/index.js';
+import type { ContextExtended, GraphConstraintExtensions } from './puzzle.js';
 
-/**
- * Ergonomic helpers for expressing common constraints.
- */
-export interface ConstraintExtensions {
-	/**
-	 * Creates a constraint that enforces the variable `a` to be within the bounds `[b, c]`.
-	 *
-	 * @param a The arithmetic variable to be bounded.
-	 * @param b The lower bound.
-	 * @param c The upper bound.
-	 * @returns An arithmetic expression representing the bounded constraint.
-	 */
-	bound: (a: Arith<string>, b: number, c: number) => Bool<string>;
-
-	/**
-	 * Creates a constraint that represents logical equivalence between two boolean variables.
-	 * @param a The first boolean variable.
-	 * @param b The second boolean variable.
-	 * @returns A boolean expression representing the logical equivalence of `a` and `b`.
-	 */
-	iff: (a: Bool<string>, b: Bool<string>) => Bool<string>;
-}
-
-export function createConstraintExtensions(
-	context: Context<string>
-): ConstraintExtensions {
-	const { And, Implies } = context;
-	const bound = (a: Arith<string>, b: number, c: number) =>
+export function createConstraintExtensions<Name extends string>(
+	context: Context<Name>,
+	solver: Solver<Name>
+): ContextExtended<Name> {
+	const { And, Sum } = context;
+	const bound = (a: Arith<Name>, b: number, c: number) =>
 		And(a.ge(b), a.le(c));
 
-	const iff = (a: Bool<string>, b: Bool<string>) =>
-		And(Implies(a, b), Implies(b, a));
-	return { bound, iff };
+	const zero = context.Int.const('zero');
+	solver.add(zero.eq(0));
+
+	const ints = <TKey>(
+		keys: Iterable<TKey>,
+		optionsArg?: Partial<{ min: number; max: number; name: string }>
+	): ForceGetMap<TKey, Arith<Name>> => {
+		const options = optionsArg ?? {};
+		const map = createForceGetMap<TKey, Arith<Name>>();
+		for (const key of keys) {
+			const variable = context.Int.const(
+				`${options.name ?? ''}_${key}_${crypto.randomUUID()}`
+			);
+
+			if (options.min !== undefined) {
+				solver.add(variable.ge(options.min));
+			}
+			if (options.max !== undefined) {
+				solver.add(variable.le(options.max));
+			}
+
+			map.set(key, variable);
+		}
+
+		return map;
+	};
+
+	const indicators = <TKey>(
+		keys: Iterable<TKey>,
+		optionsArg?: Partial<{ name: string }>
+	): ForceGetMap<TKey, Arith<Name>> => {
+		return ints(keys, { min: 0, max: 1, name: optionsArg?.name });
+	};
+
+	const extendedContext: Omit<ContextExtended<Name>, 'graphConstraints'> = {
+		...context,
+		solver,
+		Bound: bound,
+		SumArray: (arr: Arith<Name>[]) =>
+			Sum(...ensureNonEmpty(arr.length > 0 ? arr : [zero])),
+		zero,
+		ints,
+		indicators,
+	};
+
+	return {
+		...extendedContext,
+		graphConstraints: (graph) =>
+			createGraphConstraintUtils(extendedContext, graph),
+	};
 }
 
 /**
@@ -79,15 +111,14 @@ export function createConstraintExtensions(
  * (such that "vertex" variable naming in the code below actually refers to edges in the original puzzle graph).
  */
 export function* connectedConstraints<T extends HasNeighbors<T>>(
-	context: Context<string>,
+	context: ContextExtended<string>,
 	valueVariables: Map<HasNeighbors<T>, Arith<string>>,
 	minimalEnabledVariables: Iterable<HasNeighbors<T>>
 ) {
+	const { Int, Or, And, Implies, Bound, Iff } = context;
+
 	const vertices = Array.from(valueVariables.keys());
 	const connectivityVariables = new Map<HasNeighbors<T>, Arith<string>>();
-
-	const { bound, iff } = createConstraintExtensions(context);
-	const { Int, Or, And, Implies } = context;
 	const possibleZeroVertices = new Set(minimalEnabledVariables);
 
 	for (const v of vertices) {
@@ -95,9 +126,9 @@ export function* connectedConstraints<T extends HasNeighbors<T>>(
 		connectivityVariables.set(v, conVar);
 		const valueVariable = valueVariables.get(v) ?? oob(v);
 		yield* [
-			bound(conVar, -1, vertices.length),
-			iff(valueVariable.eq(0), conVar.eq(-1)),
-			iff(valueVariable.gt(0), conVar.ge(0)),
+			Bound(conVar, -1, vertices.length),
+			Iff(valueVariable.eq(0), conVar.eq(-1)),
+			Iff(valueVariable.gt(0), conVar.ge(0)),
 		];
 	}
 
@@ -157,9 +188,9 @@ export function* connectedConstraints<T extends HasNeighbors<T>>(
  * When used on the line graph, this is the "one connected loop" constraint used in slitherlink, masyu, etc.
  */
 export function* connectedLoopConstraints<T extends ConcreteGraphTypes<T>>(
-	context: Context<string>,
+	context: ContextExtended<string>,
 	graph: PlanarGraph<T>,
-	indicatorVariables: Map<T['edge'], Arith<string>>,
+	indicatorVariables: ForceGetMap<T['edge'], Arith<string>>,
 	minimalEnabledVariables: Iterable<T['edge']>
 ) {
 	yield* connectedConstraints(
@@ -168,21 +199,11 @@ export function* connectedLoopConstraints<T extends ConcreteGraphTypes<T>>(
 		minimalEnabledVariables
 	);
 
-	const { Or, Int } = context;
-
-	const zeroVar = Int.const('zero');
-	yield zeroVar.eq(0);
-
 	for (const v of graph.vertices()) {
-		const degree = context.Sum(
-			...ensureNonEmpty(
-				Array.from(v.incidentEdges()).map(
-					(e) => indicatorVariables.get(e) ?? oob(e)
-				)
-			)
-		);
-
-		yield Or(degree.eq(0), degree.eq(2));
+		const degree = context
+			.graphConstraints(graph)
+			.degree(v, indicatorVariables);
+		yield context.Or(degree.eq(0), degree.eq(2));
 	}
 }
 
@@ -200,14 +221,12 @@ export function* connectedLoopConstraints<T extends ConcreteGraphTypes<T>>(
  * translating an edge follows successive face boundaries along the sight line.
  */
 export function* sightLineSumConstraints(
-	context: Context<string>,
+	context: ContextExtended<string>,
 	v: GridFace | GridVertex,
 	count: number,
 	edgeIndicators: Map<GridEdge, Arith<string>>
 ) {
-	const { Int, Sum, Implies, And, Not } = context;
-	const zero = Int.const('zero');
-	yield zero.eq(0);
+	const { Int, SumArray, Implies, And, Not, zero } = context;
 
 	const allowsVisibility =
 		v.type === 'face'
@@ -248,7 +267,7 @@ export function* sightLineSumConstraints(
 	}
 
 	// The RHS of this fixes the fact that we overcounted the starting vertex or face (we counted it once for each direction).
-	yield Sum(...ensureNonEmpty(variables)).eq(count + variables.length - 1);
+	yield SumArray(variables).eq(count + variables.length - 1);
 }
 
 /**
@@ -314,17 +333,12 @@ export interface ShingokiConstraints {
 }
 
 export function createCartesianGridConstraintUtils(
-	context: Context<string>,
-	solver: Solver<string>,
+	context: ContextExtended<string>,
 	grid: CartesianGridGraph,
-	edgeValues: Map<GridEdge, Arith<string>>
+	edgeIndicators: ForceGetMap<GridEdge, Arith<string>>
 ): CartesianGridConstraintUtils {
-	const { Int, And, Or } = context;
-
-	const zeroVar = Int.const('zero');
-	solver.add(zeroVar.eq(0));
-
-	const getEdgeVar = (edge: GridEdge) => edgeValues.get(edge) ?? zeroVar;
+	const { And, Or, zero } = context;
+	const getEdgeVar = (edge: GridEdge) => edgeIndicators.get(edge) ?? zero;
 	const getEdgeVarFromEndpoints = (a: GridVertex, b: GridVertex) => {
 		const edge = grid.getEdge(a, b);
 		return getEdgeVar(edge);
@@ -412,5 +426,35 @@ export function createCartesianGridConstraintUtils(
 		},
 		masyu,
 		shingoki,
+	};
+}
+
+function createGraphConstraintUtils<
+	TConcrete extends ConcreteGraphTypes<TConcrete>,
+	Name extends string
+>(
+	context: Omit<ContextExtended<Name>, 'graphConstraints'>,
+	grid: PlanarGraph<TConcrete>
+): GraphConstraintExtensions<TConcrete, Name> {
+	const { SumArray } = context;
+	const degree = (
+		v: TConcrete['vertex'],
+		map: ForceGetMap<TConcrete['edge'], Arith<Name>>
+	) => SumArray(Array.from(v.incidentEdges(), (e) => map.forceGet(e)));
+
+	const inDegree = (
+		v: TConcrete['vertex'],
+		map: ForceGetMap<TConcrete['directedEdge'], Arith<Name>>
+	) => SumArray(Array.from(v.incomingEdges(), (e) => map.forceGet(e)));
+
+	const outDegree = (
+		v: TConcrete['vertex'],
+		map: ForceGetMap<TConcrete['directedEdge'], Arith<Name>>
+	) => SumArray(Array.from(v.outgoingEdges(), (e) => map.forceGet(e)));
+
+	return {
+		degree,
+		inDegree,
+		outDegree,
 	};
 }

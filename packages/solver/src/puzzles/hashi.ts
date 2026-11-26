@@ -19,6 +19,7 @@ import {
 	type GridVertex,
 	type Solver,
 	type TextGridVisitor,
+	ContextExtended,
 } from '../lib/index.js';
 
 export interface HashiPuzzleProps extends CartesianGridPuzzleProps {
@@ -146,34 +147,27 @@ export class HashiPuzzle extends CartesianGridPuzzle<HashiSolution> {
 	}
 
 	public override build(
-		context: Context<string>,
+		context: ContextExtended<string>,
 		solver: Solver<string>
 	): HashiEdgeModel {
 		const model = createHashiEdgeModel(context, solver, this);
 
 		const edgeVariables = model.variables;
 
-		const { And, Sum, Not } = context;
+		const { And, Not } = context;
 
 		const gridUtils = createCartesianGridConstraintUtils(
 			context,
-			solver,
 			this.grid,
 			edgeVariables
 		);
+		const { degree } = context.graphConstraints(this.grid);
 
 		const islandVertices = new Set<GridVertex>();
 		const { getEdgeVar, goesHorizontallyThrough, goesVerticallyThrough } =
 			gridUtils.edges;
 		for (const { vertex, count } of this.#givens) {
-			// Outgoing edge sums match the givens
-			solver.add(
-				Sum(
-					...ensureNonEmpty(
-						Array.from(vertex.incidentEdges(), getEdgeVar)
-					)
-				).eq(count)
-			);
+			solver.add(degree(vertex, edgeVariables).eq(count));
 			islandVertices.add(vertex);
 		}
 

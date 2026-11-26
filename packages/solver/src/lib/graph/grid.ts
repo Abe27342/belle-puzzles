@@ -38,6 +38,15 @@ export interface Vertex<TConcrete extends ConcreteGraphTypes<TConcrete>>
 	coord: TConcrete['coord'];
 
 	incidentEdges(): Iterable<TConcrete['edge']>;
+
+	/**
+	 * Outgoing directed edges from this vertex.
+	 */
+	outgoingEdges(): Iterable<TConcrete['directedEdge']>;
+	/**
+	 * Incoming directed edges to this vertex.
+	 */
+	incomingEdges(): Iterable<TConcrete['directedEdge']>;
 }
 
 /**
