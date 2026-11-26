@@ -1,5 +1,5 @@
 import type { Context, Solver } from 'z3-solver';
-import type { GridVertex } from './graph/index.js';
+import type { CartesianGraphTypes, GridVertex } from './graph/index.js';
 import {
 	createValueModel,
 	GridValueModelProps,
@@ -8,7 +8,11 @@ import {
 
 export type VertexValueSolution<T extends number> = Map<GridVertex, T>;
 
-export type VertexValueModel<T extends number> = ValueModel<GridVertex, T>;
+export type VertexValueModel<T extends number> = ValueModel<
+	GridVertex,
+	T,
+	CartesianGraphTypes
+>;
 
 export interface VertexValueOptions<T extends number> {
 	values: readonly T[];

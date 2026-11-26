@@ -3,11 +3,14 @@ import type { GraphOutput, GraphDisplay } from './graph-output.js';
 import { ForceGetMap } from './utils.js';
 import { ConcreteGraphTypes, PlanarGraph } from './graph/index.js';
 
-export interface PuzzleDefinition<TSolution = GraphDisplay> {
+export interface PuzzleDefinition<
+	TGraph extends ConcreteGraphTypes<TGraph>,
+	TSolution = GraphDisplay<TGraph>
+> {
 	build(
 		context: ContextExtended<string>,
 		solver: Solver<string>
-	): BuiltPuzzle<TSolution>;
+	): BuiltPuzzle<TGraph, TSolution>;
 }
 
 /**
@@ -126,8 +129,11 @@ export interface GraphConstraintExtensions<
 	};
 }
 
-export interface BuiltPuzzle<TSolution = GraphDisplay> {
-	output: GraphOutput;
+export interface BuiltPuzzle<
+	TGraph extends ConcreteGraphTypes<TGraph>,
+	TSolution = GraphDisplay<TGraph>
+> {
+	output: GraphOutput<TGraph>;
 	/**
 	 * Assignments that distinguish puzzle solutions. Exclude auxiliary variables
 	 * such as connectivity ranks, even when they have multiple valid assignments.
@@ -135,14 +141,17 @@ export interface BuiltPuzzle<TSolution = GraphDisplay> {
 	 * Two solutions should be considered unique iff they differ in at least one of the key assignments.
 	 */
 	keyAssignments: readonly Expr<string>[];
-	decodeSolution(model: Model<string>, output: GraphDisplay): TSolution;
+	decodeSolution(
+		model: Model<string>,
+		output: GraphDisplay<TGraph>
+	): TSolution;
 }
 
 /** Default model for puzzles whose resolved display is their desired output. */
-export function createGraphModel(
-	output: GraphOutput,
+export function createGraphModel<TGraph extends ConcreteGraphTypes<TGraph>>(
+	output: GraphOutput<TGraph>,
 	keyAssignments: readonly Expr<string>[]
-): BuiltPuzzle {
+): BuiltPuzzle<TGraph> {
 	return {
 		output,
 		keyAssignments,
@@ -150,6 +159,6 @@ export function createGraphModel(
 	};
 }
 
-export type SolveResult<TSolution> =
-	| { status: 'sat'; solution: TSolution; output: GraphDisplay }
+export type SolveResult<TGraph extends ConcreteGraphTypes<TGraph>, TSolution> =
+	| { status: 'sat'; solution: TSolution; output: GraphDisplay<TGraph> }
 	| { status: 'unsat' | 'unknown' };

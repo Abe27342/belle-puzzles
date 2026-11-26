@@ -8,22 +8,26 @@ import type {
 } from '../lib/puzzle.js';
 import { z3 } from './z3.js';
 import { createConstraintExtensions } from '../lib/constraint-utils.js';
+import { ConcreteGraphTypes } from '../index.js';
 
 export { shutdownSolverRuntime, z3 } from './z3.js';
 
 /**
  * Builds a puzzle once and allows enumeration of unique solutions to the puzzle.
  */
-export class SolverSession<TSolution> {
+export class SolverSession<
+	TGraph extends ConcreteGraphTypes<TGraph>,
+	TSolution
+> {
 	readonly #context: ContextExtended<string>;
 	readonly #solver: Solver<string>;
-	readonly #puzzle: BuiltPuzzle<TSolution>;
+	readonly #puzzle: BuiltPuzzle<TGraph, TSolution>;
 	readonly #keys: readonly Expr<string>[];
 	#previous: Expr<string>[] | undefined;
 	#terminal: 'unsat' | 'unknown' | undefined;
 	#running = false;
 
-	constructor(puzzle: PuzzleDefinition<TSolution>) {
+	constructor(puzzle: PuzzleDefinition<TGraph, TSolution>) {
 		const context = new z3.Context<string>('puzzle');
 		this.#solver = new context.Solver();
 		this.#context = createConstraintExtensions(context, this.#solver);
@@ -31,7 +35,7 @@ export class SolverSession<TSolution> {
 		this.#keys = [...this.#puzzle.keyAssignments];
 	}
 
-	public async nextSolution(): Promise<SolveResult<TSolution>> {
+	public async nextSolution(): Promise<SolveResult<TGraph, TSolution>> {
 		if (this.#running) {
 			throw new Error('A solve is already in progress for this session');
 		}
@@ -71,8 +75,8 @@ export class SolverSession<TSolution> {
 }
 
 /** Convenience entry point when only the first solution is needed. */
-export function solve<TSolution>(
-	puzzle: PuzzleDefinition<TSolution>
-): Promise<SolveResult<TSolution>> {
-	return new SolverSession(puzzle).nextSolution();
+export function solve<TGraph extends ConcreteGraphTypes<TGraph>, TSolution>(
+	puzzle: PuzzleDefinition<TGraph, TSolution>
+): Promise<SolveResult<TGraph, TSolution>> {
+	return new SolverSession<TGraph, TSolution>(puzzle).nextSolution();
 }

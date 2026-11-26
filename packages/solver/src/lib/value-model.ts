@@ -1,5 +1,9 @@
 import type { Arith, Context, Expr, Solver } from 'z3-solver';
-import type { CartesianGridGraph } from './graph/index.js';
+import type {
+	CartesianGraphTypes,
+	CartesianGridGraph,
+	ConcreteGraphTypes,
+} from './graph/index.js';
 import type { BuiltPuzzle } from './puzzle.js';
 import {
 	createGraphOutput,
@@ -17,23 +21,30 @@ import { createForceGetMap, ForceGetMap, oob } from './utils.js';
  *
  * Common variants include creating indicator variables for each edge or vertex.
  */
-export interface ValueModel<TKey, TValue extends number>
-	extends BuiltPuzzle<Map<TKey, TValue>> {
+export interface ValueModel<
+	TKey,
+	TValue extends number,
+	TGraph extends ConcreteGraphTypes<TGraph>
+> extends BuiltPuzzle<TGraph, Map<TKey, TValue>> {
 	variables: ForceGetMap<TKey, Arith<string>>;
 }
 
 export interface GridValueModelProps {
 	grid: CartesianGridGraph;
-	output?: GraphOutput;
+	output?: GraphOutput<CartesianGraphTypes>;
 }
 
-export interface ValueModelOptions<TKey, TValue extends number> {
+export interface ValueModelOptions<
+	TKey,
+	TValue extends number,
+	TGraph extends ConcreteGraphTypes<TGraph>
+> {
 	/** All keys for which values will be assigned. */
 	keys: Iterable<TKey>;
 	/** Domain of possible values to assign. */
 	values: readonly TValue[];
-	output?: GraphOutput;
-	bindings(output: GraphOutput): Map<TKey, RenderBinding>;
+	output?: GraphOutput<TGraph>;
+	bindings(output: GraphOutput<TGraph>): Map<TKey, RenderBinding>;
 	/** Name of the variable corresponding to the given key. */
 	name(key: TKey): string;
 	/** Omit to format decoded values with String instead of a glyph table. */
@@ -73,11 +84,15 @@ function toSafeNumber(bigIntVal: bigint) {
 	return Number(bigIntVal);
 }
 
-export function createValueModel<TKey, const TValue extends number>(
+export function createValueModel<
+	TKey,
+	const TValue extends number,
+	TGraph extends ConcreteGraphTypes<TGraph>
+>(
 	context: Context<string>,
 	solver: Solver<string>,
-	options: ValueModelOptions<TKey, TValue>
-): ValueModel<TKey, TValue> {
+	options: ValueModelOptions<TKey, TValue, TGraph>
+): ValueModel<TKey, TValue, TGraph> {
 	const values = [...options.values];
 	const decode = createValueDecoder(values);
 	const domain = [...new Set(values)].sort((a, b) => a - b);
@@ -101,7 +116,7 @@ export function createValueModel<TKey, const TValue extends number>(
 		}
 	}
 
-	const output = createGraphOutput(options.output);
+	const output = createGraphOutput<TGraph>(options.output);
 	const bindings = options.bindings(output);
 	const variables = createForceGetMap<TKey, Arith<string>>();
 	for (const { key, name, glyphs } of entries) {
