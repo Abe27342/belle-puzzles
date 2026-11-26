@@ -65,6 +65,7 @@ export function createConstraintExtensions<Name extends string>(
 
 	const extendedContext: Omit<ContextExtended<Name>, 'graphConstraints'> = {
 		...context,
+		solver,
 		Bound: bound,
 		SumArray: (arr: Arith<Name>[]) =>
 			Sum(...ensureNonEmpty(arr.length > 0 ? arr : [zero])),

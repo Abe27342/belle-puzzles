@@ -14,6 +14,7 @@ export interface PuzzleDefinition<TSolution = GraphDisplay> {
  * Extended interface for declaring constraints. Fixes some ergonomics issues with the base z3 libraries
  */
 export interface ContextExtended<Name extends string> extends Context<Name> {
+	solver: Solver<Name>;
 	/**
 	 * Creates a constraint that enforces the variable `a` to be within the bounds `[b, c]`.
 	 *
