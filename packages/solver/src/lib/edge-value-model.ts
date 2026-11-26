@@ -64,8 +64,7 @@ export function createEdgeValueModel<const T extends number>(
 			glyphs === undefined
 				? undefined
 				: (edge) => {
-						const [start, end] = edge.vertices;
-						return start.y === end.y
+						return edge.isHorizontal
 							? glyphs.horizontal
 							: glyphs.vertical;
 				  },

@@ -36,7 +36,9 @@ export function createVertexValueModel<const T extends number>(
 		keys: props.grid.vertices(),
 		values: options.values,
 		output: props.output,
-		bind: options.bind ?? ((output, vertex, binding) => output.vertices.set(vertex, binding)),
+		bind:
+			options.bind ??
+			((output, vertex, binding) => output.vertices.set(vertex, binding)),
 		name: (vertex) => `v_${vertex}`,
 		glyphs: glyphs === undefined ? undefined : () => glyphs,
 	});
