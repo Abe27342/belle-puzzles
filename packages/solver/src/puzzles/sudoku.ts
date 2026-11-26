@@ -9,7 +9,6 @@ import {
 	parseTextGrids,
 	type CartesianCoord,
 	type CartesianGridPuzzleProps,
-	type CartesianGridRenderOptions,
 	type Context,
 	type GridVertex,
 	type Solver,
@@ -62,14 +61,7 @@ export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 	#givens: Given[];
 
 	constructor(props: SudokuPuzzleProps) {
-		super({
-			...props,
-			renderOptions: {
-				horizontal: '-',
-				vertical: '|',
-				...props.renderOptions,
-			},
-		});
+		super(props);
 
 		this.#givens = props.givens.map((p) => ({
 			vertex: this.grid.getVertex(p.coord),
@@ -87,9 +79,7 @@ export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 			const [start, end] = edge.vertices;
 			const horizontal = start.y === end.y;
 			const position = horizontal ? start.x : start.y;
-			const separator = horizontal
-				? this.renderOptions.vertical
-				: this.renderOptions.horizontal;
+			const separator = horizontal ? '|' : '-';
 			this.output.edges.set(
 				edge,
 				constant(needsSeparator(position) ? separator : '')
@@ -105,10 +95,7 @@ export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 	/**
 	 * @param text Text representation of the Sudoku puzzle grid.
 	 */
-	public static fromText(
-		text: string,
-		renderOptions?: Partial<CartesianGridRenderOptions>
-	) {
+	public static fromText(text: string) {
 		const givens: ConstructionGiven[] = [];
 		const visitor: TextGridVisitor = ([value], coord) => {
 			givens.push({
@@ -128,7 +115,6 @@ export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 			width,
 			height,
 			givens,
-			renderOptions,
 		});
 	}
 

@@ -9,7 +9,6 @@ import {
 	sightLineSumConstraints,
 	type CartesianCoord,
 	type CartesianGridPuzzleProps,
-	type CartesianGridRenderOptions,
 	type EdgeIndicatorModel,
 	type EdgeIndicatorSolution,
 	type GridFace,
@@ -20,7 +19,6 @@ import {
 
 export interface CavePuzzleProps extends CartesianGridPuzzleProps {
 	givens: ConstructionGivens[];
-	renderOptions?: Partial<CartesianGridRenderOptions>;
 }
 
 interface Given {
@@ -72,10 +70,7 @@ export class CavePuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 		}
 	}
 
-	public static fromText(
-		text: string,
-		renderOptions?: Partial<CartesianGridRenderOptions>
-	) {
+	public static fromText(text: string) {
 		const givens: ConstructionGivens[] = [];
 		const visitor: TextGridVisitor = ([char], coord) => {
 			givens.push({ coord, count: parseNumber(char, coord) });
@@ -87,7 +82,6 @@ export class CavePuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 			width: width + 1,
 			height: height + 1,
 			givens,
-			renderOptions,
 		});
 	}
 

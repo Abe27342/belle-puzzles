@@ -10,11 +10,7 @@ export * from './lib/graph/index.js';
 
 export * from './puzzles/sudoku.js';
 export * from './puzzles/masyu.js';
-export type {
-	ShingokiPuzzleProps,
-	PearlRenderOptions as ShingokiPearlRenderOptions,
-} from './puzzles/shingoki.js';
-export { ShingokiPuzzle } from './puzzles/shingoki.js';
+export * from './puzzles/shingoki.js';
 export * from './puzzles/slitherlink.js';
 export * from './puzzles/cave.js';
 export * from './puzzles/hashi.js';

@@ -5,13 +5,11 @@ import {
 	connectedConstraints,
 	createCartesianGridConstraintUtils,
 	createEdgeValueModel,
-	defaultCartesianGridRenderOptions,
 	ensureNonEmpty,
 	parseNumber,
 	parseTextGrids,
 	type CartesianCoord,
 	type CartesianGridPuzzleProps,
-	type CartesianGridRenderOptions,
 	type Context,
 	type EdgeValueModel,
 	type EdgeValueSolution,
@@ -24,7 +22,6 @@ import {
 
 export interface HashiPuzzleProps extends CartesianGridPuzzleProps {
 	givens: ConstructionGiven[];
-	renderOptions?: Partial<HashiRenderOptions>;
 }
 
 interface Given {
@@ -46,45 +43,20 @@ interface ConstructionGiven {
 	count: number;
 }
 
-export interface HashiRenderOptions extends CartesianGridRenderOptions {
-	doubleHorizontal: string;
-	doubleVertical: string;
-}
-
 type HashiEdgeModel = EdgeValueModel<0 | 1 | 2>;
 
 type HashiSolution = EdgeValueSolution<0 | 1 | 2>;
 
-const defaultRenderOptions: HashiRenderOptions = {
-	...defaultCartesianGridRenderOptions,
-	doubleHorizontal: '=',
-	doubleVertical: '‖',
-};
-
 export function createHashiEdgeModel(
 	context: Context<string>,
 	solver: Solver<string>,
-	props: GridValueModelProps & {
-		renderOptions?: Partial<HashiRenderOptions>;
-	}
+	props: GridValueModelProps
 ): HashiEdgeModel {
-	const renderOptions = {
-		...defaultRenderOptions,
-		...props.renderOptions,
-	};
 	return createEdgeValueModel(context, solver, props, {
 		values: [0, 1, 2] as const,
 		glyphs: {
-			horizontal: [
-				' ',
-				renderOptions.horizontal,
-				renderOptions.doubleHorizontal,
-			],
-			vertical: [
-				' ',
-				renderOptions.vertical,
-				renderOptions.doubleVertical,
-			],
+			horizontal: [' ', '-', '='],
+			vertical: [' ', '|', '‖'],
 		},
 	});
 }
@@ -124,10 +96,7 @@ export class HashiPuzzle extends CartesianGridPuzzle<HashiSolution> {
 	/**
 	 * @param text Text representation of the Hashi puzzle grid.
 	 */
-	public static fromText(
-		text: string,
-		renderOptions?: Partial<HashiRenderOptions>
-	) {
+	public static fromText(text: string) {
 		const givens: ConstructionGiven[] = [];
 		const visitor: TextGridVisitor = ([count], coord) => {
 			givens.push({
@@ -142,7 +111,6 @@ export class HashiPuzzle extends CartesianGridPuzzle<HashiSolution> {
 			width,
 			height,
 			givens,
-			renderOptions,
 		});
 	}
 

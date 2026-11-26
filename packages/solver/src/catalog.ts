@@ -1,20 +1,11 @@
 import type { CartesianGridPuzzle } from './lib/cartesian-grid-puzzle.js';
-import type { HashiRenderOptions } from './puzzles/hashi.js';
-import type { PearlRenderOptions } from './puzzles/masyu.js';
-
-export type PuzzleRenderOptions = Partial<
-	HashiRenderOptions & PearlRenderOptions
->;
 
 export interface PuzzleRegistration {
 	name: string;
 	instructions: string;
 	example: string;
 	parser: {
-		fromText(
-			text: string,
-			renderOptions?: PuzzleRenderOptions
-		): CartesianGridPuzzle<unknown>;
+		fromText(text: string): CartesianGridPuzzle<unknown>;
 	};
 }
 

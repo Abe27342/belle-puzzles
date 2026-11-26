@@ -11,7 +11,6 @@ import {
 	variable,
 	type CartesianCoord,
 	type CartesianGridPuzzleProps,
-	type CartesianGridRenderOptions,
 	type GridVertex,
 	type Solver,
 	type TextGridVisitor,
@@ -65,11 +64,6 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 			...props,
 			width: props.width + 1,
 			height: props.height + 1,
-			renderOptions: {
-				horizontal: '-',
-				vertical: '|',
-				...props.renderOptions,
-			},
 		});
 
 		this.#cellGrid = new CartesianGridGraph(props);
@@ -87,10 +81,7 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 	/**
 	 * @param text Text representation of the Fillomino puzzle grid.
 	 */
-	public static fromText(
-		text: string,
-		renderOptions?: Partial<CartesianGridRenderOptions>
-	) {
+	public static fromText(text: string) {
 		const givens: ConstructionGiven[] = [];
 		const visitor: TextGridVisitor = ([value], coord) => {
 			givens.push({
@@ -106,7 +97,6 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 			width,
 			height,
 			givens,
-			renderOptions,
 		});
 	}
 
@@ -183,17 +173,12 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 		}
 		model.output.vertices.clear();
 		for (const vertex of this.grid.vertices()) {
-			model.output.vertices.set(
-				vertex,
-				constant(this.renderOptions.vertex)
-			);
+			model.output.vertices.set(vertex, constant('·'));
 		}
 		for (const edge of this.grid.edges()) {
 			const [start, end] = edge.vertices;
 			const horizontal = start.y === end.y;
-			const glyph = horizontal
-				? this.renderOptions.horizontal
-				: this.renderOptions.vertical;
+			const glyph = horizontal ? '-' : '|';
 			const first = vertexNumbers.get(
 				grid.getVertex(
 					horizontal ? [start.x, start.y - 1] : [start.x - 1, start.y]
