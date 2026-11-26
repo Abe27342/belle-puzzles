@@ -46,7 +46,7 @@ type FillominoSolution = VertexValueSolution<number>;
 
 export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 	static {
-		registerPuzzle('fillomino', {
+		registerPuzzle({
 			name: 'Fillomino',
 			instructions: 'Enter a rectangular grid of numeric cell clues.',
 			example:

@@ -39,7 +39,7 @@ interface ConstructionPearl {
 
 export class MasyuPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 	static {
-		registerPuzzle('masyu', {
+		registerPuzzle({
 			name: 'Masyu',
 			instructions:
 				'Enter B for black pearls and W for white pearls, one cell per grid vertex.',

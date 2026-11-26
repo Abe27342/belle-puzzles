@@ -44,7 +44,7 @@ interface ConstructionPearl {
 
 export class ShingokiPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 	static {
-		registerPuzzle('shingoki', {
+		registerPuzzle({
 			name: 'Shingoki',
 			instructions:
 				'Enter two equally sized grids separated by a blank line: B/W pearl colors, then numeric lengths at the same positions.',
