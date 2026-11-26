@@ -5,11 +5,13 @@ import {
 	createVertexValueModel,
 	ensureNonEmpty,
 	oob,
+	outputFactories,
 	parseNumber,
 	parseTextGrids,
 	type CartesianCoord,
 	type CartesianGridPuzzleProps,
 	type Context,
+	type CreateOutput,
 	type GridVertex,
 	type Solver,
 	type TextGridVisitor,
@@ -46,6 +48,27 @@ type SudokuModel = VertexValueModel<SudokuDigit>;
 
 type SudokuSolution = VertexValueSolution<SudokuDigit>;
 
+const sudokuOutput: CreateOutput = (grid) => {
+	const output = outputFactories.vertexOnlyGrid(grid);
+	const needsSeparator = (position: number) => (position + 1) % 3 === 0;
+	for (const edge of grid.edges()) {
+		const [start, end] = edge.vertices;
+		const horizontal = start.y === end.y;
+		const position = horizontal ? start.x : start.y;
+		const separator = horizontal ? '|' : '-';
+		output.edges.set(
+			edge,
+			constant(needsSeparator(position) ? separator : '')
+		);
+	}
+	for (const face of grid.faces()) {
+		const [x, y] = face.coord;
+		const intersection = needsSeparator(x) && needsSeparator(y);
+		output.faces.set(face, constant(intersection ? '+' : ''));
+	}
+	return output;
+};
+
 export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 	static {
 		registerPuzzle('sudoku', {
@@ -61,7 +84,7 @@ export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 	#givens: Given[];
 
 	constructor(props: SudokuPuzzleProps) {
-		super(props);
+		super(props, sudokuOutput);
 
 		this.#givens = props.givens.map((p) => ({
 			vertex: this.grid.getVertex(p.coord),
@@ -71,24 +94,6 @@ export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 			if (!given.vertex.isInBounds()) {
 				throw new Error(`Given at ${given.vertex} is out of bounds`);
 			}
-		}
-
-		// Setup constant values in the output grid to render the sudoku nicely
-		const needsSeparator = (position: number) => (position + 1) % 3 === 0;
-		for (const edge of this.grid.edges()) {
-			const [start, end] = edge.vertices;
-			const horizontal = start.y === end.y;
-			const position = horizontal ? start.x : start.y;
-			const separator = horizontal ? '|' : '-';
-			this.output.edges.set(
-				edge,
-				constant(needsSeparator(position) ? separator : '')
-			);
-		}
-		for (const face of this.grid.faces()) {
-			const [x, y] = face.coord;
-			const intersection = needsSeparator(x) && needsSeparator(y);
-			this.output.faces.set(face, constant(intersection ? '+' : ''));
 		}
 	}
 

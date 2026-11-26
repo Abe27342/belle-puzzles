@@ -4,6 +4,7 @@ import {
 	createValueModel,
 	GridValueModelProps,
 	ValueModel,
+	ValueModelOptions,
 } from './value-model.js';
 
 export type VertexValueSolution<T extends number> = Map<GridVertex, T>;
@@ -18,6 +19,7 @@ export interface VertexValueOptions<T extends number> {
 	values: readonly T[];
 	/** Omit to display decoded numeric values. */
 	glyphs?: Record<T, string>;
+	bind?: ValueModelOptions<GridVertex, T, CartesianGraphTypes>['bind'];
 }
 
 /**
@@ -34,7 +36,9 @@ export function createVertexValueModel<const T extends number>(
 		keys: props.grid.vertices(),
 		values: options.values,
 		output: props.output,
-		bindings: (output) => output.vertices,
+		bind:
+			options.bind ??
+			((output, vertex, binding) => output.vertices.set(vertex, binding)),
 		name: (vertex) => `v_${vertex}`,
 		glyphs: glyphs === undefined ? undefined : () => glyphs,
 	});

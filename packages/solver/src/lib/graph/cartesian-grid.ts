@@ -428,6 +428,8 @@ class GridFaceImpl extends CartesianTranslatable<GridFace> implements GridFace {
 export interface GridEdge extends Edge<CartesianGraphTypes> {
 	translate(vector: Vector): GridEdge;
 
+	isHorizontal: boolean;
+
 	bearingFrom(incident: GridVertex | GridFace): Vector;
 }
 
@@ -465,6 +467,10 @@ class GridEdgeImpl implements GridEdge {
 
 	public get vertices(): [GridVertex, GridVertex] {
 		return [this.#start, this.#end];
+	}
+
+	public get isHorizontal(): boolean {
+		return this.#start.y === this.#end.y;
 	}
 
 	public toString(): string {
