@@ -124,7 +124,7 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 				values: Array.from({ length: max }, (_, i) => i + 1),
 			}
 		);
-		const { Implies } = context;
+		const { Implies, Iff } = context;
 
 		// Idea behind constraints:
 		// - Each region is given a spanning tree. WLOG, the minimum index vertex is chosen to be the root.

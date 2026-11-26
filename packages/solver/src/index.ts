@@ -19,3 +19,4 @@ export * from './puzzles/slitherlink.js';
 export * from './puzzles/cave.js';
 export * from './puzzles/hashi.js';
 export * from './puzzles/fillomino.js';
+export * from './puzzles/nurikabe.js';

@@ -15,6 +15,12 @@ export interface PuzzleDefinition<TSolution = GraphDisplay> {
  */
 export interface ContextExtended<Name extends string> extends Context<Name> {
 	solver: Solver<Name>;
+
+	/**
+	 * Like `Context<Name>.And`, but works on arrays.
+	 * @returns
+	 */
+	All: (arr: Bool<Name>[]) => Bool<Name>;
 	/**
 	 * Creates a constraint that enforces the variable `a` to be within the bounds `[b, c]`.
 	 *
