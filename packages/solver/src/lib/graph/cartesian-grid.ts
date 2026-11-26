@@ -12,7 +12,7 @@ export class Direction {
 	public static readonly Right: Vector = [1, 0];
 }
 
-interface CartesianGraphTypes {
+export interface CartesianGraphTypes {
 	coord: CartesianCoord;
 	vertex: GridVertex;
 	edge: GridEdge;

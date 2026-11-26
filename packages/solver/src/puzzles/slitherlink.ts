@@ -107,7 +107,7 @@ export class SlitherlinkPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution
 		for (const { count, face } of this.#givens) {
 			const adjacentFaceVariables = Array.from(
 				face.incidentEdges(),
-				(e) => edgeVariables.get(e) ?? oob(e)
+				(e) => edgeVariables.forceGet(e)
 			);
 			solver.add(context.SumArray(adjacentFaceVariables).eq(count));
 		}

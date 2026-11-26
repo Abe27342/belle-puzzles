@@ -12,6 +12,7 @@ import {
 	GridVertex,
 	GridEdge,
 	GridFace,
+	CartesianGraphTypes,
 } from './graph/index.js';
 import type { ContextExtended } from './puzzle.js';
 
@@ -152,13 +153,14 @@ export function* connectedLoopConstraints<T extends ConcreteGraphTypes<T>>(
 		minimalEnabledVariables
 	);
 
-	for (const v of graph.vertices()) {
-		const degree = context.SumArray(
-			Array.from(v.incidentEdges()).map((e) =>
-				indicatorVariables.forceGet(e)
-			)
-		);
+	const graphUtils = createGraphConstraintUtils(
+		context,
+		graph,
+		indicatorVariables
+	);
 
+	for (const v of graph.vertices()) {
+		const degree = graphUtils.degree(v);
 		yield context.Or(degree.eq(0), degree.eq(2));
 	}
 }
@@ -226,10 +228,21 @@ export function* sightLineSumConstraints(
 	yield SumArray(variables).eq(count + variables.length - 1);
 }
 
+export interface GraphConstraintUtils<
+	TConcrete extends ConcreteGraphTypes<TConcrete>
+> {
+	/**
+	 * @param v The vertex whose degree is being calculated.
+	 * @returns The degree of the vertex as per edge indicator variables for edges incident to the vertex.
+	 */
+	degree: (v: TConcrete['vertex']) => Arith<string>;
+}
+
 /**
  * Utility functions for defining constraints on a Cartesian grid in terms of nonnegative edge values.
  */
-export interface CartesianGridConstraintUtils {
+export interface CartesianGridConstraintUtils
+	extends GraphConstraintUtils<CartesianGraphTypes> {
 	/** Constraints and utility functions on edge values used to construct the utils */
 	edges: {
 		/**
@@ -261,12 +274,6 @@ export interface CartesianGridConstraintUtils {
 	 * Shingoki constraints on edge variables used to construct the utils.
 	 */
 	shingoki: ShingokiConstraints;
-
-	/**
-	 * @param v The vertex whose degree is being calculated.
-	 * @returns The degree of the vertex as per edge indicator variables for edges incident to the vertex.
-	 */
-	degree: (v: GridVertex) => Arith<string>;
 }
 
 /**
@@ -297,10 +304,10 @@ export interface ShingokiConstraints {
 export function createCartesianGridConstraintUtils(
 	context: ContextExtended<string>,
 	grid: CartesianGridGraph,
-	edgeValues: Map<GridEdge, Arith<string>>
+	edgeIndicators: ForceGetMap<GridEdge, Arith<string>>
 ): CartesianGridConstraintUtils {
 	const { And, Or, SumArray, zero } = context;
-	const getEdgeVar = (edge: GridEdge) => edgeValues.get(edge) ?? zero;
+	const getEdgeVar = (edge: GridEdge) => edgeIndicators.get(edge) ?? zero;
 	const getEdgeVarFromEndpoints = (a: GridVertex, b: GridVertex) => {
 		const edge = grid.getEdge(a, b);
 		return getEdgeVar(edge);
@@ -378,10 +385,8 @@ export function createCartesianGridConstraintUtils(
 		},
 	};
 
-	const degree = (v: GridVertex) =>
-		SumArray(Array.from(v.incidentEdges(), getEdgeVar));
-
 	return {
+		...createGraphConstraintUtils(context, grid, edgeIndicators),
 		edges: {
 			getEdgeVar,
 			goesVerticallyThrough,
@@ -391,6 +396,23 @@ export function createCartesianGridConstraintUtils(
 		},
 		masyu,
 		shingoki,
+	};
+}
+
+export function createGraphConstraintUtils<
+	TConcrete extends ConcreteGraphTypes<TConcrete>
+>(
+	context: ContextExtended<string>,
+	grid: PlanarGraph<TConcrete>,
+	edgeIndicators: ForceGetMap<TConcrete['edge'], Arith<string>>
+): GraphConstraintUtils<TConcrete> {
+	const { SumArray } = context;
+	const degree = (v: TConcrete['vertex']) =>
+		SumArray(
+			Array.from(v.incidentEdges(), (e) => edgeIndicators.forceGet(e))
+		);
+
+	return {
 		degree,
 	};
 }

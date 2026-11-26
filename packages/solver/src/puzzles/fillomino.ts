@@ -4,6 +4,7 @@ import {
 	CartesianGridGraph,
 	CartesianGridPuzzle,
 	constant,
+	createForceGetMap,
 	createVertexValueModel,
 	ensureNonEmpty,
 	oob,
@@ -315,16 +316,11 @@ function createVariableMap<TKey>(
 ): Map<TKey, Arith<string>> & {
 	forceGet(key: TKey): Arith<string>;
 } {
-	const map = new Map<TKey, Arith<string>>() as Map<TKey, Arith<string>> & {
-		forceGet(key: TKey): Arith<string>;
-	};
+	const map = createForceGetMap<TKey, Arith<string>>();
 	for (const key of keys) {
 		const variable = context.Int.const(`${prefix}_${key}`);
 		constrain(variable);
 		map.set(key, variable);
 	}
-	map.forceGet = (key: TKey) => {
-		return map.get(key) ?? oob(key);
-	};
 	return map;
 }
