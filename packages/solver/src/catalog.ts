@@ -2,12 +2,15 @@ import type { CartesianGridPuzzle } from './lib/cartesian-grid-puzzle.js';
 
 export interface PuzzleRegistration {
 	name: string;
-	aliases?: string[];
 	instructions: string;
 	example: string;
 	parser: {
 		fromText(text: string): CartesianGridPuzzle<unknown>;
 	};
+}
+
+export interface AliasedPuzzleRegistration extends PuzzleRegistration {
+	aliases?: string[];
 }
 
 const registrations: Record<string, PuzzleRegistration> = {};
@@ -19,23 +22,22 @@ export function isPuzzleType(value: string): boolean {
 	return Object.prototype.hasOwnProperty.call(registrations, value);
 }
 
-export function registerPuzzle(definition: PuzzleRegistration): void {
+function registerPuzzleType(definition: PuzzleRegistration): void {
 	const type = definition.name;
 	if (isPuzzleType(type)) {
 		throw new Error(`Puzzle type "${type}" is already registered.`);
 	}
 
-	const register = (name: string) =>
-		Object.defineProperty(registrations, name, {
-			value: Object.freeze(definition),
-			enumerable: true,
-		});
+	Object.defineProperty(registrations, type, {
+		value: Object.freeze(definition),
+		enumerable: true,
+	});
+}
 
-	register(type);
-	for (const alias of definition.aliases ?? []) {
-		if (isPuzzleType(alias)) {
-			throw new Error(`Puzzle alias "${alias}" is already registered.`);
-		}
-		register(alias);
+export function registerPuzzle(definition: AliasedPuzzleRegistration): void {
+	const { name, aliases, ...rest } = definition;
+	registerPuzzleType({ name, ...rest });
+	for (const alias of aliases ?? []) {
+		registerPuzzleType({ name: alias, ...rest });
 	}
 }
