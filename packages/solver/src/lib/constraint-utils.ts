@@ -3,7 +3,12 @@
  */
 
 import type { Arith, Bool, Context, Solver } from 'z3-solver';
-import { ensureNonEmpty, ForceGetMap, oob } from './utils.js';
+import {
+	createForceGetMap,
+	ensureNonEmpty,
+	ForceGetMap,
+	oob,
+} from './utils.js';
 import {
 	CartesianGridGraph,
 	HasNeighbors,
@@ -26,12 +31,46 @@ export function createConstraintExtensions<Name extends string>(
 
 	const zero = context.Int.const('zero');
 	solver.add(zero.eq(0));
+
+	const ints = <TKey>(
+		keys: Iterable<TKey>,
+		optionsArg?: Partial<{ min: number; max: number; name: string }>
+	): ForceGetMap<TKey, Arith<Name>> => {
+		const options = optionsArg ?? {};
+		const map = createForceGetMap<TKey, Arith<Name>>();
+		for (const key of keys) {
+			const variable = context.Int.const(
+				`${options.name ?? ''}_${key}_${crypto.randomUUID()}`
+			);
+
+			if (options.min !== undefined) {
+				solver.add(variable.ge(options.min));
+			}
+			if (options.max !== undefined) {
+				solver.add(variable.le(options.max));
+			}
+
+			map.set(key, variable);
+		}
+
+		return map;
+	};
+
+	const indicators = <TKey>(
+		keys: Iterable<TKey>,
+		optionsArg?: Partial<{ name: string }>
+	): ForceGetMap<TKey, Arith<Name>> => {
+		return ints(keys, { min: 0, max: 1, name: optionsArg?.name });
+	};
+
 	return {
 		...context,
 		Bound: bound,
 		SumArray: (arr: Arith<Name>[]) =>
 			Sum(...ensureNonEmpty(arr.length > 0 ? arr : [zero])),
 		zero,
+		ints,
+		indicators,
 	};
 }
 

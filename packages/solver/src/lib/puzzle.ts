@@ -1,5 +1,6 @@
 import type { Solver, Context, Expr, Model, Arith, Bool } from 'z3-solver';
 import type { GraphOutput, GraphDisplay } from './graph-output.js';
+import { ForceGetMap } from './utils.js';
 
 export interface PuzzleDefinition<TSolution = GraphDisplay> {
 	build(
@@ -31,6 +32,24 @@ export interface ContextExtended<Name extends string> extends Context<Name> {
 	 * Constant expression representing the numeric value zero.
 	 */
 	zero: Arith<Name>;
+
+	/**
+	 * Create an integer variable for each key in some iterable, and return a {@link ForceGetMap} for the result.
+	 *
+	 * Integers can be optionally constrained to a minimum/maximum, inclusive on both ends.
+	 */
+	ints: <TKey>(
+		keys: Iterable<TKey>,
+		options?: Partial<{ min: number; max: number; name: string }>
+	) => ForceGetMap<TKey, Arith<Name>>;
+
+	/**
+	 * Like {@link ints}, but creates indicator variables that are constrained to be 0 or 1.
+	 */
+	indicators: <TKey>(
+		keys: Iterable<TKey>,
+		options?: Partial<{ name: string }>
+	) => ForceGetMap<TKey, Arith<Name>>;
 }
 
 export interface BuiltPuzzle<TSolution = GraphDisplay> {

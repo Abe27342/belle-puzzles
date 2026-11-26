@@ -1,20 +1,17 @@
 import { registerPuzzle } from '../catalog.js';
 import {
-	Arith,
 	CartesianGridGraph,
 	CartesianGridPuzzle,
 	constant,
-	createForceGetMap,
+	ContextExtended,
 	createVertexValueModel,
 	ensureNonEmpty,
-	oob,
 	parseNumber,
 	parseTextGrids,
 	variable,
 	type CartesianCoord,
 	type CartesianGridPuzzleProps,
 	type CartesianGridRenderOptions,
-	type Context,
 	type GridVertex,
 	type Solver,
 	type TextGridVisitor,
@@ -114,7 +111,7 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 	}
 
 	public override build(
-		context: Context<string>,
+		context: ContextExtended<string>,
 		solver: Solver<string>
 	): FillominoModel {
 		const grid = this.#cellGrid;
@@ -150,15 +147,9 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 			solver.add(vertexNumbers.forceGet(vertex).eq(value));
 		}
 
-		// Now we need directed edge variables...
-		const treeIndicators = createVariableMap(
-			context,
-			'edgePresence',
-			grid.directedEdges(),
-			(variable) => {
-				solver.add(variable.ge(0).and(variable.le(1)));
-			}
-		);
+		const treeIndicators = context.indicators(grid.directedEdges(), {
+			name: 'edgeIndicators',
+		});
 
 		// Enforce the indicator variables form a tree.
 		for (const edge of grid.directedEdges()) {
@@ -177,14 +168,11 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 		}
 
 		// Number of vertices in the subtree rooted at each vertex.
-		const subtreeCounts = createVariableMap(
-			context,
-			'rootedSubtreeSize',
-			grid.vertices(),
-			(variable) => {
-				solver.add(variable.ge(1).and(variable.le(max)));
-			}
-		);
+		const subtreeCounts = context.ints(grid.vertices(), {
+			min: 1,
+			max,
+			name: 'rootedSubtreeSize',
+		});
 
 		for (const vertex of grid.vertices()) {
 			const neighbors = [...vertex.neighbors()];
@@ -211,14 +199,12 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 			);
 		}
 
-		const rootAssignments = createVariableMap(
-			context,
-			'rootOf',
-			grid.vertices(),
-			(variable) => {
-				solver.add(variable.ge(0).and(variable.lt(max)));
-			}
-		);
+		// Maps each vertex to its assigned root.
+		const rootAssignments = context.ints(grid.vertices(), {
+			min: 0,
+			max,
+			name: 'rootOf',
+		});
 
 		for (const vertex of grid.vertices()) {
 			const [x, y] = vertex.coord;
@@ -306,21 +292,4 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 		}
 		return model;
 	}
-}
-
-function createVariableMap<TKey>(
-	context: Context<string>,
-	prefix: string,
-	keys: Iterable<TKey>,
-	constrain: (variable: Arith<string>) => void
-): Map<TKey, Arith<string>> & {
-	forceGet(key: TKey): Arith<string>;
-} {
-	const map = createForceGetMap<TKey, Arith<string>>();
-	for (const key of keys) {
-		const variable = context.Int.const(`${prefix}_${key}`);
-		constrain(variable);
-		map.set(key, variable);
-	}
-	return map;
 }
