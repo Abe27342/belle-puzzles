@@ -9,6 +9,19 @@ export interface ConcreteGraphTypes<
 }
 
 /**
+ * A set of {@link ConcreteGraphTypes} that represents a generic planar graph without parameters.
+ * Useful for convenience when working with planar graphs in a generic context.
+ */
+export interface UnknownPlanarGraph
+	extends ConcreteGraphTypes<UnknownPlanarGraph> {
+	coord: unknown;
+	vertex: Vertex<UnknownPlanarGraph>;
+	directedEdge: DirectedEdge<UnknownPlanarGraph>;
+	edge: Edge<UnknownPlanarGraph>;
+	face: Face<UnknownPlanarGraph>;
+}
+
+/**
  * Materialized representation of a planar graph whose vertices, edges, and faces are expressed in some coordinate system.
  *
  * Implementations should provide stable object identities for entities within the graph. This enables keying maps and sets by those entities.

@@ -1,5 +1,11 @@
 import type { Expr, Model } from 'z3-solver';
-import type { GridEdge, GridFace, GridVertex } from './graph/index.js';
+import type {
+	ConcreteGraphTypes,
+	GridEdge,
+	GridFace,
+	GridVertex,
+	PlanarGraph,
+} from './graph/index.js';
 
 /**
  * Represents a binding that can be resolved to a string for some Z3 model at display time.
@@ -15,10 +21,10 @@ export interface RenderBinding {
 /**
  * Maps each grid vertex/edge/face to a {@link RenderBinding} for display purposes.
  */
-export interface GraphOutput {
-	vertices: Map<GridVertex, RenderBinding>;
-	edges: Map<GridEdge, RenderBinding>;
-	faces: Map<GridFace, RenderBinding>;
+export interface GraphOutput<TConcrete extends ConcreteGraphTypes<TConcrete>> {
+	vertices: Map<TConcrete['vertex'], RenderBinding>;
+	edges: Map<TConcrete['edge'], RenderBinding>;
+	faces: Map<TConcrete['face'], RenderBinding>;
 }
 
 /**
@@ -27,14 +33,16 @@ export interface GraphOutput {
  * Empty strings collapse otherwise empty columns. Multi-character strings are
  * padded to column widths, and horizontal edge glyphs repeat to fill their columns.
  */
-export interface GraphDisplay {
-	vertices: ReadonlyMap<GridVertex, string>;
-	edges: ReadonlyMap<GridEdge, string>;
-	faces: ReadonlyMap<GridFace, string>;
+export interface GraphDisplay<TConcrete extends ConcreteGraphTypes<TConcrete>> {
+	vertices: ReadonlyMap<TConcrete['vertex'], string>;
+	edges: ReadonlyMap<TConcrete['edge'], string>;
+	faces: ReadonlyMap<TConcrete['face'], string>;
 }
 
 /** Each build gets its own maps, optionally seeded with constant bindings. */
-export function createGraphOutput(source?: GraphOutput): GraphOutput {
+export function createGraphOutput<
+	TConcrete extends ConcreteGraphTypes<TConcrete>
+>(source?: GraphOutput<TConcrete>): GraphOutput<TConcrete> {
 	return {
 		vertices: new Map(source?.vertices),
 		edges: new Map(source?.edges),
@@ -47,6 +55,25 @@ export function constant<T>(
 	format: (value: T) => string = String
 ): RenderBinding {
 	return { resolve: () => format(value) };
+}
+
+export function constantGraphOutput<
+	TConcrete extends ConcreteGraphTypes<TConcrete>
+>(
+	graph: PlanarGraph<TConcrete>,
+	characters: { vertices: string; edges: string; faces: string }
+): GraphOutput<TConcrete> {
+	const output = createGraphOutput<TConcrete>();
+	for (const vertex of graph.vertices()) {
+		output.vertices.set(vertex, constant(characters.vertices));
+	}
+	for (const edge of graph.edges()) {
+		output.edges.set(edge, constant(characters.edges));
+	}
+	for (const face of graph.faces()) {
+		output.faces.set(face, constant(characters.faces));
+	}
+	return output;
 }
 
 export function variable(expression: Expr<string>): RenderBinding;
@@ -76,10 +103,12 @@ export function variable<T>(
  * @remarks
  * This happens eagerly so subsequent solves (which may use the same variables) cannot change an earlier display.
  */
-export function resolveGraphOutput(
-	output: GraphOutput,
+export function resolveGraphOutput<
+	TConcrete extends ConcreteGraphTypes<TConcrete>
+>(
+	output: GraphOutput<TConcrete>,
 	model: Model<string>
-): GraphDisplay {
+): GraphDisplay<TConcrete> {
 	const resolve = <T>(bindings: Map<T, RenderBinding>) =>
 		new Map(
 			Array.from(bindings, ([key, binding]) => [

@@ -3,6 +3,7 @@ import {
 	puzzleTypes,
 	renderCartesianGrid,
 	type CartesianGridPuzzle,
+	type CartesianGraphTypes,
 } from '@belle-puzzles/solver';
 import {
 	SolverSession,
@@ -13,7 +14,7 @@ import { errorMessage, type SolverErrorStage } from './errors';
 import { solverRenderOptions } from './rendering';
 
 let puzzle: CartesianGridPuzzle<unknown>;
-let session: SolverSession<unknown>;
+let session: SolverSession<CartesianGraphTypes, unknown>;
 let busy = false;
 let disposing = false;
 

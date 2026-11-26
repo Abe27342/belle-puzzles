@@ -29,6 +29,8 @@ export function createConstraintExtensions<Name extends string>(
 	const bound = (a: Arith<Name>, b: number, c: number) =>
 		And(a.ge(b), a.le(c));
 
+	const All: (arr: Bool<Name>[]) => Bool<Name> = (arr) => And(...arr);
+
 	const zero = context.Int.const('zero');
 	solver.add(zero.eq(0));
 
@@ -66,6 +68,7 @@ export function createConstraintExtensions<Name extends string>(
 	const extendedContext: Omit<ContextExtended<Name>, 'graphConstraints'> = {
 		...context,
 		solver,
+		All,
 		Bound: bound,
 		SumArray: (arr: Arith<Name>[]) =>
 			Sum(...ensureNonEmpty(arr.length > 0 ? arr : [zero])),
@@ -104,6 +107,7 @@ export function createConstraintExtensions<Name extends string>(
  *
  * @param valueVariables - A map from vertices to their corresponding nonnegative values, which indicate whether the vertex is enabled.
  * @param minimalEnabledVariables - An iterable of vertices such that at least one of them must be enabled. The smaller the set, the better.
+ * @param good - A predicate that determines whether a variable is considered to be enabled. Defaults to checking if the value is greater than 0.
  * @remarks
  * The graph these constraints operate on does not need to conceptually align with the graph the rest of the puzzle generally uses.
  *
@@ -112,34 +116,38 @@ export function createConstraintExtensions<Name extends string>(
  */
 export function* connectedConstraints<T extends HasNeighbors<T>>(
 	context: ContextExtended<string>,
-	valueVariables: Map<HasNeighbors<T>, Arith<string>>,
-	minimalEnabledVariables: Iterable<HasNeighbors<T>>
+	valueVariables: ForceGetMap<HasNeighbors<T>, Arith<string>>,
+	minimalEnabledVariables: Iterable<HasNeighbors<T>>,
+	good: (v: Arith<string>) => Bool<string> = (v) => v.gt(0)
 ) {
-	const { Int, Or, And, Implies, Bound, Iff } = context;
+	const { Or, And, Implies, Iff, Not } = context;
 
 	const vertices = Array.from(valueVariables.keys());
-	const connectivityVariables = new Map<HasNeighbors<T>, Arith<string>>();
+	const connectivityVariables = context.ints(vertices, {
+		min: -1,
+		max: vertices.length,
+		name: 'connectivity',
+	});
 	const possibleZeroVertices = new Set(minimalEnabledVariables);
 
 	for (const v of vertices) {
-		const conVar = Int.const(`connectivity_${v}`);
-		connectivityVariables.set(v, conVar);
-		const valueVariable = valueVariables.get(v) ?? oob(v);
+		const valueVariable = valueVariables.forceGet(v);
+		const conVar = connectivityVariables.forceGet(v);
 		yield* [
-			Bound(conVar, -1, vertices.length),
-			Iff(valueVariable.eq(0), conVar.eq(-1)),
-			Iff(valueVariable.gt(0), conVar.ge(0)),
+			Iff(Not(good(valueVariable)), conVar.eq(-1)),
+			Iff(good(valueVariable), conVar.ge(0)),
 		];
 	}
 
-	const varFor = (v: HasNeighbors<T>) =>
-		connectivityVariables.get(v) ?? oob(v);
+	const varFor = (v: HasNeighbors<T>) => connectivityVariables.forceGet(v);
 	// In this block, we enforce that exactly one of the minimal enabled variables is assigned 0, and all other vertices are non-zero.
 	// This would be expressible without `minimalEnabledVariables`, but the obvious way uses O(N^2) terms.
 	{
 		// Enforce that at least one of the minimal enabled variables is enabled.
 		yield Or(
-			...Array.from(possibleZeroVertices).map((v) => varFor(v).eq(0))
+			...Array.from(possibleZeroVertices).map((v) =>
+				connectivityVariables.forceGet(v).eq(0)
+			)
 		);
 		for (const variable of possibleZeroVertices) {
 			// Enforce that exactly one of the minimal enabled variables is 0.
@@ -452,9 +460,95 @@ function createGraphConstraintUtils<
 		map: ForceGetMap<TConcrete['directedEdge'], Arith<Name>>
 	) => SumArray(Array.from(v.outgoingEdges(), (e) => map.forceGet(e)));
 
+	const treeStructureVariables = () => {
+		const vertexToId = createForceGetMap<TConcrete['vertex'], number>(
+			Array.from(grid.vertices(), (v, i) => [v, i])
+		);
+		const max = vertexToId.size;
+
+		const { solver, Not, And, If, Implies } = context;
+		const edgeIndicators = context.indicators(grid.directedEdges(), {
+			name: 'edgeIndicators',
+		});
+		// Number of vertices in the subtree rooted at each vertex.
+		const subtreeSizes = context.ints(grid.vertices(), {
+			min: 1,
+			max,
+			name: 'rootedSubtreeSize',
+		});
+		// Maps each vertex to its assigned root.
+		const rootAssignments = context.ints(grid.vertices(), {
+			min: 0,
+			max,
+			name: 'rootOf',
+		});
+
+		// Enforce the indicator variables form a tree.
+		for (const edge of grid.directedEdges()) {
+			// At most one of an edge and its inversion can be enabled.
+			solver.add(
+				Not(
+					And(
+						...[edge, edge.invert()].map((e) =>
+							edgeIndicators.forceGet(e).eq(1)
+						)
+					)
+				)
+			);
+
+			solver.add(inDegree(edge.to, edgeIndicators).le(1));
+		}
+
+		for (const vertex of grid.vertices()) {
+			// Enforce subtree counts correctly represent the number of vertices in the subtree rooted at this vertex.
+			solver.add(
+				subtreeSizes.forceGet(vertex).eq(
+					SumArray(
+						Array.from(vertex.outgoingEdges(), (e) => {
+							return If(
+								edgeIndicators.forceGet(e).eq(1),
+								subtreeSizes.forceGet(e.to),
+								0
+							);
+						})
+					).add(1)
+				)
+			);
+		}
+
+		for (const vertex of grid.vertices()) {
+			const vertexIndex = vertexToId.forceGet(vertex);
+			solver.add(
+				// Each root vertex is identified by its flattened index.
+				Implies(
+					inDegree(vertex, edgeIndicators).eq(0),
+					rootAssignments.forceGet(vertex).eq(vertexIndex)
+				),
+				// Use the lowest possible index for each root. This is not a necessary constraint for correctness, but it
+				// vastly reduces the search space and is necessary in practice.
+				rootAssignments.forceGet(vertex).le(vertexIndex)
+			);
+		}
+
+		for (const edge of grid.directedEdges()) {
+			const fromAssignment = rootAssignments.forceGet(edge.from);
+			const toAssignment = rootAssignments.forceGet(edge.to);
+			solver.add(
+				// All vertices that are part of the same tree must be assigned the same unique root.
+				Implies(
+					edgeIndicators.forceGet(edge).eq(1),
+					fromAssignment.eq(toAssignment)
+				)
+			);
+		}
+
+		return { edgeIndicators, subtreeSizes, rootAssignments };
+	};
+
 	return {
 		degree,
 		inDegree,
 		outDegree,
+		treeStructureVariables,
 	};
 }

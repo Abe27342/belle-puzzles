@@ -1,5 +1,5 @@
 import type { Context, Solver } from 'z3-solver';
-import type { GridEdge } from './graph/index.js';
+import type { CartesianGraphTypes, GridEdge } from './graph/index.js';
 import {
 	createValueModel,
 	GridValueModelProps,
@@ -12,7 +12,11 @@ import {
 
 export type EdgeValueSolution<T extends number> = Map<GridEdge, T>;
 
-export type EdgeValueModel<T extends number> = ValueModel<GridEdge, T>;
+export type EdgeValueModel<T extends number> = ValueModel<
+	GridEdge,
+	T,
+	CartesianGraphTypes
+>;
 
 export interface EdgeValueOptions<T extends number> {
 	values: readonly T[];

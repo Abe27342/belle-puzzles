@@ -3,11 +3,14 @@ import type { GraphOutput, GraphDisplay } from './graph-output.js';
 import { ForceGetMap } from './utils.js';
 import { ConcreteGraphTypes, PlanarGraph } from './graph/index.js';
 
-export interface PuzzleDefinition<TSolution = GraphDisplay> {
+export interface PuzzleDefinition<
+	TGraph extends ConcreteGraphTypes<TGraph>,
+	TSolution = GraphDisplay<TGraph>
+> {
 	build(
 		context: ContextExtended<string>,
 		solver: Solver<string>
-	): BuiltPuzzle<TSolution>;
+	): BuiltPuzzle<TGraph, TSolution>;
 }
 
 /**
@@ -15,6 +18,12 @@ export interface PuzzleDefinition<TSolution = GraphDisplay> {
  */
 export interface ContextExtended<Name extends string> extends Context<Name> {
 	solver: Solver<Name>;
+
+	/**
+	 * Like `Context<Name>.And`, but works on arrays.
+	 * @returns
+	 */
+	All: (arr: Bool<Name>[]) => Bool<Name>;
 	/**
 	 * Creates a constraint that enforces the variable `a` to be within the bounds `[b, c]`.
 	 *
@@ -82,10 +91,49 @@ export interface GraphConstraintExtensions<
 		v: TConcrete['vertex'],
 		edgeIndicators: ForceGetMap<TConcrete['directedEdge'], Arith<Name>>
 	) => Arith<Name>;
+
+	/**
+	 * @returns Maps of variables representing an inferred division of the graph into some number of rooted subtrees, each one consisting
+	 * of adjacent vertices.
+	 *
+	 * This set of variables is useful for puzzles that involve "connected regions of some known size", e.g. nurikabe and fillomino.
+	 *
+	 * BEWARE: Callers of this function should place constraints on `rootAssignments` enforcing:
+	 * ```
+	 * Implies(
+	 *     vertex A and B have the same root assignment,
+	 *     vertex A and B are in the same tree
+	 * )
+	 *
+	 * ```
+	 * Expressing this statement requires domain knowledge about the puzzle, so it is not done by the shared helper.
+	 * The converse is handled automatically.
+	 *
+	 * @remarks
+	 * TODO: These constraints can be tricky to formulate in a way that makes Z3 efficient. Add guidance on the types of constraints that callers should add
+	 * to enable efficient deduction similar to the one above, or figure out better ways to encapsulate things.
+	 */
+	treeStructureVariables: () => {
+		/**
+		 * The number of vertices in the subtree rooted at each vertex.
+		 */
+		subtreeSizes: ForceGetMap<TConcrete['vertex'], Arith<Name>>;
+		/**
+		 * Whether or not each directed edge is enabled in the tree structure
+		 */
+		edgeIndicators: ForceGetMap<TConcrete['directedEdge'], Arith<Name>>;
+		/**
+		 * Maps each vertex to the id of the vertex of its structural tree root.
+		 */
+		rootAssignments: ForceGetMap<TConcrete['vertex'], Arith<Name>>;
+	};
 }
 
-export interface BuiltPuzzle<TSolution = GraphDisplay> {
-	output: GraphOutput;
+export interface BuiltPuzzle<
+	TGraph extends ConcreteGraphTypes<TGraph>,
+	TSolution = GraphDisplay<TGraph>
+> {
+	output: GraphOutput<TGraph>;
 	/**
 	 * Assignments that distinguish puzzle solutions. Exclude auxiliary variables
 	 * such as connectivity ranks, even when they have multiple valid assignments.
@@ -93,14 +141,17 @@ export interface BuiltPuzzle<TSolution = GraphDisplay> {
 	 * Two solutions should be considered unique iff they differ in at least one of the key assignments.
 	 */
 	keyAssignments: readonly Expr<string>[];
-	decodeSolution(model: Model<string>, output: GraphDisplay): TSolution;
+	decodeSolution(
+		model: Model<string>,
+		output: GraphDisplay<TGraph>
+	): TSolution;
 }
 
 /** Default model for puzzles whose resolved display is their desired output. */
-export function createGraphModel(
-	output: GraphOutput,
+export function createGraphModel<TGraph extends ConcreteGraphTypes<TGraph>>(
+	output: GraphOutput<TGraph>,
 	keyAssignments: readonly Expr<string>[]
-): BuiltPuzzle {
+): BuiltPuzzle<TGraph> {
 	return {
 		output,
 		keyAssignments,
@@ -108,6 +159,6 @@ export function createGraphModel(
 	};
 }
 
-export type SolveResult<TSolution> =
-	| { status: 'sat'; solution: TSolution; output: GraphDisplay }
+export type SolveResult<TGraph extends ConcreteGraphTypes<TGraph>, TSolution> =
+	| { status: 'sat'; solution: TSolution; output: GraphDisplay<TGraph> }
 	| { status: 'unsat' | 'unknown' };

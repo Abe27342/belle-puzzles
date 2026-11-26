@@ -1,5 +1,5 @@
 import type { Context, Solver } from 'z3-solver';
-import { CartesianGridGraph } from './graph/index.js';
+import { CartesianGraphTypes, CartesianGridGraph } from './graph/index.js';
 import { createGraphOutput, GraphDisplay } from './graph-output.js';
 import type { BuiltPuzzle, PuzzleDefinition } from './puzzle.js';
 
@@ -24,11 +24,12 @@ export interface CartesianGridPuzzleProps {
 /**
  * Convenience class for Cartesian grid puzzles.
  */
-export abstract class CartesianGridPuzzle<TSolution = GraphDisplay>
-	implements PuzzleDefinition<TSolution>
+export abstract class CartesianGridPuzzle<
+	TSolution = GraphDisplay<CartesianGraphTypes>
+> implements PuzzleDefinition<CartesianGraphTypes, TSolution>
 {
 	public readonly grid: CartesianGridGraph;
-	public readonly output = createGraphOutput();
+	public readonly output = createGraphOutput<CartesianGraphTypes>();
 	public readonly renderOptions: CartesianGridRenderOptions;
 
 	constructor(props: CartesianGridPuzzleProps) {
@@ -50,7 +51,7 @@ export abstract class CartesianGridPuzzle<TSolution = GraphDisplay>
 	public abstract build(
 		context: Context<string>,
 		solver: Solver<string>
-	): BuiltPuzzle<TSolution>;
+	): BuiltPuzzle<CartesianGraphTypes, TSolution>;
 }
 
 /**
@@ -59,7 +60,7 @@ export abstract class CartesianGridPuzzle<TSolution = GraphDisplay>
  */
 export function renderCartesianGrid(
 	grid: CartesianGridGraph,
-	display: GraphDisplay,
+	display: GraphDisplay<CartesianGraphTypes>,
 	options: Partial<CartesianGridRenderOptions> = {}
 ): string {
 	const vertexChar =
