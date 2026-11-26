@@ -452,9 +452,95 @@ function createGraphConstraintUtils<
 		map: ForceGetMap<TConcrete['directedEdge'], Arith<Name>>
 	) => SumArray(Array.from(v.outgoingEdges(), (e) => map.forceGet(e)));
 
+	const treeStructureVariables = () => {
+		const vertexToId = createForceGetMap<TConcrete['vertex'], number>(
+			Array.from(grid.vertices(), (v, i) => [v, i])
+		);
+		const max = vertexToId.size;
+
+		const { solver, Not, And, If, Implies } = context;
+		const edgeIndicators = context.indicators(grid.directedEdges(), {
+			name: 'edgeIndicators',
+		});
+		// Number of vertices in the subtree rooted at each vertex.
+		const subtreeSizes = context.ints(grid.vertices(), {
+			min: 1,
+			max,
+			name: 'rootedSubtreeSize',
+		});
+		// Maps each vertex to its assigned root.
+		const rootAssignments = context.ints(grid.vertices(), {
+			min: 0,
+			max,
+			name: 'rootOf',
+		});
+
+		// Enforce the indicator variables form a tree.
+		for (const edge of grid.directedEdges()) {
+			// At most one of an edge and its inversion can be enabled.
+			solver.add(
+				Not(
+					And(
+						...[edge, edge.invert()].map((e) =>
+							edgeIndicators.forceGet(e).eq(1)
+						)
+					)
+				)
+			);
+
+			solver.add(inDegree(edge.to, edgeIndicators).le(1));
+		}
+
+		for (const vertex of grid.vertices()) {
+			// Enforce subtree counts correctly represent the number of vertices in the subtree rooted at this vertex.
+			solver.add(
+				subtreeSizes.forceGet(vertex).eq(
+					SumArray(
+						Array.from(vertex.outgoingEdges(), (e) => {
+							return If(
+								edgeIndicators.forceGet(e).eq(1),
+								subtreeSizes.forceGet(e.to),
+								0
+							);
+						})
+					).add(1)
+				)
+			);
+		}
+
+		for (const vertex of grid.vertices()) {
+			const vertexIndex = vertexToId.forceGet(vertex);
+			solver.add(
+				// Each root vertex is identified by its flattened index.
+				Implies(
+					inDegree(vertex, edgeIndicators).eq(0),
+					rootAssignments.forceGet(vertex).eq(vertexIndex)
+				),
+				// Use the lowest possible index for each root. This is not a necessary constraint for correctness, but it
+				// vastly reduces the search space and is necessary in practice.
+				rootAssignments.forceGet(vertex).le(vertexIndex)
+			);
+		}
+
+		for (const edge of grid.directedEdges()) {
+			solver.add(
+				// All vertices that are part of the same tree must be assigned the same unique root.
+				Implies(
+					edgeIndicators.forceGet(edge).eq(1),
+					rootAssignments
+						.forceGet(edge.from)
+						.eq(rootAssignments.forceGet(edge.to))
+				)
+			);
+		}
+
+		return { edgeIndicators, subtreeSizes, rootAssignments };
+	};
+
 	return {
 		degree,
 		inDegree,
 		outDegree,
+		treeStructureVariables,
 	};
 }

@@ -124,7 +124,7 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 				values: Array.from({ length: max }, (_, i) => i + 1),
 			}
 		);
-		const { Not, And, SumArray, Implies, If } = context;
+		const { Implies } = context;
 
 		// Idea behind constraints:
 		// - Each region is given a spanning tree. WLOG, the minimum index vertex is chosen to be the root.
@@ -132,82 +132,24 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 		// - Each vertex is associated with the root of its component, which allows enforcing adjacent cells are only given
 		//   the same number when they are part of the same component.
 		const vertexNumbers = model.variables;
-
-		const inDegree = (v: GridVertex) =>
-			context.graphConstraints(grid).inDegree(v, treeIndicators);
+		const graphConstraints = context.graphConstraints(grid);
+		const { edgeIndicators, subtreeSizes, rootAssignments } =
+			graphConstraints.treeStructureVariables();
 
 		// Solution agrees with provided constraints.
 		for (const { vertex, value } of this.#givens) {
 			solver.add(vertexNumbers.forceGet(vertex).eq(value));
 		}
 
-		const treeIndicators = context.indicators(grid.directedEdges(), {
-			name: 'edgeIndicators',
-		});
-
-		// Enforce the indicator variables form a tree.
-		for (const edge of grid.directedEdges()) {
-			// At most one of an edge and its inversion can be enabled.
-			solver.add(
-				Not(
-					And(
-						...[edge, edge.invert()].map((e) =>
-							treeIndicators.forceGet(e).eq(1)
-						)
-					)
-				)
-			);
-
-			solver.add(inDegree(edge.to).le(1));
-		}
-
-		// Number of vertices in the subtree rooted at each vertex.
-		const subtreeCounts = context.ints(grid.vertices(), {
-			min: 1,
-			max,
-			name: 'rootedSubtreeSize',
-		});
+		const inDegree = (v: GridVertex) =>
+			graphConstraints.inDegree(v, edgeIndicators);
 
 		for (const vertex of grid.vertices()) {
-			// Enforce subtree counts correctly represent the number of vertices in the subtree rooted at this vertex.
 			solver.add(
-				subtreeCounts.forceGet(vertex).eq(
-					SumArray(
-						Array.from(vertex.outgoingEdges(), (e) => {
-							return If(
-								treeIndicators.forceGet(e).eq(1),
-								subtreeCounts.forceGet(e.to),
-								0
-							);
-						})
-					).add(1)
-				)
-			);
-		}
-
-		// Maps each vertex to its assigned root.
-		const rootAssignments = context.ints(grid.vertices(), {
-			min: 0,
-			max,
-			name: 'rootOf',
-		});
-
-		for (const vertex of grid.vertices()) {
-			const [x, y] = vertex.coord;
-			const flattenedVertexIndex = y * grid.width + x;
-			solver.add(
-				// Each root vertex is identified by its flattened index.
-				Implies(
-					inDegree(vertex).eq(0),
-					rootAssignments.forceGet(vertex).eq(flattenedVertexIndex)
-				),
-				// Use the lowest possible index for each root. This is not a necessary constraint for correctness, but it
-				// vastly reduces the search space and is necessary in practice.
-				rootAssignments.forceGet(vertex).le(flattenedVertexIndex),
 				// The root of the tree must have its vertex count equal to its assigned number in the fillomino grid.
 				Implies(
 					inDegree(vertex).eq(0),
-					subtreeCounts
+					subtreeSizes
 						.forceGet(vertex)
 						.eq(vertexNumbers.forceGet(vertex))
 				)
@@ -216,16 +158,9 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 
 		for (const edge of grid.directedEdges()) {
 			solver.add(
-				// All vertices that are part of the same tree must be assigned the same unique root.
-				Implies(
-					treeIndicators.forceGet(edge).eq(1),
-					rootAssignments
-						.forceGet(edge.from)
-						.eq(rootAssignments.forceGet(edge.to))
-				),
 				// All vertices that are part of the same tree must be assigned the same number in the fillomino grid.
 				Implies(
-					treeIndicators.forceGet(edge).eq(1),
+					edgeIndicators.forceGet(edge).eq(1),
 					vertexNumbers
 						.forceGet(edge.from)
 						.eq(vertexNumbers.forceGet(edge.to))

@@ -82,6 +82,42 @@ export interface GraphConstraintExtensions<
 		v: TConcrete['vertex'],
 		edgeIndicators: ForceGetMap<TConcrete['directedEdge'], Arith<Name>>
 	) => Arith<Name>;
+
+	/**
+	 * @returns Maps of variables representing an inferred division of the graph into some number of rooted subtrees, each one consisting
+	 * of adjacent vertices.
+	 *
+	 * This set of variables is useful for puzzles that involve "connected regions of some known size", e.g. nurikabe and fillomino.
+	 *
+	 * BEWARE: Callers of this function should place constraints on `rootAssignments` enforcing:
+	 * ```
+	 * Implies(
+	 *     vertex A and B have the same root assignment,
+	 *     vertex A and B are in the same tree
+	 * )
+	 *
+	 * ```
+	 * Expressing this statement requires domain knowledge about the puzzle, so it is not done by the shared helper.
+	 * The converse is handled automatically.
+	 *
+	 * @remarks
+	 * TODO: These constraints can be tricky to formulate in a way that makes Z3 efficient. Add guidance on the types of constraints that callers should add
+	 * to enable efficient deduction similar to the one above, or figure out better ways to encapsulate things.
+	 */
+	treeStructureVariables: () => {
+		/**
+		 * The number of vertices in the subtree rooted at each vertex.
+		 */
+		subtreeSizes: ForceGetMap<TConcrete['vertex'], Arith<Name>>;
+		/**
+		 * Whether or not each directed edge is enabled in the tree structure
+		 */
+		edgeIndicators: ForceGetMap<TConcrete['directedEdge'], Arith<Name>>;
+		/**
+		 * Maps each vertex to the id of the vertex of its structural tree root.
+		 */
+		rootAssignments: ForceGetMap<TConcrete['vertex'], Arith<Name>>;
+	};
 }
 
 export interface BuiltPuzzle<TSolution = GraphDisplay> {
