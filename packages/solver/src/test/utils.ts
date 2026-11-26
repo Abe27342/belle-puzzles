@@ -30,11 +30,7 @@ export function describeSuiteFromTestData(
 					const result = await solve(puzzle);
 					const solutionString =
 						result.status === 'sat'
-							? renderCartesianGrid(
-									puzzle.grid,
-									result.output,
-									puzzle.renderOptions
-							  )
+							? renderCartesianGrid(puzzle.grid, result.output)
 							: result.status;
 					expectGridSnapshot(solutionString);
 				}

@@ -12,7 +12,6 @@ import {
 	sightLineSumConstraints,
 	type CartesianCoord,
 	type CartesianGridPuzzleProps,
-	type CartesianGridRenderOptions,
 	type EdgeIndicatorModel,
 	type EdgeIndicatorSolution,
 	type GridVertex,
@@ -23,18 +22,12 @@ import {
 
 export interface ShingokiPuzzleProps extends CartesianGridPuzzleProps {
 	pearls: ConstructionPearl[];
-	renderOptions?: Partial<PearlRenderOptions>;
 }
 
 interface Pearl {
 	vertex: GridVertex;
 	color: 'black' | 'white';
 	length: number;
-}
-
-export interface PearlRenderOptions extends CartesianGridRenderOptions {
-	black: string;
-	white: string;
 }
 
 /**
@@ -74,11 +67,6 @@ export class ShingokiPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 
 	constructor(props: ShingokiPuzzleProps) {
 		super(props);
-		const renderChars = {
-			black: '⬤',
-			white: '◯',
-			...props.renderOptions,
-		};
 
 		this.#pearls = props.pearls.map((p) => ({
 			vertex: this.grid.getVertex(p.coord),
@@ -91,7 +79,9 @@ export class ShingokiPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 			}
 			this.output.vertices.set(
 				pearl.vertex,
-				constant(pearl.color, (color) => renderChars[color])
+				constant(pearl.color, (color) =>
+					color === 'black' ? 'B' : 'W'
+				)
 			);
 		}
 	}
@@ -102,10 +92,7 @@ export class ShingokiPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 	 * The grids should be separated by one or more blank lines.
 	 * Enclose multi-digit lengths in matching braces, brackets, or parentheses.
 	 */
-	public static fromText(
-		text: string,
-		renderOptions?: Partial<PearlRenderOptions>
-	) {
+	public static fromText(text: string) {
 		const pearls: ConstructionPearl[] = [];
 		const visitor: TextGridVisitor = ([char, lengthChar], coord) => {
 			if (
@@ -123,7 +110,7 @@ export class ShingokiPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 		const { width, height } = parseTextGrids(text, visitor, {
 			gridCount: 2,
 		});
-		return new ShingokiPuzzle({ width, height, pearls, renderOptions });
+		return new ShingokiPuzzle({ width, height, pearls });
 	}
 
 	public override build(

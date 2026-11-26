@@ -5,10 +5,6 @@ import {
 	GridValueModelProps,
 	ValueModel,
 } from './value-model.js';
-import {
-	CartesianGridRenderOptions,
-	defaultCartesianGridRenderOptions,
-} from './cartesian-grid-puzzle.js';
 
 export type EdgeValueSolution<T extends number> = Map<GridEdge, T>;
 
@@ -35,19 +31,13 @@ export type EdgeIndicatorModel = EdgeValueModel<0 | 1>;
 export function createEdgeIndicatorModel(
 	context: Context<string>,
 	solver: Solver<string>,
-	props: GridValueModelProps & {
-		renderOptions?: Partial<CartesianGridRenderOptions>;
-	}
+	props: GridValueModelProps
 ): EdgeIndicatorModel {
-	const renderOptions = {
-		...defaultCartesianGridRenderOptions,
-		...props.renderOptions,
-	};
 	return createEdgeValueModel(context, solver, props, {
 		values: [0, 1] as const,
 		glyphs: {
-			horizontal: [' ', renderOptions.horizontal],
-			vertical: [' ', renderOptions.vertical],
+			horizontal: [' ', '-'],
+			vertical: [' ', '|'],
 		},
 	});
 }

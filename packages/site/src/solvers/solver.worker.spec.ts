@@ -11,7 +11,7 @@ vi.mock('@belle-puzzles/solver', () => ({
 	puzzleTypes: {
 		sudoku: {
 			parser: {
-				fromText: () => ({ grid: {}, renderOptions: {} }),
+				fromText: () => ({ grid: {} }),
 			},
 		},
 	},

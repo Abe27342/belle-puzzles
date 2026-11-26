@@ -3,22 +3,9 @@ import { CartesianGraphTypes, CartesianGridGraph } from './graph/index.js';
 import { createGraphOutput, GraphDisplay } from './graph-output.js';
 import type { BuiltPuzzle, PuzzleDefinition } from './puzzle.js';
 
-export interface CartesianGridRenderOptions {
-	vertex: string;
-	horizontal: string;
-	vertical: string;
-}
-
-export const defaultCartesianGridRenderOptions: CartesianGridRenderOptions = {
-	vertex: '·',
-	horizontal: '━',
-	vertical: '┃',
-};
-
 export interface CartesianGridPuzzleProps {
 	width: number;
 	height: number;
-	renderOptions?: Partial<CartesianGridRenderOptions>;
 }
 
 /**
@@ -30,14 +17,9 @@ export abstract class CartesianGridPuzzle<
 {
 	public readonly grid: CartesianGridGraph;
 	public readonly output = createGraphOutput<CartesianGraphTypes>();
-	public readonly renderOptions: CartesianGridRenderOptions;
 
 	constructor(props: CartesianGridPuzzleProps) {
 		this.grid = new CartesianGridGraph(props);
-		this.renderOptions = {
-			...defaultCartesianGridRenderOptions,
-			...props.renderOptions,
-		};
 	}
 
 	public get width() {
@@ -60,18 +42,15 @@ export abstract class CartesianGridPuzzle<
  */
 export function renderCartesianGrid(
 	grid: CartesianGridGraph,
-	display: GraphDisplay<CartesianGraphTypes>,
-	options: Partial<CartesianGridRenderOptions> = {}
+	display: GraphDisplay<CartesianGraphTypes>
 ): string {
-	const vertexChar =
-		options.vertex ?? defaultCartesianGridRenderOptions.vertex;
 	const rows: { values: string[]; horizontalEdges: boolean }[] = [];
 	for (let y = 0; y < grid.height; y++) {
 		const contentLine: string[] = [];
 		const verticalEdgeLine: string[] = [];
 		for (let x = 0; x < grid.width; x++) {
 			const current = grid.getVertex([x, y]);
-			contentLine.push(display.vertices.get(current) ?? vertexChar);
+			contentLine.push(display.vertices.get(current) ?? '·');
 			if (x < grid.width - 1) {
 				const edge = grid.getEdge(current, current.right);
 				contentLine.push(display.edges.get(edge) ?? ' ');

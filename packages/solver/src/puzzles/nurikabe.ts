@@ -13,7 +13,6 @@ import {
 	variable,
 	type CartesianCoord,
 	type CartesianGridPuzzleProps,
-	type CartesianGridRenderOptions,
 	type GridVertex,
 	type Solver,
 	type TextGridVisitor,
@@ -62,14 +61,7 @@ export class NurikabePuzzle extends CartesianGridPuzzle<NurikabeSolution> {
 	#givens: Given[];
 
 	constructor(props: NurikabePuzzleProps) {
-		super({
-			...props,
-			renderOptions: {
-				horizontal: '',
-				vertical: '',
-				...props.renderOptions,
-			},
-		});
+		super(props);
 
 		this.#givens = props.givens.map((p) => ({
 			vertex: this.grid.getVertex(p.coord),
@@ -85,10 +77,7 @@ export class NurikabePuzzle extends CartesianGridPuzzle<NurikabeSolution> {
 	/**
 	 * @param text Text representation of the Nurikabe puzzle grid.
 	 */
-	public static fromText(
-		text: string,
-		renderOptions?: Partial<CartesianGridRenderOptions>
-	) {
+	public static fromText(text: string) {
 		const givens: ConstructionGiven[] = [];
 		const visitor: TextGridVisitor = ([value], coord) => {
 			givens.push({
@@ -104,7 +93,6 @@ export class NurikabePuzzle extends CartesianGridPuzzle<NurikabeSolution> {
 			width,
 			height,
 			givens,
-			renderOptions,
 		});
 	}
 

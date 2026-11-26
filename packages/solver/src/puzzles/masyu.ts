@@ -9,7 +9,6 @@ import {
 	parseTextGrids,
 	type CartesianCoord,
 	type CartesianGridPuzzleProps,
-	type CartesianGridRenderOptions,
 	type EdgeIndicatorModel,
 	type EdgeIndicatorSolution,
 	type GridVertex,
@@ -20,17 +19,11 @@ import {
 
 export interface MasyuPuzzleProps extends CartesianGridPuzzleProps {
 	pearls: ConstructionPearl[];
-	renderOptions?: Partial<PearlRenderOptions>;
 }
 
 interface Pearl {
 	coord: GridVertex;
 	color: 'black' | 'white';
-}
-
-export interface PearlRenderOptions extends CartesianGridRenderOptions {
-	black: string;
-	white: string;
 }
 
 /**
@@ -68,11 +61,6 @@ export class MasyuPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 
 	constructor(props: MasyuPuzzleProps) {
 		super(props);
-		const renderChars = {
-			black: '⬤',
-			white: '◯',
-			...props.renderOptions,
-		};
 
 		this.#pearls = props.pearls.map((p) => ({
 			coord: this.grid.getVertex(p.coord),
@@ -84,15 +72,14 @@ export class MasyuPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 			}
 			this.output.vertices.set(
 				pearl.coord,
-				constant(pearl.color, (color) => renderChars[color])
+				constant(pearl.color, (color) =>
+					color === 'black' ? 'B' : 'W'
+				)
 			);
 		}
 	}
 
-	public static fromText(
-		text: string,
-		renderOptions?: Partial<PearlRenderOptions>
-	) {
+	public static fromText(text: string) {
 		const pearls: ConstructionPearl[] = [];
 		const visitor: TextGridVisitor = ([char], coord) => {
 			pearls.push({ coord, color: parsePearlColor(char, coord) });
@@ -100,7 +87,7 @@ export class MasyuPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 		const { width, height } = parseTextGrids(text, visitor, {
 			gridCount: 1,
 		});
-		return new MasyuPuzzle({ width, height, pearls, renderOptions });
+		return new MasyuPuzzle({ width, height, pearls });
 	}
 
 	public override build(
