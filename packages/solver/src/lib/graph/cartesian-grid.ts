@@ -265,6 +265,18 @@ class GridVertexImpl
 		}
 	}
 
+	public *outgoingEdges() {
+		for (const neighbor of this.neighbors()) {
+			yield this.#grid.getDirectedEdge(this, neighbor);
+		}
+	}
+
+	public *incomingEdges() {
+		for (const neighbor of this.neighbors()) {
+			yield this.#grid.getDirectedEdge(neighbor, this);
+		}
+	}
+
 	public toString(): string {
 		return `(${this.x}, ${this.y})`;
 	}

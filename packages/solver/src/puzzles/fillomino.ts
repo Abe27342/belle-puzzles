@@ -124,7 +124,7 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 				values: Array.from({ length: max }, (_, i) => i + 1),
 			}
 		);
-		const { Not, And, Sum, Implies, If } = context;
+		const { Not, And, Sum, SumArray, Implies, If } = context;
 
 		// Idea behind constraints:
 		// - Each region is given a spanning tree. WLOG, the minimum index vertex is chosen to be the root.
@@ -134,11 +134,9 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 		const vertexNumbers = model.variables;
 
 		const inDegree = (v: GridVertex) =>
-			Sum(
-				...ensureNonEmpty(
-					[...v.neighbors()].map((n) =>
-						treeIndicators.forceGet(grid.getDirectedEdge(n, v))
-					)
+			SumArray(
+				Array.from(v.neighbors(), (n) =>
+					treeIndicators.forceGet(grid.getDirectedEdge(n, v))
 				)
 			);
 
@@ -175,25 +173,17 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 		});
 
 		for (const vertex of grid.vertices()) {
-			const neighbors = [...vertex.neighbors()];
+			// Enforce subtree counts correctly represent the number of vertices in the subtree rooted at this vertex.
 			solver.add(
 				subtreeCounts.forceGet(vertex).eq(
-					// Conditionally summing over all neighbors that are assigned to the same cluster
-					// is achieved via the classic trick of summing over all neighbors, but multiplying by the indicator function
-					// over whether the edge to that neighbor is part of the tree.
-					Sum(
-						...ensureNonEmpty(
-							neighbors.map((v) => {
-								const outgoingEdge = treeIndicators.forceGet(
-									grid.getDirectedEdge(vertex, v)
-								);
-								return If(
-									outgoingEdge.eq(1),
-									subtreeCounts.forceGet(v),
-									0
-								);
-							})
-						)
+					SumArray(
+						Array.from(vertex.outgoingEdges(), (e) => {
+							return If(
+								treeIndicators.forceGet(e).eq(1),
+								subtreeCounts.forceGet(e.to),
+								0
+							);
+						})
 					).add(1)
 				)
 			);
