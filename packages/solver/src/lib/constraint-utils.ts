@@ -13,40 +13,25 @@ import {
 	GridEdge,
 	GridFace,
 } from './graph/index.js';
+import type { ContextExtended } from './puzzle.js';
 
-/**
- * Ergonomic helpers for expressing common constraints.
- */
-export interface ConstraintExtensions {
-	/**
-	 * Creates a constraint that enforces the variable `a` to be within the bounds `[b, c]`.
-	 *
-	 * @param a The arithmetic variable to be bounded.
-	 * @param b The lower bound.
-	 * @param c The upper bound.
-	 * @returns An arithmetic expression representing the bounded constraint.
-	 */
-	bound: (a: Arith<string>, b: number, c: number) => Bool<string>;
-
-	/**
-	 * Creates a constraint that represents logical equivalence between two boolean variables.
-	 * @param a The first boolean variable.
-	 * @param b The second boolean variable.
-	 * @returns A boolean expression representing the logical equivalence of `a` and `b`.
-	 */
-	iff: (a: Bool<string>, b: Bool<string>) => Bool<string>;
-}
-
-export function createConstraintExtensions(
-	context: Context<string>
-): ConstraintExtensions {
-	const { And, Implies } = context;
-	const bound = (a: Arith<string>, b: number, c: number) =>
+export function createConstraintExtensions<Name extends string>(
+	context: Context<Name>,
+	solver: Solver<Name>
+): ContextExtended<Name> {
+	const { And, Sum } = context;
+	const bound = (a: Arith<Name>, b: number, c: number) =>
 		And(a.ge(b), a.le(c));
 
-	const iff = (a: Bool<string>, b: Bool<string>) =>
-		And(Implies(a, b), Implies(b, a));
-	return { bound, iff };
+	const zero = context.Int.const('zero');
+	solver.add(zero.eq(0));
+	return {
+		...context,
+		Bound: bound,
+		SumArray: (arr: Arith<Name>[]) =>
+			Sum(...ensureNonEmpty(arr.length > 0 ? arr : [zero])),
+		zero,
+	};
 }
 
 /**
@@ -79,15 +64,14 @@ export function createConstraintExtensions(
  * (such that "vertex" variable naming in the code below actually refers to edges in the original puzzle graph).
  */
 export function* connectedConstraints<T extends HasNeighbors<T>>(
-	context: Context<string>,
+	context: ContextExtended<string>,
 	valueVariables: Map<HasNeighbors<T>, Arith<string>>,
 	minimalEnabledVariables: Iterable<HasNeighbors<T>>
 ) {
+	const { Int, Or, And, Implies, Bound, Iff } = context;
+
 	const vertices = Array.from(valueVariables.keys());
 	const connectivityVariables = new Map<HasNeighbors<T>, Arith<string>>();
-
-	const { bound, iff } = createConstraintExtensions(context);
-	const { Int, Or, And, Implies } = context;
 	const possibleZeroVertices = new Set(minimalEnabledVariables);
 
 	for (const v of vertices) {
@@ -95,9 +79,9 @@ export function* connectedConstraints<T extends HasNeighbors<T>>(
 		connectivityVariables.set(v, conVar);
 		const valueVariable = valueVariables.get(v) ?? oob(v);
 		yield* [
-			bound(conVar, -1, vertices.length),
-			iff(valueVariable.eq(0), conVar.eq(-1)),
-			iff(valueVariable.gt(0), conVar.ge(0)),
+			Bound(conVar, -1, vertices.length),
+			Iff(valueVariable.eq(0), conVar.eq(-1)),
+			Iff(valueVariable.gt(0), conVar.ge(0)),
 		];
 	}
 
@@ -157,7 +141,7 @@ export function* connectedConstraints<T extends HasNeighbors<T>>(
  * When used on the line graph, this is the "one connected loop" constraint used in slitherlink, masyu, etc.
  */
 export function* connectedLoopConstraints<T extends ConcreteGraphTypes<T>>(
-	context: Context<string>,
+	context: ContextExtended<string>,
 	graph: PlanarGraph<T>,
 	indicatorVariables: Map<T['edge'], Arith<string>>,
 	minimalEnabledVariables: Iterable<T['edge']>

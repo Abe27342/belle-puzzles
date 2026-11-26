@@ -1,11 +1,36 @@
-import type { Solver, Context, Expr, Model } from 'z3-solver';
+import type { Solver, Context, Expr, Model, Arith, Bool } from 'z3-solver';
 import type { GraphOutput, GraphDisplay } from './graph-output.js';
 
 export interface PuzzleDefinition<TSolution = GraphDisplay> {
 	build(
-		context: Context<string>,
+		context: ContextExtended<string>,
 		solver: Solver<string>
 	): BuiltPuzzle<TSolution>;
+}
+
+/**
+ * Extended interface for declaring constraints. Fixes some ergonomics issues with the base z3 libraries
+ */
+export interface ContextExtended<Name extends string> extends Context<Name> {
+	/**
+	 * Creates a constraint that enforces the variable `a` to be within the bounds `[b, c]`.
+	 *
+	 * @param a The arithmetic variable to be bounded.
+	 * @param b The lower bound.
+	 * @param c The upper bound.
+	 * @returns An arithmetic expression representing the bounded constraint.
+	 */
+	Bound: (a: Arith<Name>, b: number, c: number) => Bool<Name>;
+
+	/**
+	 * Like `Sum`, but doesn't require spreading or a nonempty first argument type.
+	 */
+	SumArray: (arr: Arith<Name>[]) => Arith<Name>;
+
+	/**
+	 * Constant expression representing the numeric value zero.
+	 */
+	zero: Arith<Name>;
 }
 
 export interface BuiltPuzzle<TSolution = GraphDisplay> {

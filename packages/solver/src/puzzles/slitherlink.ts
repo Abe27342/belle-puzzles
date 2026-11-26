@@ -11,12 +11,12 @@ import {
 	type CartesianCoord,
 	type CartesianGridPuzzleProps,
 	type CartesianGridRenderOptions,
-	type Context,
 	type EdgeIndicatorModel,
 	type EdgeIndicatorSolution,
 	type GridFace,
 	type Solver,
 	type TextGridVisitor,
+	ContextExtended,
 } from '../lib/index.js';
 
 export interface SlitherlinkPuzzleProps extends CartesianGridPuzzleProps {
@@ -98,7 +98,7 @@ export class SlitherlinkPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution
 	}
 
 	public override build(
-		context: Context<string>,
+		context: ContextExtended<string>,
 		solver: Solver<string>
 	): EdgeIndicatorModel {
 		const model = createEdgeIndicatorModel(context, solver, this);

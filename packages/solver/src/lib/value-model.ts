@@ -7,7 +7,7 @@ import {
 	RenderBinding,
 	variable,
 } from './graph-output.js';
-import { oob } from './utils.js';
+import { createForceGetMap, ForceGetMap, oob } from './utils.js';
 
 /**
  * A {@link BuiltPuzzle} model represented by finite integer values assigned to keys of type `TKey`.
@@ -20,10 +20,6 @@ import { oob } from './utils.js';
 export interface ValueModel<TKey, TValue extends number>
 	extends BuiltPuzzle<Map<TKey, TValue>> {
 	variables: ForceGetMap<TKey, Arith<string>>;
-}
-
-export interface ForceGetMap<TKey, TValue> extends Map<TKey, TValue> {
-	forceGet(key: TKey): TValue;
 }
 
 export interface GridValueModelProps {
@@ -75,14 +71,6 @@ function toSafeNumber(bigIntVal: bigint) {
 		throw new RangeError('BigInt exceeds safe Number range');
 	}
 	return Number(bigIntVal);
-}
-
-export function createForceGetMap<TKey, TValue>(): ForceGetMap<TKey, TValue> {
-	const map = new Map<TKey, TValue>() as ForceGetMap<TKey, TValue>;
-	map.forceGet = (key: TKey) => {
-		return map.get(key) ?? oob(key);
-	};
-	return map;
 }
 
 export function createValueModel<TKey, const TValue extends number>(

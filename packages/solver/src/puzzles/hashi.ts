@@ -19,6 +19,7 @@ import {
 	type GridVertex,
 	type Solver,
 	type TextGridVisitor,
+	ContextExtended,
 } from '../lib/index.js';
 
 export interface HashiPuzzleProps extends CartesianGridPuzzleProps {
@@ -146,7 +147,7 @@ export class HashiPuzzle extends CartesianGridPuzzle<HashiSolution> {
 	}
 
 	public override build(
-		context: Context<string>,
+		context: ContextExtended<string>,
 		solver: Solver<string>
 	): HashiEdgeModel {
 		const model = createHashiEdgeModel(context, solver, this);

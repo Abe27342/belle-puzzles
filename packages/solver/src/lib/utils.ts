@@ -41,3 +41,17 @@ export function ensureNonEmpty<T>(array: T[], message?: string): [T, ...T[]] {
 	}
 	return array as [T, ...T[]];
 }
+
+export interface ForceGetMap<TKey, TValue> extends Map<TKey, TValue> {
+	forceGet(key: TKey): TValue;
+}
+
+export function createForceGetMap<TKey, TValue>(
+	vals?: Iterable<[TKey, TValue]>
+): ForceGetMap<TKey, TValue> {
+	const map = new Map<TKey, TValue>(vals) as ForceGetMap<TKey, TValue>;
+	map.forceGet = (key: TKey) => {
+		return map.get(key) ?? oob(key);
+	};
+	return map;
+}
