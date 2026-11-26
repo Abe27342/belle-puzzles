@@ -44,7 +44,7 @@ export interface ValueModelOptions<
 	/** Domain of possible values to assign. */
 	values: readonly TValue[];
 	output?: GraphOutput<TGraph>;
-	bindings(output: GraphOutput<TGraph>): Map<TKey, RenderBinding>;
+	bind(output: GraphOutput<TGraph>, key: TKey, binding: RenderBinding): void;
 	/** Name of the variable corresponding to the given key. */
 	name(key: TKey): string;
 	/** Omit to format decoded values with String instead of a glyph table. */
@@ -117,7 +117,6 @@ export function createValueModel<
 	}
 
 	const output = createGraphOutput<TGraph>(options.output);
-	const bindings = options.bindings(output);
 	const variables = createForceGetMap<TKey, Arith<string>>();
 	for (const { key, name, glyphs } of entries) {
 		const expression = context.Int.const(name);
@@ -127,7 +126,8 @@ export function createValueModel<
 				: context.Or(...domain.map((value) => expression.eq(value)))
 		);
 		variables.set(key, expression);
-		bindings.set(
+		options.bind(
+			output,
 			key,
 			variable(
 				expression,

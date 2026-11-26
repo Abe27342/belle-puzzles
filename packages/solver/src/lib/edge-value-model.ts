@@ -58,7 +58,7 @@ export function createEdgeValueModel<const T extends number>(
 		keys: props.grid.edges(),
 		values: options.values,
 		output: props.output,
-		bindings: (output) => output.edges,
+		bind: (output, edge, binding) => output.edges.set(edge, binding),
 		name: (edge) => edge.toString(),
 		glyphs:
 			glyphs === undefined

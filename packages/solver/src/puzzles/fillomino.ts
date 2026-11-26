@@ -2,7 +2,6 @@ import { registerPuzzle } from '../catalog.js';
 import {
 	CartesianGridGraph,
 	CartesianGridPuzzle,
-	constant,
 	ContextExtended,
 	createVertexValueModel,
 	ensureNonEmpty,
@@ -112,6 +111,9 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 			{ grid, output: this.output },
 			{
 				values: Array.from({ length: max }, (_, i) => i + 1),
+				bind: (output, vertex, binding) => {
+					output.faces.set(this.grid.getFace(vertex.coord), binding);
+				},
 			}
 		);
 		const { Implies, Iff } = context;
@@ -167,14 +169,6 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 			);
 		}
 
-		// Render fillomino values in faces
-		for (const [vertex, binding] of model.output.vertices) {
-			model.output.faces.set(this.grid.getFace(vertex.coord), binding);
-		}
-		model.output.vertices.clear();
-		for (const vertex of this.grid.vertices()) {
-			model.output.vertices.set(vertex, constant('·'));
-		}
 		for (const edge of this.grid.edges()) {
 			const [start, end] = edge.vertices;
 			const horizontal = start.y === end.y;
@@ -185,15 +179,16 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 				)
 			);
 			const second = vertexNumbers.get(grid.getVertex(start.coord));
+			if (first === undefined || second === undefined) {
+				continue;
+			}
 			model.output.edges.set(
 				edge,
-				first === undefined || second === undefined
-					? constant(glyph)
-					: variable(
-							first.neq(second),
-							(assignment) => context.isTrue(assignment),
-							(boundary) => (boundary ? glyph : ' ')
-					  )
+				variable(
+					first.neq(second),
+					(assignment) => context.isTrue(assignment),
+					(boundary) => (boundary ? glyph : ' ')
+				)
 			);
 		}
 		return model;
