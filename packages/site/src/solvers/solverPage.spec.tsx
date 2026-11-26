@@ -34,7 +34,7 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 function start() {
-	const view = render(<SolverPage puzzleType="sudoku" />);
+	const view = render(<SolverPage puzzleType="Sudoku" />);
 	fireEvent.click(screen.getByRole('button', { name: 'Load example' }));
 	fireEvent.click(screen.getByRole('button', { name: 'Solve' }));
 	return view;
@@ -226,8 +226,8 @@ describe('solver page', () => {
 	it('precomputes only the second solution and renders it only on demand', () => {
 		start();
 		expect(createSolverClient).toHaveBeenCalledWith(
-			'sudoku',
-			puzzleTypes.sudoku.example,
+			'Sudoku',
+			puzzleTypes.Sudoku.example,
 			expect.any(Function)
 		);
 		send({ type: 'solution', output: 'first' });
@@ -472,7 +472,7 @@ describe('solver page', () => {
 
 	it('preserves puzzle text across type switches while clearing results and stopping the solver', () => {
 		render(
-			<MemoryRouter initialEntries={['/solvers/sudoku']}>
+			<MemoryRouter initialEntries={['/solvers/Sudoku']}>
 				<Routes>
 					<Route
 						path="/solvers/:puzzleType"
@@ -496,7 +496,7 @@ describe('solver page', () => {
 		fireEvent.click(screen.getByRole('button', { name: 'Load example' }));
 		fireEvent.click(screen.getByRole('link', { name: 'Sudoku' }));
 		expect(screen.getByLabelText('Puzzle text')).toHaveValue(
-			puzzleTypes.hashi.example
+			puzzleTypes.Hashi.example
 		);
 	});
 
@@ -519,7 +519,7 @@ describe('solver page', () => {
 		const idle = { start: createSolverClient, dispose: vi.fn() };
 		vi.mocked(prepareSolverWorker).mockReturnValueOnce(idle);
 		const view = render(
-			<MemoryRouter initialEntries={['/solvers/sudoku']}>
+			<MemoryRouter initialEntries={['/solvers/Sudoku']}>
 				<Routes>
 					<Route
 						path="/solvers/:puzzleType"
@@ -536,7 +536,7 @@ describe('solver page', () => {
 
 	it('separates puzzle selection, text input, and solution status', () => {
 		render(
-			<MemoryRouter initialEntries={['/solvers/sudoku']}>
+			<MemoryRouter initialEntries={['/solvers/Sudoku']}>
 				<Routes>
 					<Route
 						path="/solvers/:puzzleType"
@@ -581,7 +581,7 @@ describe('solver page', () => {
 
 	it('searches the expanded menu and keeps the search when collapsing and reopening', () => {
 		render(
-			<MemoryRouter initialEntries={['/solvers/sudoku']}>
+			<MemoryRouter initialEntries={['/solvers/Sudoku']}>
 				<Routes>
 					<Route
 						path="/solvers/:puzzleType"
@@ -629,7 +629,7 @@ describe('solver page', () => {
 			matches: true,
 		});
 		render(
-			<MemoryRouter initialEntries={['/solvers/sudoku']}>
+			<MemoryRouter initialEntries={['/solvers/Sudoku']}>
 				<Routes>
 					<Route
 						path="/solvers/:puzzleType"
@@ -682,7 +682,7 @@ describe('solver page', () => {
 
 	it('resizes the columns with the keyboard without clearing the puzzle input', () => {
 		render(
-			<MemoryRouter initialEntries={['/solvers/sudoku']}>
+			<MemoryRouter initialEntries={['/solvers/Sudoku']}>
 				<Routes>
 					<Route
 						path="/solvers/:puzzleType"
@@ -719,7 +719,7 @@ describe('solver page', () => {
 
 	it('keeps an active solver session when the divider moves', () => {
 		render(
-			<MemoryRouter initialEntries={['/solvers/sudoku']}>
+			<MemoryRouter initialEntries={['/solvers/Sudoku']}>
 				<Routes>
 					<Route
 						path="/solvers/:puzzleType"
@@ -738,7 +738,7 @@ describe('solver page', () => {
 			'still solving'
 		);
 		expect(screen.getByLabelText('Puzzle text')).toHaveValue(
-			puzzleTypes.sudoku.example
+			puzzleTypes.Sudoku.example
 		);
 	});
 });

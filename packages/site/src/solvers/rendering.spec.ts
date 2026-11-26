@@ -8,14 +8,14 @@ afterAll(async () => {
 });
 
 it('retains the existing double-vertical Hashi bridge', async () => {
-	const puzzle = puzzleTypes.hashi.parser.fromText('2\n2');
+	const puzzle = puzzleTypes.Hashi.parser.fromText('2\n2');
 	const result = await solve(puzzle);
 	if (result.status !== 'sat')
 		throw new Error('Double-bridge fixture is not satisfiable');
 	expect(renderCartesianGrid(puzzle.grid, result.output)).toBe('2\n‖\n2\n');
 });
 
-it.each(['masyu', 'shingoki'])(
+it.each(['Masyu', 'Shingoki'])(
 	'uses standard pearl and edge characters for %s without overrides',
 	async (type) => {
 		const definition = puzzleTypes[type];

@@ -27,7 +27,7 @@ afterEach(() => {
 
 it('waits for initialization before starting, and terminates only after thread cleanup', () => {
 	const callback = vi.fn();
-	const client = createSolverClient('sudoku', 'text', callback);
+	const client = createSolverClient('Sudoku', 'text', callback);
 	const worker = FakeWorker.current;
 	expect(worker.postMessage).toHaveBeenCalledTimes(1);
 	expect(worker.postMessage).toHaveBeenCalledWith({
@@ -40,7 +40,7 @@ it('waits for initialization before starting, and terminates only after thread c
 	worker.respond({ type: 'ready' });
 	expect(worker.postMessage).toHaveBeenLastCalledWith({
 		type: 'start',
-		puzzleType: 'sudoku',
+		puzzleType: 'Sudoku',
 		text: 'text',
 	});
 	worker.respond({ type: 'solution', output: 'grid' });
@@ -59,7 +59,7 @@ it('waits for initialization before starting, and terminates only after thread c
 });
 
 it('cancels before initialization without starting a puzzle or abandoning its runtime', () => {
-	const client = createSolverClient('masyu', 'text', vi.fn());
+	const client = createSolverClient('Masyu', 'text', vi.fn());
 	const worker = FakeWorker.current;
 	client.dispose();
 	expect(worker.terminate).not.toHaveBeenCalled();
@@ -71,7 +71,7 @@ it('cancels before initialization without starting a puzzle or abandoning its ru
 
 it('surfaces initialization failure and closes the failed worker', () => {
 	const callback = vi.fn();
-	createSolverClient('cave', 'text', callback);
+	createSolverClient('Cave', 'text', callback);
 	const worker = FakeWorker.current;
 	worker.respond({ type: 'error', message: 'Initialization failed' });
 	expect(callback).toHaveBeenCalledWith({
@@ -83,7 +83,7 @@ it('surfaces initialization failure and closes the failed worker', () => {
 
 it('adds puzzle-specific guidance to parsing failures', () => {
 	const callback = vi.fn();
-	createSolverClient('hashi', 'X', callback);
+	createSolverClient('Hashi', 'X', callback);
 	const worker = FakeWorker.current;
 	worker.respond({ type: 'ready' });
 	worker.respond({
@@ -101,7 +101,7 @@ it('adds puzzle-specific guidance to parsing failures', () => {
 
 it('replaces raw worker events with reload guidance', () => {
 	const callback = vi.fn();
-	createSolverClient('hashi', '..1', callback);
+	createSolverClient('Hashi', '..1', callback);
 	FakeWorker.current.onerror(
 		new ErrorEvent('error', {
 			message: 'Uncaught [object Event]',
@@ -117,7 +117,7 @@ it('replaces raw worker events with reload guidance', () => {
 });
 it('rejects unsupported environments before creating a worker', () => {
 	vi.stubGlobal('crossOriginIsolated', false);
-	expect(() => createSolverClient('sudoku', 'text', vi.fn())).toThrow(
+	expect(() => createSolverClient('Sudoku', 'text', vi.fn())).toThrow(
 		'cross-origin isolation'
 	);
 });
@@ -125,7 +125,7 @@ it('rejects unsupported environments before creating a worker', () => {
 it('logs the original post-initialization worker error and shows a brief solve failure', () => {
 	const log = vi.spyOn(console, 'log').mockImplementation(() => {});
 	const callback = vi.fn();
-	createSolverClient('hashi', '2.2', callback);
+	createSolverClient('Hashi', '2.2', callback);
 	const worker = FakeWorker.current;
 	worker.respond({ type: 'ready' });
 	const error = new Error('Internal solver failure');
@@ -145,14 +145,14 @@ it('loads an idle worker without solving and starts the first puzzle on that sam
 	worker.respond({ type: 'ready' });
 	expect(worker.postMessage).toHaveBeenCalledTimes(1);
 	const callback = vi.fn();
-	const client = prepared.start('cave', 'example', callback);
+	const client = prepared.start('Cave', 'example', callback);
 	expect(FakeWorker.current).toBe(worker);
 	expect(worker.postMessage).toHaveBeenLastCalledWith({
 		type: 'start',
-		puzzleType: 'cave',
+		puzzleType: 'Cave',
 		text: 'example',
 	});
-	expect(() => prepared.start('hashi', 'example', vi.fn())).toThrow(
+	expect(() => prepared.start('Hashi', 'example', vi.fn())).toThrow(
 		'no longer available'
 	);
 	worker.respond({ type: 'solution', output: 'grid' });
@@ -166,12 +166,12 @@ it('loads an idle worker without solving and starts the first puzzle on that sam
 it('queues the first solve when the preloaded worker is still initializing', () => {
 	const prepared = prepareSolverWorker();
 	const worker = FakeWorker.current;
-	prepared.start('masyu', 'example', vi.fn());
+	prepared.start('Masyu', 'example', vi.fn());
 	expect(worker.postMessage).toHaveBeenCalledTimes(1);
 	worker.respond({ type: 'ready' });
 	expect(worker.postMessage).toHaveBeenLastCalledWith({
 		type: 'start',
-		puzzleType: 'masyu',
+		puzzleType: 'Masyu',
 		text: 'example',
 	});
 });
@@ -209,7 +209,7 @@ it('logs a preload failure and preserves it for the first solve attempt', () => 
 			message: 'Failed to load WASM',
 		})
 	);
-	expect(() => prepared.start('sudoku', 'example', vi.fn())).toThrow(
+	expect(() => prepared.start('Sudoku', 'example', vi.fn())).toThrow(
 		'Failed to load WASM'
 	);
 	expect(worker.terminate).toHaveBeenCalledTimes(1);
@@ -222,6 +222,6 @@ it('logs and preserves the original browser error when an idle worker fails', ()
 	const error = new Error('Worker loading failed');
 	worker.onerror(new ErrorEvent('error', { error }));
 	expect(log).toHaveBeenCalledWith(error);
-	expect(() => prepared.start('sudoku', 'example', vi.fn())).toThrow(error);
+	expect(() => prepared.start('Sudoku', 'example', vi.fn())).toThrow(error);
 	expect(worker.terminate).toHaveBeenCalledTimes(1);
 });
