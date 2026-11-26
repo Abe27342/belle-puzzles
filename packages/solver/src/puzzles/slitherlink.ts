@@ -46,8 +46,9 @@ interface ConstructionGivens {
 
 export class SlitherlinkPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 	static {
-		registerPuzzle('slitherlink', {
+		registerPuzzle({
 			name: 'Slitherlink',
+			aliases: ['Fences', 'Takegaki'],
 			instructions:
 				'Enter a rectangular grid of single-digit cell clues (0-4).',
 			example: '....0.\n33..1.\n..12..\n..20..\n.1..11\n.2....',

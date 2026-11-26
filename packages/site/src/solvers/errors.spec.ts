@@ -38,7 +38,7 @@ it('identifies parsing failures and points to the input instructions', () => {
 	const message = formatSolverError(
 		new Error('Expected 2 text grids, received 1'),
 		'parse',
-		'shingoki'
+		'Shingoki'
 	);
 	expect(message).toContain('Could not parse this Shingoki puzzle');
 	expect(message).toContain('Expected 2 text grids, received 1');
@@ -61,7 +61,7 @@ it('shows one-based row and column numbers for coordinate-based parse errors', (
 		formatSolverError(
 			new Error('Invalid digit at 2,0: "X"'),
 			'parse',
-			'hashi'
+			'Hashi'
 		)
 	).toContain('Row 1, column 3.');
 });
@@ -76,7 +76,7 @@ it.each([
 			formatSolverError(
 				new Error('Internal implementation failure'),
 				stage,
-				'hashi'
+				'Hashi'
 			)
 		).toBe(message);
 	}

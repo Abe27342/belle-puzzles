@@ -71,7 +71,7 @@ const sudokuOutput: CreateOutput = (grid) => {
 
 export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 	static {
-		registerPuzzle('sudoku', {
+		registerPuzzle({
 			name: 'Sudoku',
 			instructions:
 				'Enter nine rows of nine cells. Use digits 1-9 for givens.',

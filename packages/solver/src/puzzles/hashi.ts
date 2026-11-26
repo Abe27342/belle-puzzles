@@ -63,8 +63,9 @@ export function createHashiEdgeModel(
 
 export class HashiPuzzle extends CartesianGridPuzzle<HashiSolution> {
 	static {
-		registerPuzzle('hashi', {
+		registerPuzzle({
 			name: 'Hashi',
+			aliases: ['Hashiwokakero'],
 			instructions:
 				'Enter a rectangular grid of islands, using digits 1-8 for their bridge counts.',
 			example:

@@ -47,7 +47,7 @@ type NurikabeSolution = VertexValueSolution<number>;
 
 export class NurikabePuzzle extends CartesianGridPuzzle<NurikabeSolution> {
 	static {
-		registerPuzzle('nurikabe', {
+		registerPuzzle({
 			name: 'Nurikabe',
 			instructions: 'Enter a rectangular grid of numeric cell clues.',
 			example:

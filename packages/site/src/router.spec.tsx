@@ -44,7 +44,7 @@ beforeEach(() => {
 		dispose: vi.fn(),
 	}));
 	vi.mocked(createSolverClient).mockReturnValue({ next: vi.fn(), dispose });
-	window.history.replaceState(null, '', '/solvers/sudoku');
+	window.history.replaceState(null, '', '/solvers/Sudoku');
 });
 
 async function renderSolverRoute() {
@@ -106,7 +106,7 @@ it('changes puzzle types through the SPA and disposes the old session', async ()
 		expect(dispose).toHaveBeenCalledTimes(1);
 	});
 	expect(fetchLoginInfo).not.toHaveBeenCalled();
-	expect(window.location.pathname).toBe('/solvers/masyu');
+	expect(window.location.pathname).toBe('/solvers/Masyu');
 });
 
 it('preserves authentication loading on existing pages and cleans up when leaving a solver', async () => {

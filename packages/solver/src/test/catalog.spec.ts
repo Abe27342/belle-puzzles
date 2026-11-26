@@ -12,7 +12,7 @@ vi.mock('z3-solver', () => {
 
 it('imports and parses all registered examples without loading the Z3 runtime', () => {
 	expect(Object.keys(puzzleTypes).length).toBeGreaterThan(0);
-	expect(puzzleTypes.sudoku).toBeDefined();
+	expect(puzzleTypes.Sudoku).toBeDefined();
 	for (const [type, definition] of Object.entries(puzzleTypes)) {
 		expect(isPuzzleType(type)).toBe(true);
 		expect(definition.name).not.toBe('');
@@ -26,21 +26,21 @@ it('imports and parses all registered examples without loading the Z3 runtime', 
 });
 
 it('rejects duplicate puzzle registrations without replacing the parser', () => {
-	const sudoku = puzzleTypes.sudoku;
-	expect(() => registerPuzzle('sudoku', sudoku)).toThrow(
-		'Puzzle type "sudoku" is already registered.'
+	const sudoku = puzzleTypes.Sudoku;
+	expect(() => registerPuzzle(sudoku)).toThrow(
+		'Puzzle type "Sudoku" is already registered.'
 	);
-	expect(puzzleTypes.sudoku).toBe(sudoku);
+	expect(puzzleTypes.Sudoku).toBe(sudoku);
 });
 
 it('accepts a new puzzle registration without a central catalog edit', () => {
-	registerPuzzle('catalog-test', {
+	registerPuzzle({
 		name: 'Catalog test',
 		instructions: 'Use Sudoku text.',
-		example: puzzleTypes.sudoku.example,
+		example: puzzleTypes.Sudoku.example,
 		parser: SudokuPuzzle,
 	});
-	expect(isPuzzleType('catalog-test')).toBe(true);
-	expect(puzzleTypes['catalog-test'].parser).toBe(SudokuPuzzle);
-	expect(Object.isFrozen(puzzleTypes['catalog-test'])).toBe(true);
+	expect(isPuzzleType('Catalog test')).toBe(true);
+	expect(puzzleTypes['Catalog test'].parser).toBe(SudokuPuzzle);
+	expect(Object.isFrozen(puzzleTypes['Catalog test'])).toBe(true);
 });

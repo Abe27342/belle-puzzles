@@ -45,8 +45,9 @@ interface ConstructionGivens {
 
 export class CavePuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 	static {
-		registerPuzzle('cave', {
+		registerPuzzle({
 			name: 'Cave',
+			aliases: ['Corral', 'Bag'],
 			instructions: 'Enter a rectangular grid of numeric cell clues.',
 			example: '...3\n.4..\n5.6.\n...2',
 			parser: CavePuzzle,

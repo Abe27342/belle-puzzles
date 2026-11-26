@@ -7,9 +7,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@belle-puzzles/solver', () => ({
-	isPuzzleType: (type: string) => type === 'sudoku',
+	isPuzzleType: (type: string) => type === 'Sudoku',
 	puzzleTypes: {
-		sudoku: {
+		Sudoku: {
 			parser: {
 				fromText: () => ({ grid: {} }),
 			},
@@ -59,7 +59,7 @@ it.each(['solve', 'render'] as const)(
 			throw new Error('Worker handler was not installed');
 		await scope.onmessage(
 			new MessageEvent('message', {
-				data: { type: 'start', puzzleType: 'sudoku', text: 'example' },
+				data: { type: 'start', puzzleType: 'Sudoku', text: 'example' },
 			})
 		);
 		expect(log).toHaveBeenCalledExactlyOnceWith(error);

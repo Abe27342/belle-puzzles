@@ -9,6 +9,10 @@ export interface PuzzleRegistration {
 	};
 }
 
+export interface AliasedPuzzleRegistration extends PuzzleRegistration {
+	aliases?: string[];
+}
+
 const registrations: Record<string, PuzzleRegistration> = {};
 
 export const puzzleTypes: Readonly<Record<string, PuzzleRegistration>> =
@@ -18,15 +22,22 @@ export function isPuzzleType(value: string): boolean {
 	return Object.prototype.hasOwnProperty.call(registrations, value);
 }
 
-export function registerPuzzle(
-	type: string,
-	definition: PuzzleRegistration
-): void {
+function registerPuzzleType(definition: PuzzleRegistration): void {
+	const type = definition.name;
 	if (isPuzzleType(type)) {
 		throw new Error(`Puzzle type "${type}" is already registered.`);
 	}
+
 	Object.defineProperty(registrations, type, {
 		value: Object.freeze(definition),
 		enumerable: true,
 	});
+}
+
+export function registerPuzzle(definition: AliasedPuzzleRegistration): void {
+	const { name, aliases, ...rest } = definition;
+	registerPuzzleType({ name, ...rest });
+	for (const alias of aliases ?? []) {
+		registerPuzzleType({ name: alias, ...rest });
+	}
 }
