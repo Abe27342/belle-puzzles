@@ -5,6 +5,7 @@ import {
 	CartesianGridPuzzle,
 	connectedConstraints,
 	constant,
+	constantGraphOutput,
 	ContextExtended,
 	createVertexValueModel,
 	// ensureNonEmpty,
@@ -104,16 +105,36 @@ export class NurikabePuzzle extends CartesianGridPuzzle<NurikabeSolution> {
 		const { Implies, Iff, And, Or, Bound, If, SumArray, Not, All } =
 			context;
 
-		const model = createVertexValueModel(context, solver, this, {
-			values: Array.from(
-				{ length: this.#givens.length + 1 },
-				(_, i) => i
-			),
-		});
+		const islandIds = Array.from(
+			{ length: this.#givens.length + 1 },
+			(_, i) => i
+		);
+		const model = createVertexValueModel(
+			context,
+			solver,
+			{
+				grid,
+				output: constantGraphOutput(grid, {
+					vertices: '.',
+					edges: '',
+					faces: '',
+				}),
+			},
+			{
+				values: islandIds,
+				glyphs: Array.from({ length: islandIds.length }, (_, i) =>
+					i === this.#givens.length ? '#' : '.'
+				),
+			}
+		);
+
+		for (const { vertex, value } of this.#givens) {
+			model.output.vertices.set(vertex, constant(value));
+		}
 
 		// vertex is assigned to island i iff it is part of the island at this.#givens[i].
-		// .length is used for the sea.
 		const islandAssignments = model.variables;
+		const isSea = (v: Arith<string>) => v.eq(this.#givens.length);
 
 		let max = 0;
 		const givenVertices = new Map<GridVertex, Given>();
@@ -146,11 +167,6 @@ export class NurikabePuzzle extends CartesianGridPuzzle<NurikabeSolution> {
 			}
 		}
 
-		// const graphConstraints = context.graphConstraints(grid);
-		// const { edgeIndicators, subtreeSizes, rootAssignments } =
-		// 	graphConstraints.treeStructureVariables();
-
-		const isSea = (v: Arith<string>) => v.eq(this.#givens.length);
 		// Sea is connected.
 		solver.add(
 			...connectedConstraints(
@@ -209,31 +225,6 @@ export class NurikabePuzzle extends CartesianGridPuzzle<NurikabeSolution> {
 				islandAssignments.forceGet(v)
 			);
 			solver.add(Or(a.eq(b), isSea(a), isSea(b)));
-		}
-
-		for (const vertex of grid.vertices()) {
-			const given = givenVertices.get(vertex);
-			model.output.vertices.set(
-				vertex,
-				given !== undefined
-					? constant(given.value)
-					: variable(
-							islandAssignments
-								.forceGet(vertex)
-								.eq(this.#givens.length),
-							(assignment) => {
-								return context.isTrue(assignment) ? '#' : '.';
-							}
-					  )
-			);
-		}
-
-		for (const edge of grid.edges()) {
-			model.output.edges.set(edge, constant(''));
-		}
-
-		for (const face of grid.faces()) {
-			model.output.faces.set(face, constant(''));
 		}
 
 		return model;
