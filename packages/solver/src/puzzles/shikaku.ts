@@ -1,17 +1,9 @@
 import { registerPuzzle } from '../catalog.js';
 import {
-	createFaceValueModel,
-	FaceValueModel,
-	FaceValueSolution,
-} from '../lib/face-value-model.js';
-import {
-	Arith,
 	CartesianGridPuzzle,
-	connectedConstraints,
 	constant,
 	ContextExtended,
 	createEdgeIndicatorModel,
-	createVertexValueModel,
 	EdgeIndicatorModel,
 	EdgeIndicatorSolution,
 	GridFace,
@@ -20,11 +12,8 @@ import {
 	parseTextGrids,
 	type CartesianCoord,
 	type CartesianGridPuzzleProps,
-	type GridVertex,
 	type Solver,
 	type TextGridVisitor,
-	type VertexValueModel,
-	type VertexValueSolution,
 } from '../lib/index.js';
 
 export interface ShikakuPuzzleProps extends CartesianGridPuzzleProps {
