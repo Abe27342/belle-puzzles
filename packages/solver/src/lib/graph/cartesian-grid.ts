@@ -203,6 +203,8 @@ export interface GridVertex extends Vertex<CartesianGraphTypes> {
 	 */
 	isInBounds(): boolean;
 
+	incidentFaces(): Iterable<GridFace>;
+
 	translate(vector: Vector): GridVertex;
 }
 
@@ -295,6 +297,18 @@ class GridVertexImpl
 	public translate(vector: Vector): GridVertex {
 		const [dx, dy] = vector;
 		return this.#grid.getVertex([this.x + dx, this.y + dy]);
+	}
+
+	public *incidentFaces(): Iterable<GridFace> {
+		const faces = new Set<GridFace>(
+			Array.from(this.incidentEdges()).flatMap((e) =>
+				Array.from(e.incidentFaces())
+			)
+		);
+
+		for (const face of faces) {
+			yield face;
+		}
 	}
 }
 
