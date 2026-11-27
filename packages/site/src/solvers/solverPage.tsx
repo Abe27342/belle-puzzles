@@ -9,6 +9,7 @@ import {
 } from './client';
 import { formatSolverError } from './errors';
 import { SolverDivider } from './solverDivider';
+import { puzzleRouteName, puzzleTypeFromRouteParam } from './routes';
 import './solvers.css';
 
 type Phase = 'idle' | 'first' | 'uniqueness' | 'ready' | 'next' | 'done';
@@ -195,7 +196,7 @@ export function SolverNavigation() {
 						{matches.map(([type, { name }]) => (
 							<li key={type}>
 								<NavLink
-									to={`/solvers/${type}`}
+									to={`/solvers/${puzzleRouteName(type)}`}
 									onClick={() => {
 										if (mobile) {
 											setMobileOpen(false);
@@ -221,7 +222,10 @@ export function SolverNavigation() {
 }
 
 export function SolverRoute() {
-	const { puzzleType } = useParams();
+	const { puzzleType: puzzleRouteParam } = useParams();
+	const puzzleType = puzzleRouteParam
+		? puzzleTypeFromRouteParam(puzzleRouteParam)
+		: undefined;
 	const [text, setText] = React.useState('');
 	const prepared = React.useRef<PreparedSolverWorker>();
 	const stopPreparing = React.useCallback(() => {
@@ -290,7 +294,7 @@ export function SolverRoute() {
 							your browser.
 						</p>
 						<p>
-							{puzzleType
+							{puzzleRouteParam
 								? 'Unknown puzzle type. Choose a puzzle from the menu.'
 								: 'Choose a puzzle from the menu to get started.'}
 						</p>
