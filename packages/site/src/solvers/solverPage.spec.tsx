@@ -3,12 +3,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { createSolverClient, prepareSolverWorker } from './client';
-import {
-	createEmptySpiralGalaxiesGrid,
-	SolverNavigation,
-	SolverPage,
-	SolverRoute,
-} from './solverPage';
+import { SolverNavigation, SolverPage, SolverRoute } from './solverPage';
 import { puzzleTypes } from '@belle-puzzles/solver';
 import type { SolverResponse } from './protocol';
 import { SolverPageSkeleton } from './solverSkeleton';
@@ -51,6 +46,13 @@ function send(response: SolverResponse) {
 }
 
 describe('solver page', () => {
+	it('does not show the empty-grid control for standard grid puzzles', () => {
+		render(<SolverPage puzzleType="Sudoku" />);
+		expect(
+			screen.queryByRole('button', { name: 'Copy' })
+		).not.toBeInTheDocument();
+	});
+
 	it('copies an empty doubled-resolution Spiral Galaxies grid', async () => {
 		const writeText = vi.fn().mockResolvedValue(undefined);
 		Object.defineProperty(navigator, 'clipboard', {

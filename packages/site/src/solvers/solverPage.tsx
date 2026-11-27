@@ -319,7 +319,7 @@ export function SolverRoute() {
 	);
 }
 
-export function createEmptySpiralGalaxiesGrid(
+export function createEmptyDoubledResolutionGrid(
 	width: number,
 	height: number
 ): string {
@@ -371,8 +371,8 @@ export function SolverPage({
 }) {
 	const definition = puzzleTypes[puzzleType];
 	const [text, setText] = React.useState(initialText);
-	const [spiralWidth, setSpiralWidth] = React.useState(8);
-	const [spiralHeight, setSpiralHeight] = React.useState(8);
+	const [gridWidth, setGridWidth] = React.useState(8);
+	const [gridHeight, setGridHeight] = React.useState(8);
 	const [copyStatus, setCopyStatus] = React.useState('');
 	const [solutions, setSolutions] = React.useState<string[]>([]);
 	const [cachedSecond, setCachedSecond] = React.useState<string | null>(null);
@@ -526,75 +526,6 @@ export function SolverPage({
 						rows={12}
 						required
 					/>
-					{puzzleType === 'Spiral Galaxies' && (
-						<section
-							className="empty-grid-generator"
-							aria-labelledby="empty-grid-heading"
-						>
-							<h2 id="empty-grid-heading">Copy an empty grid</h2>
-							<div className="empty-grid-controls">
-								<label>
-									Width
-									<input
-										type="number"
-										min="1"
-										max="30"
-										value={spiralWidth}
-										onChange={(event) =>
-											setSpiralWidth(
-												Math.max(
-													1,
-													Number(
-														event.target.value
-													) || 1
-												)
-											)
-										}
-									/>
-								</label>
-								<label>
-									Height
-									<input
-										type="number"
-										min="1"
-										max="30"
-										value={spiralHeight}
-										onChange={(event) =>
-											setSpiralHeight(
-												Math.max(
-													1,
-													Number(
-														event.target.value
-													) || 1
-												)
-											)
-										}
-									/>
-								</label>
-								<button
-									type="button"
-									onClick={async () => {
-										try {
-											await navigator.clipboard.writeText(
-												createEmptySpiralGalaxiesGrid(
-													spiralWidth,
-													spiralHeight
-												)
-											);
-											setCopyStatus('Empty grid copied');
-										} catch {
-											setCopyStatus(
-												'Unable to copy empty grid'
-											);
-										}
-									}}
-								>
-									Copy
-								</button>
-							</div>
-							<p role="status">{copyStatus}</p>
-						</section>
-					)}
 					<div className="solver-actions">
 						<button
 							type="button"
@@ -630,6 +561,75 @@ export function SolverPage({
 							Cancel
 						</button>
 					</div>
+					{definition.gridFormat === 'double-resolution' && (
+						<section
+							className="empty-grid-generator"
+							aria-labelledby="empty-grid-heading"
+						>
+							<h2 id="empty-grid-heading">Copy an empty grid</h2>
+							<div className="empty-grid-controls">
+								<label>
+									Width
+									<input
+										type="number"
+										min="1"
+										max="30"
+										value={gridWidth}
+										onChange={(event) =>
+											setGridWidth(
+												Math.max(
+													1,
+													Number(
+														event.target.value
+													) || 1
+												)
+											)
+										}
+									/>
+								</label>
+								<label>
+									Height
+									<input
+										type="number"
+										min="1"
+										max="30"
+										value={gridHeight}
+										onChange={(event) =>
+											setGridHeight(
+												Math.max(
+													1,
+													Number(
+														event.target.value
+													) || 1
+												)
+											)
+										}
+									/>
+								</label>
+								<button
+									type="button"
+									onClick={async () => {
+										try {
+											await navigator.clipboard.writeText(
+												createEmptyDoubledResolutionGrid(
+													gridWidth,
+													gridHeight
+												)
+											);
+											setCopyStatus('Empty grid copied');
+										} catch {
+											setCopyStatus(
+												'Unable to copy empty grid'
+											);
+										}
+									}}
+								>
+									Copy
+								</button>
+							</div>
+							<p role="status">{copyStatus}</p>
+						</section>
+					)}
 				</form>
 			</section>
 			{divider}

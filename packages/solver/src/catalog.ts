@@ -4,6 +4,7 @@ export interface PuzzleRegistration {
 	name: string;
 	instructions: string;
 	example: string;
+	gridFormat?: 'double-resolution';
 	parser: {
 		fromText(text: string): CartesianGridPuzzle<unknown>;
 	};

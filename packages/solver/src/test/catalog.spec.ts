@@ -13,6 +13,7 @@ vi.mock('z3-solver', () => {
 it('imports and parses all registered examples without loading the Z3 runtime', () => {
 	expect(Object.keys(puzzleTypes).length).toBeGreaterThan(0);
 	expect(puzzleTypes.Sudoku).toBeDefined();
+	expect(puzzleTypes['Spiral Galaxies'].gridFormat).toBe('double-resolution');
 	for (const [type, definition] of Object.entries(puzzleTypes)) {
 		expect(isPuzzleType(type)).toBe(true);
 		expect(definition.name).not.toBe('');
