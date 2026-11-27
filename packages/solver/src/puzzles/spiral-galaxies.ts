@@ -45,8 +45,9 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 	static {
 		registerPuzzle({
 			name: 'Spiral Galaxies',
+			aliases: ['Tentai Show', 'Tentaisho', 'Galaxies', 'Sym-a-Pix'],
 			gridFormat: 'double-resolution',
-			instructions: 'Use "o" for pearls.',
+			instructions: 'Use "o" for givens.',
 			example: `
 ·-·-·-·-·-·-·-·-·-·-·
 |#o#|#|#|#|#|o|#|#|#|
