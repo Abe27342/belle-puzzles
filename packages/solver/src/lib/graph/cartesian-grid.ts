@@ -429,6 +429,9 @@ export interface GridEdge extends Edge<CartesianGraphTypes> {
 	translate(vector: Vector): GridEdge;
 
 	isHorizontal: boolean;
+	isOnBoundary(): boolean;
+
+	incidentFaces(): Iterable<GridFace>;
 
 	bearingFrom(incident: GridVertex | GridFace): Vector;
 }
@@ -471,6 +474,35 @@ class GridEdgeImpl implements GridEdge {
 
 	public get isHorizontal(): boolean {
 		return this.#start.y === this.#end.y;
+	}
+
+	public isOnBoundary(): boolean {
+		if (this.isHorizontal) {
+			return this.vertices.some(
+				(v) => v.y === 0 || v.y === this.#grid.height - 1
+			);
+		} else {
+			return this.vertices.some(
+				(v) => v.x === 0 || v.x === this.#grid.width - 1
+			);
+		}
+	}
+
+	public *incidentFaces(): Iterable<GridFace> {
+		const [a, b] = this.vertices;
+		const minX = Math.min(a.x, b.x);
+		const minY = Math.min(a.y, b.y);
+		const afterFace = this.#grid.getFace([minX, minY]);
+		if (afterFace.isInBounds()) {
+			yield afterFace;
+		}
+
+		const beforeFace = this.isHorizontal
+			? this.#grid.getFace([minX, minY - 1])
+			: this.#grid.getFace([minX - 1, minY]);
+		if (beforeFace.isInBounds()) {
+			yield beforeFace;
+		}
 	}
 
 	public toString(): string {
