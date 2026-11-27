@@ -9,7 +9,7 @@ import {
 	parseNumber,
 	parseTextGrids,
 	type CartesianCoord,
-	type CartesianGridPuzzleProps,
+	type FaceGridSizeProps,
 	type EdgeIndicatorModel,
 	type EdgeIndicatorSolution,
 	type GridFace,
@@ -18,7 +18,7 @@ import {
 	ContextExtended,
 } from '../lib/index.js';
 
-export interface SlitherlinkPuzzleProps extends CartesianGridPuzzleProps {
+export interface SlitherlinkPuzzleProps extends FaceGridSizeProps {
 	givens: ConstructionGivens[];
 }
 

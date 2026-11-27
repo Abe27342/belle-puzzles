@@ -1,5 +1,9 @@
 import type { Context, Solver } from 'z3-solver';
-import { CartesianGraphTypes, CartesianGridGraph } from './graph/index.js';
+import {
+	CartesianGraphTypes,
+	CartesianGridGraph,
+	type GridSizeProps,
+} from './graph/index.js';
 import {
 	constantGraphOutput,
 	constant,
@@ -8,10 +12,7 @@ import {
 } from './graph-output.js';
 import type { BuiltPuzzle, PuzzleDefinition } from './puzzle.js';
 
-export interface CartesianGridPuzzleProps {
-	faceWidth: number;
-	faceHeight: number;
-}
+export type CartesianGridPuzzleProps = GridSizeProps;
 
 export type CreateOutput = (
 	grid: CartesianGridGraph

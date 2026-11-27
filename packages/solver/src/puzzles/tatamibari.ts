@@ -11,12 +11,12 @@ import {
 	outputFactories,
 	parseTextGrids,
 	type CartesianCoord,
-	type CartesianGridPuzzleProps,
+	type FaceGridSizeProps,
 	type Solver,
 	type TextGridVisitor,
 } from '../lib/index.js';
 
-export interface TatamibariPuzzleProps extends CartesianGridPuzzleProps {
+export interface TatamibariPuzzleProps extends FaceGridSizeProps {
 	givens: ConstructionGiven[];
 }
 

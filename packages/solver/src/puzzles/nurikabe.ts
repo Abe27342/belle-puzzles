@@ -10,7 +10,7 @@ import {
 	parseNumber,
 	parseTextGrids,
 	type CartesianCoord,
-	type CartesianGridPuzzleProps,
+	type VertexGridSizeProps,
 	type GridVertex,
 	type Solver,
 	type TextGridVisitor,
@@ -18,7 +18,7 @@ import {
 	type VertexValueSolution,
 } from '../lib/index.js';
 
-export interface NurikabePuzzleProps extends CartesianGridPuzzleProps {
+export interface NurikabePuzzleProps extends VertexGridSizeProps {
 	givens: ConstructionGiven[];
 }
 
@@ -88,8 +88,8 @@ export class NurikabePuzzle extends CartesianGridPuzzle<NurikabeSolution> {
 		});
 
 		return new NurikabePuzzle({
-			faceWidth: width - 1,
-			faceHeight: height - 1,
+			vertexWidth: width,
+			vertexHeight: height,
 			givens,
 		});
 	}

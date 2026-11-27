@@ -6,7 +6,7 @@ import {
 	parseNumber,
 	parseTextGrids,
 	type CartesianCoord,
-	type CartesianGridPuzzleProps,
+	type VertexGridSizeProps,
 	type EdgeIndicatorModel,
 	type EdgeIndicatorSolution,
 	type Solver,
@@ -19,7 +19,7 @@ import {
 	Counter,
 } from '../lib/index.js';
 
-export interface NumberlinkPuzzleProps extends CartesianGridPuzzleProps {
+export interface NumberlinkPuzzleProps extends VertexGridSizeProps {
 	givens: ConstructionGivens[];
 }
 
@@ -98,8 +98,8 @@ export class NumberlinkPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution>
 			gridCount: 1,
 		});
 		return new NumberlinkPuzzle({
-			faceWidth: width - 1,
-			faceHeight: height - 1,
+			vertexWidth: width,
+			vertexHeight: height,
 			givens,
 		});
 	}

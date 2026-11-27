@@ -8,7 +8,7 @@ import {
 	parseTextGrids,
 	sightLineSumConstraints,
 	type CartesianCoord,
-	type CartesianGridPuzzleProps,
+	type FaceGridSizeProps,
 	type EdgeIndicatorModel,
 	type EdgeIndicatorSolution,
 	type GridFace,
@@ -17,7 +17,7 @@ import {
 	ContextExtended,
 } from '../lib/index.js';
 
-export interface CavePuzzleProps extends CartesianGridPuzzleProps {
+export interface CavePuzzleProps extends FaceGridSizeProps {
 	givens: ConstructionGivens[];
 }
 

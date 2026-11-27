@@ -28,8 +28,8 @@ it('reports face and vertex dimensions separately', () => {
 	expect(faceGrid.vertexHeight).toBe(4);
 
 	const vertexGrid = new CartesianGridGraph({
-		width: 5,
-		height: 4,
+		vertexWidth: 5,
+		vertexHeight: 4,
 	});
 	expect(vertexGrid.vertexWidth).toBe(5);
 	expect(vertexGrid.vertexHeight).toBe(4);

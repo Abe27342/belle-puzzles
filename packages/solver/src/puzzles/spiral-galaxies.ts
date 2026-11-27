@@ -5,7 +5,7 @@ import {
 	constant,
 	type EdgeValueSolution,
 	outputFactories,
-	type CartesianGridPuzzleProps,
+	type FaceGridSizeProps,
 	type GridEdge,
 	type GridFace,
 	type GridVertex,
@@ -21,7 +21,7 @@ import {
 	type CartesianGraphTypes,
 } from '../lib/index.js';
 
-export interface SpiralGalaxiesPuzzleProps extends CartesianGridPuzzleProps {
+export interface SpiralGalaxiesPuzzleProps extends FaceGridSizeProps {
 	pearls: ConstructionSpiralGalaxyPearl[];
 }
 

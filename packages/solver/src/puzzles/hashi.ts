@@ -9,7 +9,7 @@ import {
 	parseNumber,
 	parseTextGrids,
 	type CartesianCoord,
-	type CartesianGridPuzzleProps,
+	type VertexGridSizeProps,
 	type Context,
 	type EdgeValueModel,
 	type EdgeValueSolution,
@@ -20,7 +20,7 @@ import {
 	ContextExtended,
 } from '../lib/index.js';
 
-export interface HashiPuzzleProps extends CartesianGridPuzzleProps {
+export interface HashiPuzzleProps extends VertexGridSizeProps {
 	givens: ConstructionGiven[];
 }
 
@@ -109,8 +109,8 @@ export class HashiPuzzle extends CartesianGridPuzzle<HashiSolution> {
 			gridCount: 1,
 		});
 		return new HashiPuzzle({
-			faceWidth: width - 1,
-			faceHeight: height - 1,
+			vertexWidth: width,
+			vertexHeight: height,
 			givens,
 		});
 	}

@@ -25,7 +25,7 @@ afterAll(async () => {
 });
 
 it('aligns face columns independently and extends their horizontal edges', () => {
-	const grid = new CartesianGridGraph({ width: 3, height: 3 });
+	const grid = new CartesianGridGraph({ vertexWidth: 3, vertexHeight: 3 });
 	const display = {
 		vertices: new Map<GridVertex, string>(),
 		edges: new Map<GridEdge, string>(),
@@ -47,7 +47,7 @@ it('aligns face columns independently and extends their horizontal edges', () =>
 });
 
 it('aligns multi-digit vertex values with vertical edges', () => {
-	const grid = new CartesianGridGraph({ width: 2, height: 2 });
+	const grid = new CartesianGridGraph({ vertexWidth: 2, vertexHeight: 2 });
 	const display = {
 		vertices: new Map<GridVertex, string>(),
 		edges: new Map<GridEdge, string>(),
@@ -66,7 +66,10 @@ it('aligns multi-digit vertex values with vertical edges', () => {
 });
 
 it('keeps explicitly empty separator rows and columns collapsed', () => {
-	const grid = new CartesianGridGraph({ width: 2, height: 2 });
+	const grid = new CartesianGridGraph({
+		vertexWidth: 2,
+		vertexHeight: 2,
+	});
 	const display = {
 		vertices: new Map<GridVertex, string>(),
 		edges: new Map<GridEdge, string>(),
@@ -106,7 +109,10 @@ it('loads the shared Z3 runtime and solves constraints', async () => {
 it('supports sparse integer edge domains with orientation-specific glyphs', async () => {
 	const context = new z3.Context<string>('edge-values');
 	const solver = new context.Solver();
-	const grid = new CartesianGridGraph({ width: 2, height: 2 });
+	const grid = new CartesianGridGraph({
+		vertexWidth: 2,
+		vertexHeight: 2,
+	});
 	const vertex = grid.getVertex([0, 0]);
 	const face = grid.getFace([0, 0]);
 	const output = createGraphOutput();
@@ -191,7 +197,10 @@ it('isolates puzzle contexts within the shared runtime', async () => {
 }, 15000);
 
 it('renders mixed graph bindings and enumerates only solution-defining assignments', async () => {
-	const grid = new CartesianGridGraph({ width: 2, height: 2 });
+	const grid = new CartesianGridGraph({
+		vertexWidth: 2,
+		vertexHeight: 2,
+	});
 	const vertex = grid.getVertex([0, 0]);
 	const top = grid.getEdge(vertex, vertex.right);
 	const left = grid.getEdge(vertex, vertex.down);
@@ -248,7 +257,10 @@ it('renders mixed graph bindings and enumerates only solution-defining assignmen
 }, 15000);
 
 it('supports display-only models and treats empty keys as one solution', async () => {
-	const grid = new CartesianGridGraph({ width: 2, height: 2 });
+	const grid = new CartesianGridGraph({
+		vertexWidth: 2,
+		vertexHeight: 2,
+	});
 	const face = grid.getFace([0, 0]);
 	const session = new SolverSession({
 		build(context, solver) {
@@ -271,7 +283,10 @@ it('supports display-only models and treats empty keys as one solution', async (
 }, 15000);
 
 it('renders and enumerates vertex values while preserving other output bindings', async () => {
-	const grid = new CartesianGridGraph({ width: 2, height: 2 });
+	const grid = new CartesianGridGraph({
+		vertexWidth: 2,
+		vertexHeight: 2,
+	});
 	const vertex = grid.getVertex([0, 0]);
 	const output = createGraphOutput();
 	output.edges.set(grid.getEdge(vertex, vertex.right), constant('-'));
@@ -322,7 +337,10 @@ it.each(['edges', 'vertices'] as const)(
 	async (kind) => {
 		const context = new z3.Context<string>('numeric-output');
 		const solver = new context.Solver();
-		const grid = new CartesianGridGraph({ width: 2, height: 1 });
+		const grid = new CartesianGridGraph({
+			vertexWidth: 2,
+			vertexHeight: 1,
+		});
 		const options = { values: [-2, 2] as const };
 		const model =
 			kind === 'edges'
@@ -349,7 +367,10 @@ it.each(['edges', 'vertices'] as const)(
 it('rejects incomplete explicit glyph maps instead of using numeric fallback', () => {
 	const context = new z3.Context<string>('incomplete-glyphs');
 	const solver = new context.Solver();
-	const grid = new CartesianGridGraph({ width: 1, height: 1 });
+	const grid = new CartesianGridGraph({
+		vertexWidth: 1,
+		vertexHeight: 1,
+	});
 	const values: number[] = [0, 1];
 	expect(() =>
 		createVertexValueModel(

@@ -12,7 +12,7 @@ import {
 	parsePearlColor,
 	parseTextGrids,
 	type CartesianCoord,
-	type CartesianGridPuzzleProps,
+	type FaceGridSizeProps,
 	type Solver,
 	type TextGridVisitor,
 	ContextExtended,
@@ -24,7 +24,7 @@ import {
 	HasNeighbors,
 } from '../lib/index.js';
 
-export interface RippleEffectPuzzleProps extends CartesianGridPuzzleProps {
+export interface RippleEffectPuzzleProps extends FaceGridSizeProps {
 	givens: ConstructionGiven[];
 	polyominoGrid: Map<string, string>;
 }

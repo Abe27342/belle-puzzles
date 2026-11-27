@@ -9,7 +9,7 @@ import {
 	parseTextGrids,
 	variable,
 	type CartesianCoord,
-	type CartesianGridPuzzleProps,
+	type FaceGridSizeProps,
 	type GridVertex,
 	type Solver,
 	type TextGridVisitor,
@@ -17,7 +17,7 @@ import {
 	type VertexValueSolution,
 } from '../lib/index.js';
 
-export interface FillominoPuzzleProps extends CartesianGridPuzzleProps {
+export interface FillominoPuzzleProps extends FaceGridSizeProps {
 	givens: ConstructionGiven[];
 }
 
@@ -62,8 +62,8 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 		super(props);
 
 		this.#cellGrid = new CartesianGridGraph({
-			width: props.faceWidth,
-			height: props.faceHeight,
+			vertexWidth: props.faceWidth,
+			vertexHeight: props.faceHeight,
 		});
 		this.#givens = props.givens.map((p) => ({
 			vertex: this.#cellGrid.getVertex(p.coord),

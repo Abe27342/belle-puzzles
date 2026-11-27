@@ -11,12 +11,12 @@ import {
 	parseNumber,
 	parseTextGrids,
 	type CartesianCoord,
-	type CartesianGridPuzzleProps,
+	type FaceGridSizeProps,
 	type Solver,
 	type TextGridVisitor,
 } from '../lib/index.js';
 
-export interface ShikakuPuzzleProps extends CartesianGridPuzzleProps {
+export interface ShikakuPuzzleProps extends FaceGridSizeProps {
 	givens: ConstructionGiven[];
 }
 

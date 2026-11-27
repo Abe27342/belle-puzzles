@@ -9,7 +9,7 @@ import {
 	parseNumber,
 	parseTextGrids,
 	Point,
-	type CartesianGridPuzzleProps,
+	type VertexGridSizeProps,
 	type Context,
 	type CreateOutput,
 	type GridVertex,
@@ -19,7 +19,7 @@ import {
 	type VertexValueSolution,
 } from '../lib/index.js';
 
-export interface SudokuPuzzleProps extends CartesianGridPuzzleProps {
+export interface SudokuPuzzleProps extends VertexGridSizeProps {
 	givens: ConstructionGiven[];
 }
 
@@ -117,8 +117,8 @@ export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 		}
 
 		return new SudokuPuzzle({
-			faceWidth: 8,
-			faceHeight: 8,
+			vertexWidth: 9,
+			vertexHeight: 9,
 			givens,
 		});
 	}

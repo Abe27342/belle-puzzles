@@ -6,6 +6,18 @@ export type CartesianCoord = Point;
 export { Point, Vector };
 export type { PointLike, VectorLike };
 
+export interface FaceGridSizeProps {
+	faceWidth: number;
+	faceHeight: number;
+}
+
+export interface VertexGridSizeProps {
+	vertexWidth: number;
+	vertexHeight: number;
+}
+
+export type GridSizeProps = FaceGridSizeProps | VertexGridSizeProps;
+
 export class Direction {
 	public static readonly Up = new Vector(0, -1);
 	public static readonly Down = new Vector(0, 1);
@@ -38,19 +50,15 @@ export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 	public readonly vertexWidth: number;
 	public readonly vertexHeight: number;
 
-	public constructor(
-		dimensions:
-			| { faceWidth: number; faceHeight: number }
-			| { width: number; height: number }
-	) {
+	public constructor(dimensions: GridSizeProps) {
 		if ('faceWidth' in dimensions) {
 			this.faceWidth = dimensions.faceWidth;
 			this.faceHeight = dimensions.faceHeight;
 		} else {
-			this.vertexWidth = dimensions.width;
-			this.vertexHeight = dimensions.height;
-			this.faceWidth = dimensions.width - 1;
-			this.faceHeight = dimensions.height - 1;
+			this.vertexWidth = dimensions.vertexWidth;
+			this.vertexHeight = dimensions.vertexHeight;
+			this.faceWidth = dimensions.vertexWidth - 1;
+			this.faceHeight = dimensions.vertexHeight - 1;
 		}
 		this.vertexWidth = this.faceWidth + 1;
 		this.vertexHeight = this.faceHeight + 1;
