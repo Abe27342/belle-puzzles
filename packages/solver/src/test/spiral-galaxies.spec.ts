@@ -1,6 +1,7 @@
 import { SpiralGalaxiesPuzzle } from '../puzzles/spiral-galaxies.js';
 import { describeSuiteFromTestData } from './utils.js';
 import { expect, it } from 'vitest';
+import { solve } from '../runtime/index.js';
 
 it('binds pearls to the correct face, edge, and vertex', () => {
 	const face = SpiralGalaxiesPuzzle.fromText(`
@@ -44,6 +45,28 @@ o-·
 			.get(vertex.grid.getVertex([0, 0]))
 			?.resolve({} as never)
 	).toBe('o');
+});
+
+it('renders internal edges only between different face assignments', async () => {
+	const puzzle = SpiralGalaxiesPuzzle.fromText(`
+·-·
+|o|
+·-·
+|o|
+·-·
+`);
+	const result = await solve(puzzle);
+	expect(result.status).toBe('sat');
+
+	const internal = puzzle.grid.getEdge([0, 1], [1, 1]);
+	expect(result.output.edges.get(internal)).toBe('-');
+	for (const edge of puzzle.grid.edges()) {
+		if (edge === internal) continue;
+		expect(
+			result.output.edges.get(edge),
+			`unexpected boundary edge ${edge.toString()}`
+		).toBe(' ');
+	}
 });
 
 describeSuiteFromTestData(SpiralGalaxiesPuzzle, [

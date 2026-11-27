@@ -3,8 +3,6 @@ import {
 	CartesianGridPuzzle,
 	ContextExtended,
 	constant,
-	createFaceValueModel,
-	type FaceValueModel,
 	type FaceValueSolution,
 	outputFactories,
 	type CartesianGridPuzzleProps,
@@ -16,7 +14,11 @@ import {
 	TextGridVisitor,
 	CartesianCoord,
 	connectedConstraints,
+	createEdgeIndicatorModel,
 	oob,
+	variable,
+	type BuiltPuzzle,
+	type CartesianGraphTypes,
 } from '../lib/index.js';
 
 export interface SpiralGalaxiesPuzzleProps extends CartesianGridPuzzleProps {
@@ -33,7 +35,10 @@ export type SpiralGalaxyPearl =
 	| { type: 'edge'; edge: GridEdge; center: CartesianCoord }
 	| { type: 'vertex'; vertex: GridVertex; center: CartesianCoord };
 
-type SpiralGalaxiesModel = FaceValueModel<number>;
+type SpiralGalaxiesModel = BuiltPuzzle<
+	CartesianGraphTypes,
+	SpiralGalaxiesSolution
+>;
 type SpiralGalaxiesSolution = FaceValueSolution<number>;
 
 export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolution> {
@@ -168,11 +173,69 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 		context: ContextExtended<string>,
 		solver: Solver<string>
 	): SpiralGalaxiesModel {
-		const model = createFaceValueModel(context, solver, this, {
-			values: Array.from({ length: this.#pearls.length }, (_, i) => i),
+		const pearlFaces = new Set(
+			this.#pearls
+				.filter(
+					(
+						pearl
+					): pearl is Extract<SpiralGalaxyPearl, { type: 'face' }> =>
+						pearl.type === 'face'
+				)
+				.map((pearl) => pearl.face)
+		);
+		const faceAssignments = context.ints(this.grid.faces(), {
+			min: 0,
+			max: Math.max(0, this.#pearls.length - 1),
+			name: 'faceAssignment',
 		});
+		for (const face of this.grid.faces()) {
+			if (pearlFaces.has(face)) {
+				this.output.faces.set(face, constant('o'));
+			} else {
+				this.output.faces.set(
+					face,
+					variable(
+						faceAssignments.forceGet(face),
+						() => undefined,
+						() => ' '
+					)
+				);
+			}
+		}
 
-		const faceAssignments = model.variables;
+		const edgeModel = createEdgeIndicatorModel(context, solver, this);
+		for (const edge of this.grid.edges()) {
+			const [a, b] = Array.from(edge.incidentFaces());
+			const edgeIndicator = edgeModel.variables.forceGet(edge);
+			if (edge.isOnBoundary()) {
+				solver.add(edgeIndicator.eq(0));
+			} else {
+				solver.add(
+					context.Iff(
+						edgeIndicator.eq(1),
+						faceAssignments
+							.forceGet(a)
+							.neq(faceAssignments.forceGet(b))
+					)
+				);
+			}
+			this.output.edges.set(
+				edge,
+				variable(
+					edgeIndicator,
+					(assignment) => Number(assignment.toString()),
+					(value) =>
+						value === 1 ? (edge.isHorizontal ? '-' : '|') : ' '
+				)
+			);
+		}
+		for (const pearl of this.#pearls) {
+			if (pearl.type === 'edge') {
+				this.output.edges.set(pearl.edge, constant('o'));
+			} else if (pearl.type === 'vertex') {
+				this.output.vertices.set(pearl.vertex, constant('o'));
+			}
+		}
 
 		for (const [i, pearl] of this.#pearls.entries()) {
 			const minimalEnabled: GridFace[] = [];
@@ -224,6 +287,17 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 			}
 		}
 
-		return model;
+		return {
+			output: this.output,
+			keyAssignments: [...faceAssignments.values()],
+			decodeSolution(model) {
+				return new Map(
+					Array.from(faceAssignments, ([face, expression]) => [
+						face,
+						Number(model.eval(expression, true).toString()),
+					])
+				);
+			},
+		};
 	}
 }
