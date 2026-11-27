@@ -2,7 +2,6 @@ import { registerPuzzle } from '../catalog.js';
 import {
 	CartesianGridPuzzle,
 	constant,
-	connectedLoopConstraints,
 	createEdgeIndicatorModel,
 	parseNumber,
 	parseTextGrids,
@@ -10,7 +9,6 @@ import {
 	type CartesianGridPuzzleProps,
 	type EdgeIndicatorModel,
 	type EdgeIndicatorSolution,
-	type GridFace,
 	type Solver,
 	type TextGridVisitor,
 	ContextExtended,
@@ -18,6 +16,7 @@ import {
 	createForceGetMap,
 	getOrCreate,
 	connectedConstraints,
+	Counter,
 } from '../lib/index.js';
 
 export interface NumberlinkPuzzleProps extends CartesianGridPuzzleProps {
@@ -30,16 +29,6 @@ interface Given {
 	 * The number assigned to this vertex.
 	 */
 	assignment: number;
-}
-
-class Counter<T> extends Map<T, number> {
-	increment(key: T) {
-		this.set(key, (this.get(key) ?? 0) + 1);
-	}
-
-	get(key: T) {
-		return super.get(key) ?? 0;
-	}
 }
 
 /**

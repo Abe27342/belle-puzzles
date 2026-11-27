@@ -1,19 +1,10 @@
 import { ShingokiPuzzle } from '../puzzles/shingoki.js';
 import { describeSuiteFromTestData } from './utils.js';
 
-// This set of characters renders better in VSCode editor.
-const renderChars = {
-	black: 'B',
-	white: 'W',
-	vertex: '·',
-	horizontal: '-',
-	vertical: '|',
-};
-
 describeSuiteFromTestData(
 	{
 		name: 'Shingoki',
-		fromText: (text) => ShingokiPuzzle.fromText(text, renderChars),
+		fromText: (text) => ShingokiPuzzle.fromText(text),
 	},
 	[
 		[

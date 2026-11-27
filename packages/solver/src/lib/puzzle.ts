@@ -24,6 +24,13 @@ export interface ContextExtended<Name extends string> extends Context<Name> {
 	 * @returns
 	 */
 	All: (arr: Bool<Name>[]) => Bool<Name>;
+
+	/**
+	 * Creates a constraint that enforces all elements in the array to be false.
+	 *
+	 * @returns A boolean expression representing the constraint.
+	 */
+	None: (arr: Bool<Name>[]) => Bool<Name>;
 	/**
 	 * Creates a constraint that enforces the variable `a` to be within the bounds `[b, c]`.
 	 *
