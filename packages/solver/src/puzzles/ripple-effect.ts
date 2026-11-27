@@ -20,6 +20,8 @@ import {
 	GridFace,
 	DefaultMap,
 	UnionFind,
+	ConcreteGraphTypes,
+	HasNeighbors,
 } from '../lib/index.js';
 
 export interface RippleEffectPuzzleProps extends CartesianGridPuzzleProps {
@@ -175,7 +177,7 @@ AAAABBBAA
 		context: ContextExtended<string>,
 		solver: Solver<string>
 	): FaceValueModel<number> {
-		const { Distinct, And, Implies } = context;
+		const { Distinct, Implies, None } = context;
 		// Number assigned to each face in the grid.
 		const model = createFaceValueModel(context, solver, this, {
 			values: Array.from(
@@ -198,10 +200,54 @@ AAAABBBAA
 			);
 
 			for (const face of faces) {
-				solver.add(variables.forceGet(face).le(faces.length));
+				const faceVar = variables.forceGet(face);
+				solver.add(faceVar.le(faces.length));
+
+				// Grid cells assigned the same number cannot be near each other.
+				for (
+					let assignment = 1;
+					assignment <= faces.length;
+					assignment++
+				) {
+					solver.add(
+						Implies(
+							faceVar.eq(assignment),
+							None(
+								Array.from(
+									nearestStraightLineNeighbors(
+										face,
+										assignment
+									),
+									(v) => variables.forceGet(v).eq(assignment)
+								)
+							)
+						)
+					);
+				}
 			}
 		}
 
 		return model;
+	}
+}
+
+/**
+ * @returns an iterable of all neighbors that are at most `steps` away from the given vertex.
+ */
+function* nearestStraightLineNeighbors(
+	face: GridFace,
+	steps: number
+): Iterable<GridFace> {
+	for (const edge of face.incidentEdges()) {
+		const bearing = edge.bearingFrom(face);
+		let currentFace = face;
+		for (let step = 0; step < steps; step++) {
+			const nextFace = currentFace.translate(bearing);
+			if (!nextFace.isInBounds()) {
+				break;
+			}
+			yield nextFace;
+			currentFace = nextFace;
+		}
 	}
 }

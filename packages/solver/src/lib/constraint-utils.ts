@@ -31,6 +31,9 @@ export function createConstraintExtensions<Name extends string>(
 
 	const All: (arr: Bool<Name>[]) => Bool<Name> = (arr) => And(...arr);
 
+	const None: (arr: Bool<Name>[]) => Bool<Name> = (arr) =>
+		And(...arr.map((x) => x.not()));
+
 	const zero = context.Int.const('zero');
 	solver.add(zero.eq(0));
 
@@ -69,6 +72,7 @@ export function createConstraintExtensions<Name extends string>(
 		...context,
 		solver,
 		All,
+		None,
 		Bound: bound,
 		SumArray: (arr: Arith<Name>[]) =>
 			Sum(...ensureNonEmpty(arr.length > 0 ? arr : [zero])),
@@ -212,6 +216,33 @@ export function* connectedLoopConstraints<T extends ConcreteGraphTypes<T>>(
 			.graphConstraints(graph)
 			.degree(v, indicatorVariables);
 		yield context.Or(degree.eq(0), degree.eq(2));
+	}
+}
+
+/**
+ * @returns an iterable of all neighbors that are at most `steps` away from the given vertex.
+ *
+ * @remarks
+ * I implemented this for Ripple Effect, at the time misunderstanding the constraint as requiring all neighbors within a certain distance to be considered.
+ * It might be useful for some other puzzle types, so leaving it around for now.
+ */
+export function* nearestNeighbors<T extends HasNeighbors<T>>(
+	vertex: T,
+	steps: number,
+	visited: Set<T> = new Set()
+): Iterable<T> {
+	if (visited.has(vertex)) {
+		return;
+	}
+
+	visited.add(vertex);
+	yield vertex;
+
+	if (steps > 0) {
+		for (const neighbor of vertex.neighbors()) {
+			// This implementation works for both vertices and faces
+			yield* nearestNeighbors(neighbor, steps - 1, visited);
+		}
 	}
 }
 
