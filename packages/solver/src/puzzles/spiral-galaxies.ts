@@ -13,6 +13,7 @@ import {
 	type GridVertex,
 	type Solver,
 	parseDoubledResolutionGrid,
+	TextGridVisitor,
 } from '../lib/index.js';
 
 export interface SpiralGalaxiesPuzzleProps extends CartesianGridPuzzleProps {
@@ -122,25 +123,31 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 		const { width: faceWidth, height: faceHeight } =
 			parseDoubledResolutionGrid(text, {});
 		const pearls: ConstructionSpiralGalaxyPearl[] = [];
+		const validateChar = (visitor: TextGridVisitor): TextGridVisitor => {
+			return (values, coord) => {
+				const [value] = values;
+				if (value.toLowerCase() !== 'o') {
+					throw new Error(`Invalid character at ${coord}: ${value}`);
+				}
+				return visitor(values, coord);
+			};
+		};
 		parseDoubledResolutionGrid(text, {
-			faces: ([value], [x, y]) => {
-				if (value !== 'o') return;
+			faces: validateChar((_, [x, y]) => {
 				pearls.push({
 					type: 'face',
 					coord: [x, y],
 				});
-			},
-			edges: ([value], [x, y]) => {
-				if (value !== 'o') return;
+			}),
+			edges: validateChar((_, [x, y]) => {
 				pearls.push({ type: 'edge', coord: [x, y] });
-			},
-			vertices: ([value], [x, y]) => {
-				if (value !== 'o') return;
+			}),
+			vertices: validateChar((_, [x, y]) => {
 				pearls.push({
 					type: 'vertex',
 					coord: [x, y],
 				});
-			},
+			}),
 		});
 
 		return new SpiralGalaxiesPuzzle({
