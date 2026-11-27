@@ -10,6 +10,38 @@ export interface TextGridParseOptions {
 	gridCount?: number;
 }
 
+function parseGridRow(line: string, row: number): string[] {
+	const values: string[] = [];
+	const pairs: Record<string, string> = {
+		'{': '}',
+		'(': ')',
+		'[': ']',
+	};
+	for (let index = 0; index < line.length; index++) {
+		const character = line[index];
+		const closing = pairs[character];
+		if (closing !== undefined) {
+			const end = line.indexOf(closing, index + 1);
+			const value = line.slice(index + 1, end);
+			if (end < 0 || value.length === 0 || /[{}()[\]]/.test(value)) {
+				throw new Error(
+					`Invalid bracketed clue at ${values.length},${row}`
+				);
+			}
+			values.push(value);
+			index = end;
+		} else {
+			if (/[})\]]/.test(character)) {
+				throw new Error(
+					`Unexpected closing bracket at ${values.length},${row}`
+				);
+			}
+			values.push(character);
+		}
+	}
+	return values;
+}
+
 /** Whether a grid character is an empty placeholder. */
 export function isEmptyGridCharacter(value: string): boolean {
 	return value === '.';
@@ -72,43 +104,11 @@ export function parseTextGrids(
 	if (normalized.length === 0) {
 		throw new Error('Expected at least one non-empty text grid');
 	}
-	const grids = normalized.split(/\n{2,}/).map((grid) =>
-		grid.split('\n').map((line, row) => {
-			const values: string[] = [];
-			const pairs: Record<string, string> = {
-				'{': '}',
-				'(': ')',
-				'[': ']',
-			};
-			for (let index = 0; index < line.length; index++) {
-				const character = line[index];
-				const closing = pairs[character];
-				if (closing !== undefined) {
-					const end = line.indexOf(closing, index + 1);
-					const value = line.slice(index + 1, end);
-					if (
-						end < 0 ||
-						value.length === 0 ||
-						/[{}()[\]]/.test(value)
-					) {
-						throw new Error(
-							`Invalid bracketed clue at ${values.length},${row}`
-						);
-					}
-					values.push(value);
-					index = end;
-				} else {
-					if (/[})\]]/.test(character)) {
-						throw new Error(
-							`Unexpected closing bracket at ${values.length},${row}`
-						);
-					}
-					values.push(character);
-				}
-			}
-			return values;
-		})
-	);
+	const grids = normalized
+		.split(/\n{2,}/)
+		.map((grid) =>
+			grid.split('\n').map((line, row) => parseGridRow(line, row))
+		);
 	if (options.gridCount !== undefined && grids.length !== options.gridCount) {
 		throw new Error(
 			`Expected ${options.gridCount} text grids, received ${grids.length}`
@@ -136,4 +136,74 @@ export function parseTextGrids(
 		}
 	}
 	return { width, height };
+}
+
+/**
+ * Parse a doubled-resolution grid in which vertices, edges, and faces occupy
+ * even/even, odd/even or even/odd, and odd/odd coordinates respectively.
+ *
+ * Independent visitors receive non-empty values in row-major order at their
+ * doubled-resolution coordinates. Empty positions use the matching
+ * doubled-grid character: # for faces, - for horizontal edges, | for vertical
+ * edges, and . or · for vertices. Bracketed values occupy one doubled-grid
+ * position, just as they do in a normal text grid.
+ */
+export function parseDoubledResolutionGrid(
+	text: string,
+	visitors: {
+		faces?: TextGridVisitor;
+		edges?: TextGridVisitor;
+		vertices?: TextGridVisitor;
+	}
+): { width: number; height: number } {
+	const normalized = text
+		.replace(/\r\n?/g, '\n')
+		.replace(/[^\S\n]/g, '')
+		.replace(/^\n+|\n+$/g, '');
+	if (!normalized) {
+		throw new Error(
+			'Expected at least one non-empty doubled-resolution text grid'
+		);
+	}
+
+	const lines = normalized
+		.split('\n')
+		.map((line, row) => parseGridRow(line, row));
+	const width = lines[0].length;
+	if (width === 0 || width % 2 === 0) {
+		throw new Error('Doubled-resolution grid width must be odd');
+	}
+	if (lines.length === 0 || lines.length % 2 === 0) {
+		throw new Error('Doubled-resolution grid height must be odd');
+	}
+	for (const [row, line] of lines.entries()) {
+		if (line.length !== width) {
+			throw new Error(`Grid must have ${width} columns in every row`);
+		}
+		for (let x = 0; x < line.length; x++) {
+			const value = line[x];
+			const coord: [number, number] = [x, row];
+			if (x % 2 === 1 && row % 2 === 1) {
+				if (value !== '#') {
+					visitors.faces?.([value], coord);
+				}
+			} else if (x % 2 === 1) {
+				if (value !== '-') {
+					visitors.edges?.([value], coord);
+				}
+			} else if (row % 2 === 1) {
+				if (value !== '|') {
+					visitors.edges?.([value], coord);
+				}
+			} else if (value !== '.' && value !== '·') {
+				visitors.vertices?.([value], coord);
+			}
+		}
+	}
+
+	// Face width/height
+	return {
+		width: (width - 1) / 2,
+		height: (lines.length - 1) / 2,
+	};
 }

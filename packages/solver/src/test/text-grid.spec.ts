@@ -3,6 +3,7 @@ import {
 	isEmptyGridCharacter,
 	parseNumber,
 	parsePearlColor,
+	parseDoubledResolutionGrid,
 	parseTextGrids,
 } from '../lib/text-grid.js';
 
@@ -266,5 +267,42 @@ describe('parseTextGrids', () => {
 				throw new Error('Invalid clue');
 			})
 		).toThrow('Invalid clue');
+	});
+});
+
+describe('parseDoubledResolutionGrid', () => {
+	it('visits pearls at doubled-resolution coordinates', () => {
+		const faces = vi.fn();
+		const edges = vi.fn();
+		const vertices = vi.fn();
+		expect(
+			parseDoubledResolutionGrid('·-[12]-·\n|o|#|\n·-o-·\n|#|o|\n·-·-·', {
+				faces,
+				edges,
+				vertices,
+			})
+		).toEqual({ width: 2, height: 2 });
+		expect(vertices.mock.calls).toEqual([
+			[['12'], [2, 0]],
+			[['o'], [2, 2]],
+		]);
+		expect(edges.mock.calls).toEqual([]);
+		expect(faces.mock.calls).toEqual([
+			[['o'], [1, 1]],
+			[['o'], [3, 3]],
+		]);
+	});
+
+	it.each([
+		['··--\n|#|\n·-·', 'width must be odd'],
+		['·-·\n|#|\n', 'height must be odd'],
+	])('rejects invalid input %j', (text, message) => {
+		expect(() => parseDoubledResolutionGrid(text, {})).toThrow(message);
+	});
+
+	it('rejects malformed bracketed values', () => {
+		expect(() =>
+			parseDoubledResolutionGrid('·-[12\n|-#-|\n·-·-·', {})
+		).toThrow('bracket');
 	});
 });

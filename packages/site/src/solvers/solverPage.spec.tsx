@@ -46,6 +46,20 @@ function send(response: SolverResponse) {
 }
 
 describe('solver page', () => {
+	it('does not show the empty-grid control for standard grid puzzles', () => {
+		render(<SolverPage puzzleType="Sudoku" />);
+		expect(
+			screen.queryByRole('button', { name: 'Copy' })
+		).not.toBeInTheDocument();
+	});
+
+	it('shows the empty-grid control for double-resolution puzzles', () => {
+		render(<SolverPage puzzleType="Spiral Galaxies" />);
+		expect(
+			screen.getByRole('heading', { name: 'Copy an empty grid' })
+		).toBeInTheDocument();
+	});
+
 	it('uses the pane layout while loading and leaves Solutions empty until a result arrives', () => {
 		const placeholder = render(<SolverPageSkeleton />);
 		expect(screen.getByRole('main')).toHaveAttribute('aria-busy', 'true');
@@ -440,9 +454,13 @@ describe('solver page', () => {
 			expect(
 				screen.getByRole('button', { name: 'Solve' })
 			).toBeDisabled();
+			const formatInstructions =
+				puzzleTypes[type].gridFormat === 'double-resolution'
+					? ' Enter the puzzle in a doubled-resolution grid. Use "#" for empty faces, "-" for empty horizontal edges, "|" for empty vertical edges, and "·" or "." for empty vertices. Whitespace other than line endings is ignored.'
+					: ' Use a dot (".") for an empty position and "#" for dark-square givens where supported. Whitespace other than line endings is ignored. Enclose multi-digit clues in [], (), or {} (for example, [10]). Rows must have equal numbers of cells.';
 			expect(
 				screen.getByText(
-					`${puzzleTypes[type].instructions} Use a dot (".") for an empty position and "#" for dark-square givens where supported. Whitespace other than line endings is ignored. Enclose multi-digit clues in [], (), or {} (for example, [10]). Rows must have equal numbers of cells.`
+					`${puzzleTypes[type].instructions}${formatInstructions}`
 				)
 			).toBeInTheDocument();
 			expect(
