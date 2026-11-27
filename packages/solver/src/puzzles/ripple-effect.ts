@@ -87,15 +87,6 @@ AAAABBBAA
 		});
 	}
 
-	/**
-	 * Note: the indexing model assumes givens are placed go-style.
-	 *
-	 * If input assume chess/checkers style and indexes accordingly, this does not actually cause a problem (since
-	 * it just offsets the grid).
-	 *
-	 * The solver code works in terms of the natural vertex/edge graph representation when using go style indexing,
-	 * which is why having the appropriate mental model is relevant.
-	 */
 	#givens: Given[];
 
 	#polyominos: UnionFind<GridFace>;
