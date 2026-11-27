@@ -9,6 +9,7 @@ import {
 } from './client';
 import { formatSolverError } from './errors';
 import { SolverDivider } from './solverDivider';
+import { EmptyGridGenerator } from './emptyGridGenerator';
 import { puzzleRouteName, puzzleTypeFromRouteParam } from './routes';
 import './solvers.css';
 
@@ -319,26 +320,6 @@ export function SolverRoute() {
 	);
 }
 
-export function createEmptyDoubledResolutionGrid(
-	width: number,
-	height: number
-): string {
-	const normalizedWidth = Math.max(1, Math.floor(width));
-	const normalizedHeight = Math.max(1, Math.floor(height));
-	const rows: string[] = [];
-	for (let y = 0; y <= normalizedHeight * 2; y++) {
-		let row = '';
-		for (let x = 0; x <= normalizedWidth * 2; x++) {
-			if (x % 2 === 0 && y % 2 === 0) row += '·';
-			else if (x % 2 === 1 && y % 2 === 0) row += '-';
-			else if (x % 2 === 0 && y % 2 === 1) row += '|';
-			else row += '#';
-		}
-		rows.push(row);
-	}
-	return rows.join('\n');
-}
-
 function ElapsedText() {
 	const [elapsedSeconds, setElapsedSeconds] = React.useState(0);
 	React.useEffect(() => {
@@ -371,9 +352,6 @@ export function SolverPage({
 }) {
 	const definition = puzzleTypes[puzzleType];
 	const [text, setText] = React.useState(initialText);
-	const [gridWidth, setGridWidth] = React.useState(8);
-	const [gridHeight, setGridHeight] = React.useState(8);
-	const [copyStatus, setCopyStatus] = React.useState('');
 	const [solutions, setSolutions] = React.useState<string[]>([]);
 	const [cachedSecond, setCachedSecond] = React.useState<string | null>(null);
 	const [phase, setPhase] = React.useState<Phase>('idle');
@@ -562,73 +540,7 @@ export function SolverPage({
 						</button>
 					</div>
 					{definition.gridFormat === 'double-resolution' && (
-						<section
-							className="empty-grid-generator"
-							aria-labelledby="empty-grid-heading"
-						>
-							<h2 id="empty-grid-heading">Copy an empty grid</h2>
-							<div className="empty-grid-controls">
-								<label>
-									Width
-									<input
-										type="number"
-										min="1"
-										max="30"
-										value={gridWidth}
-										onChange={(event) =>
-											setGridWidth(
-												Math.max(
-													1,
-													Number(
-														event.target.value
-													) || 1
-												)
-											)
-										}
-									/>
-								</label>
-								<label>
-									Height
-									<input
-										type="number"
-										min="1"
-										max="30"
-										value={gridHeight}
-										onChange={(event) =>
-											setGridHeight(
-												Math.max(
-													1,
-													Number(
-														event.target.value
-													) || 1
-												)
-											)
-										}
-									/>
-								</label>
-								<button
-									type="button"
-									onClick={async () => {
-										try {
-											await navigator.clipboard.writeText(
-												createEmptyDoubledResolutionGrid(
-													gridWidth,
-													gridHeight
-												)
-											);
-											setCopyStatus('Empty grid copied');
-										} catch {
-											setCopyStatus(
-												'Unable to copy empty grid'
-											);
-										}
-									}}
-								>
-									Copy
-								</button>
-							</div>
-							<p role="status">{copyStatus}</p>
-						</section>
+						<EmptyGridGenerator />
 					)}
 				</form>
 			</section>

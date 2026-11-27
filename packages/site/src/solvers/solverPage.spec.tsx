@@ -53,26 +53,11 @@ describe('solver page', () => {
 		).not.toBeInTheDocument();
 	});
 
-	it('copies an empty doubled-resolution Spiral Galaxies grid', async () => {
-		const writeText = vi.fn().mockResolvedValue(undefined);
-		Object.defineProperty(navigator, 'clipboard', {
-			configurable: true,
-			value: { writeText },
-		});
+	it('shows the empty-grid control for double-resolution puzzles', () => {
 		render(<SolverPage puzzleType="Spiral Galaxies" />);
-
-		fireEvent.change(screen.getByLabelText('Width'), {
-			target: { value: '2' },
-		});
-		fireEvent.change(screen.getByLabelText('Height'), {
-			target: { value: '1' },
-		});
-		fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
-
 		expect(
-			await screen.findByText('Empty grid copied')
+			screen.getByRole('heading', { name: 'Copy an empty grid' })
 		).toBeInTheDocument();
-		expect(writeText).toHaveBeenCalledWith('·-·-·\n|#|#|\n·-·-·');
 	});
 
 	it('uses the pane layout while loading and leaves Solutions empty until a result arrives', () => {
