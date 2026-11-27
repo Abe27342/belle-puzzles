@@ -162,20 +162,18 @@ export function parseDoubledResolutionGrid(
 	}
 
 	const lines = normalized.split('\n');
-	const doubledWidth = lines[0].length;
-	if (doubledWidth === 0 || doubledWidth % 2 === 0) {
+	const width = lines[0].length;
+	if (width === 0 || width % 2 === 0) {
 		throw new Error('Doubled-resolution grid width must be odd');
 	}
 	if (lines.length === 0 || lines.length % 2 === 0) {
 		throw new Error('Doubled-resolution grid height must be odd');
 	}
 	for (const [row, line] of lines.entries()) {
-		if (line.length !== doubledWidth) {
-			throw new Error(
-				`Doubled-resolution grid must have ${doubledWidth} columns in every row`
-			);
+		if (line.length !== width) {
+			throw new Error(`Grid must have ${width} columns in every row`);
 		}
-		for (let x = 0; x < doubledWidth; x++) {
+		for (let x = 0; x < width; x++) {
 			const value = line[x];
 			if (x % 2 === 1 && row % 2 === 1) {
 				if (value !== '#' && value !== 'o') {
@@ -215,8 +213,9 @@ export function parseDoubledResolutionGrid(
 		}
 	}
 
+	// Face width/height
 	return {
-		width: (doubledWidth - 1) / 2,
+		width: (width - 1) / 2,
 		height: (lines.length - 1) / 2,
 	};
 }
