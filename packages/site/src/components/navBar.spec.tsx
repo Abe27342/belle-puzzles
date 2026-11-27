@@ -6,7 +6,7 @@ import { expect, it } from 'vitest';
 import { store } from '../store/store';
 import { NavBar } from './navBar';
 
-it.each(['/solvers', '/solvers/Sudoku', '/home'])(
+it.each(['/solvers', '/solvers/sudoku', '/home'])(
 	'uses the viewport pane layout only for solver routes: %s',
 	(path) => {
 		const { container } = render(

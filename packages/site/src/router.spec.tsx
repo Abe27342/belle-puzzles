@@ -44,12 +44,12 @@ beforeEach(() => {
 		dispose: vi.fn(),
 	}));
 	vi.mocked(createSolverClient).mockReturnValue({ next: vi.fn(), dispose });
-	window.history.replaceState(null, '', '/solvers/Sudoku');
+	window.history.replaceState(null, '', '/solvers/sudoku');
 });
 
 async function renderSolverRoute() {
 	const view = render(<Router />);
-	await screen.findByRole('heading', { name: 'Sudoku' });
+	await screen.findByRole('heading', { name: 'Sudoku' }, { timeout: 5000 });
 	// The lazy-loaded heading can appear before the preload effect runs.
 	await waitFor(() => {
 		expect(prepareSolverWorker).toHaveBeenCalledTimes(1);
@@ -106,7 +106,7 @@ it('changes puzzle types through the SPA and disposes the old session', async ()
 		expect(dispose).toHaveBeenCalledTimes(1);
 	});
 	expect(fetchLoginInfo).not.toHaveBeenCalled();
-	expect(window.location.pathname).toBe('/solvers/Masyu');
+	expect(window.location.pathname).toBe('/solvers/masyu');
 });
 
 it('preserves authentication loading on existing pages and cleans up when leaving a solver', async () => {

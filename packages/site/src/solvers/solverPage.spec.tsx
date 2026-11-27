@@ -7,6 +7,7 @@ import { SolverNavigation, SolverPage, SolverRoute } from './solverPage';
 import { puzzleTypes } from '@belle-puzzles/solver';
 import type { SolverResponse } from './protocol';
 import { SolverPageSkeleton } from './solverSkeleton';
+import { puzzleRouteName } from './routes';
 
 vi.mock('./client', () => ({
 	createSolverClient: vi.fn(),
@@ -413,7 +414,9 @@ describe('solver page', () => {
 		'provides an unauthenticated route for %s',
 		(type) => {
 			render(
-				<MemoryRouter initialEntries={[`/solvers/${type}`]}>
+				<MemoryRouter
+					initialEntries={[`/solvers/${puzzleRouteName(type)}`]}
+				>
 					<Routes>
 						<Route
 							path="/solvers/:puzzleType"
@@ -450,6 +453,30 @@ describe('solver page', () => {
 		}
 	);
 
+	it.each([
+		'ripple-effect',
+		'RIPPLE-EFFECT',
+		'Ripple%20Effect',
+		'ripple effect',
+	])('normalizes the %s puzzle route parameter', (routeParam) => {
+		render(
+			<MemoryRouter initialEntries={[`/solvers/${routeParam}`]}>
+				<Routes>
+					<Route
+						path="/solvers/:puzzleType"
+						element={<SolverRoute />}
+					/>
+				</Routes>
+			</MemoryRouter>
+		);
+		expect(
+			screen.getByRole('heading', {
+				level: 1,
+				name: puzzleTypes['Ripple Effect'].name,
+			})
+		).toBeInTheDocument();
+	});
+
 	it('shows login and local-solving information before selecting a puzzle', () => {
 		render(
 			<MemoryRouter initialEntries={['/solvers']}>
@@ -472,7 +499,9 @@ describe('solver page', () => {
 
 	it('preserves puzzle text across type switches while clearing results and stopping the solver', () => {
 		render(
-			<MemoryRouter initialEntries={['/solvers/Sudoku']}>
+			<MemoryRouter
+				initialEntries={[`/solvers/${puzzleRouteName('Sudoku')}`]}
+			>
 				<Routes>
 					<Route
 						path="/solvers/:puzzleType"
@@ -519,7 +548,9 @@ describe('solver page', () => {
 		const idle = { start: createSolverClient, dispose: vi.fn() };
 		vi.mocked(prepareSolverWorker).mockReturnValueOnce(idle);
 		const view = render(
-			<MemoryRouter initialEntries={['/solvers/Sudoku']}>
+			<MemoryRouter
+				initialEntries={[`/solvers/${puzzleRouteName('Sudoku')}`]}
+			>
 				<Routes>
 					<Route
 						path="/solvers/:puzzleType"
@@ -536,7 +567,9 @@ describe('solver page', () => {
 
 	it('separates puzzle selection, text input, and solution status', () => {
 		render(
-			<MemoryRouter initialEntries={['/solvers/Sudoku']}>
+			<MemoryRouter
+				initialEntries={[`/solvers/${puzzleRouteName('Sudoku')}`]}
+			>
 				<Routes>
 					<Route
 						path="/solvers/:puzzleType"
@@ -581,7 +614,9 @@ describe('solver page', () => {
 
 	it('searches the expanded menu and keeps the search when collapsing and reopening', () => {
 		render(
-			<MemoryRouter initialEntries={['/solvers/Sudoku']}>
+			<MemoryRouter
+				initialEntries={[`/solvers/${puzzleRouteName('Sudoku')}`]}
+			>
 				<Routes>
 					<Route
 						path="/solvers/:puzzleType"
@@ -629,7 +664,9 @@ describe('solver page', () => {
 			matches: true,
 		});
 		render(
-			<MemoryRouter initialEntries={['/solvers/Sudoku']}>
+			<MemoryRouter
+				initialEntries={[`/solvers/${puzzleRouteName('Sudoku')}`]}
+			>
 				<Routes>
 					<Route
 						path="/solvers/:puzzleType"
@@ -682,7 +719,9 @@ describe('solver page', () => {
 
 	it('resizes the columns with the keyboard without clearing the puzzle input', () => {
 		render(
-			<MemoryRouter initialEntries={['/solvers/Sudoku']}>
+			<MemoryRouter
+				initialEntries={[`/solvers/${puzzleRouteName('Sudoku')}`]}
+			>
 				<Routes>
 					<Route
 						path="/solvers/:puzzleType"
@@ -719,7 +758,9 @@ describe('solver page', () => {
 
 	it('keeps an active solver session when the divider moves', () => {
 		render(
-			<MemoryRouter initialEntries={['/solvers/Sudoku']}>
+			<MemoryRouter
+				initialEntries={[`/solvers/${puzzleRouteName('Sudoku')}`]}
+			>
 				<Routes>
 					<Route
 						path="/solvers/:puzzleType"
