@@ -272,16 +272,23 @@ describe('parseTextGrids', () => {
 
 describe('parseDoubledResolutionGrid', () => {
 	it('visits pearls at doubled-resolution coordinates', () => {
-		const visitor = vi.fn();
+		const faces = vi.fn();
+		const edges = vi.fn();
+		const vertices = vi.fn();
 		expect(
-			parseDoubledResolutionGrid(
-				'·-·-·\n|o|#|\n·-o-·\n|#|o|\n·-·-·',
-				visitor
-			)
+			parseDoubledResolutionGrid('·-[12]-·\n|o|#|\n·-o-·\n|#|o|\n·-·-·', {
+				faces,
+				edges,
+				vertices,
+			})
 		).toEqual({ width: 2, height: 2 });
-		expect(visitor.mock.calls).toEqual([
-			[['o'], [1, 1]],
+		expect(vertices.mock.calls).toEqual([
+			[['12'], [2, 0]],
 			[['o'], [2, 2]],
+		]);
+		expect(edges.mock.calls).toEqual([]);
+		expect(faces.mock.calls).toEqual([
+			[['o'], [1, 1]],
 			[['o'], [3, 3]],
 		]);
 	});
@@ -289,11 +296,13 @@ describe('parseDoubledResolutionGrid', () => {
 	it.each([
 		['··--\n|#|\n·-·', 'width must be odd'],
 		['·-·\n|#|\n', 'height must be odd'],
-		['·-·\nx#|\n·-·', 'Invalid vertical-edge position'],
-		['·-·\n|#|\n·x·', 'Invalid horizontal-edge position'],
 	])('rejects invalid input %j', (text, message) => {
-		expect(() => parseDoubledResolutionGrid(text, vi.fn())).toThrow(
-			message
-		);
+		expect(() => parseDoubledResolutionGrid(text, {})).toThrow(message);
+	});
+
+	it('rejects malformed bracketed values', () => {
+		expect(() =>
+			parseDoubledResolutionGrid('·-[12\n|-#-|\n·-·-·', {})
+		).toThrow('bracket');
 	});
 });

@@ -2,7 +2,6 @@ import { registerPuzzle } from '../catalog.js';
 import {
 	CartesianGridPuzzle,
 	ContextExtended,
-	CartesianGridGraph,
 	constant,
 	createFaceValueModel,
 	type FaceValueModel,
@@ -17,7 +16,12 @@ import {
 } from '../lib/index.js';
 
 export interface SpiralGalaxiesPuzzleProps extends CartesianGridPuzzleProps {
-	pearls: SpiralGalaxyPearl[];
+	pearls: ConstructionSpiralGalaxyPearl[];
+}
+
+export interface ConstructionSpiralGalaxyPearl {
+	type: 'face' | 'edge' | 'vertex';
+	coord: [number, number];
 }
 
 export type SpiralGalaxyPearl =
@@ -52,7 +56,42 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 	constructor(props: SpiralGalaxiesPuzzleProps) {
 		super(props, outputFactories.linedGrid);
 
-		this.#pearls = props.pearls;
+		this.#pearls = props.pearls.map((pearl) => {
+			if (pearl.type === 'face') {
+				return {
+					type: 'face',
+					face: this.grid.getFace([
+						(pearl.coord[0] - 1) / 2,
+						(pearl.coord[1] - 1) / 2,
+					]),
+				};
+			}
+			if (pearl.type === 'edge') {
+				const [x, y] = pearl.coord;
+				if (x % 2 === 1) {
+					const left = this.grid.getVertex([
+						Math.floor(x / 2),
+						y / 2,
+					]);
+					return {
+						type: 'edge',
+						edge: this.grid.getEdge(left, left.right),
+					};
+				}
+				const top = this.grid.getVertex([x / 2, Math.floor(y / 2)]);
+				return {
+					type: 'edge',
+					edge: this.grid.getEdge(top, top.down),
+				};
+			}
+			return {
+				type: 'vertex',
+				vertex: this.grid.getVertex([
+					pearl.coord[0] / 2,
+					pearl.coord[1] / 2,
+				]),
+			};
+		});
 
 		for (const pearl of this.#pearls) {
 			if (pearl.type === 'face') {
@@ -67,41 +106,32 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 
 	public static fromText(text: string) {
 		const { width: faceWidth, height: faceHeight } =
-			parseDoubledResolutionGrid(text, () => {});
-		const pearls: SpiralGalaxyPearl[] = [];
-		const context = new CartesianGridGraph({
-			width: faceWidth + 1,
-			height: faceHeight + 1,
-		});
-		parseDoubledResolutionGrid(text, ([_value], [x, y]) => {
-			if (x % 2 === 1 && y % 2 === 1) {
+			parseDoubledResolutionGrid(text, {});
+		const pearls: ConstructionSpiralGalaxyPearl[] = [];
+		parseDoubledResolutionGrid(text, {
+			faces: ([value], [x, y]) => {
+				if (value !== 'o') return;
 				pearls.push({
 					type: 'face',
-					face: context.getFace([(x - 1) / 2, (y - 1) / 2]),
+					coord: [x, y],
 				});
-			} else if (x % 2 === 1) {
-				const left = context.getVertex([Math.floor(x / 2), y / 2]);
-				pearls.push({
-					type: 'edge',
-					edge: context.getEdge(left, left.right),
-				});
-			} else if (y % 2 === 1) {
-				const top = context.getVertex([x / 2, Math.floor(y / 2)]);
-				pearls.push({
-					type: 'edge',
-					edge: context.getEdge(top, top.down),
-				});
-			} else {
+			},
+			edges: ([value], [x, y]) => {
+				if (value !== 'o') return;
+				pearls.push({ type: 'edge', coord: [x, y] });
+			},
+			vertices: ([value], [x, y]) => {
+				if (value !== 'o') return;
 				pearls.push({
 					type: 'vertex',
-					vertex: context.getVertex([x / 2, y / 2]),
+					coord: [x, y],
 				});
-			}
+			},
 		});
 
 		return new SpiralGalaxiesPuzzle({
-			width: faceWidth,
-			height: faceHeight,
+			width: faceWidth + 1,
+			height: faceHeight + 1,
 			pearls,
 		});
 	}
