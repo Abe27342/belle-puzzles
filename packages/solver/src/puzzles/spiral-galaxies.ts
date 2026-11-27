@@ -33,8 +33,7 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 		registerPuzzle({
 			name: 'Spiral Galaxies',
 			gridFormat: 'double-resolution',
-			instructions:
-				'Enter a doubled-resolution grid. Use # for empty faces, - and | for empty horizontal and vertical edges, · or . for empty vertices, and o for every pearl.',
+			instructions: 'Use "o" for pearls.',
 			example: `
 ·-·-·-·
 |#|#|#|
