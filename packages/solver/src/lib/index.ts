@@ -8,4 +8,5 @@ export * from './text-grid.js';
 export * from './utils.js';
 export * from './value-model.js';
 export * from './vertex-value-model.js';
+export * from './data-structures/index.js';
 export type { Arith, Bool, Context, Expr, Model, Solver } from 'z3-solver';
