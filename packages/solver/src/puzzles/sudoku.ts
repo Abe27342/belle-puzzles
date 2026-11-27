@@ -8,7 +8,7 @@ import {
 	outputFactories,
 	parseNumber,
 	parseTextGrids,
-	type CartesianCoord,
+	Point,
 	type CartesianGridPuzzleProps,
 	type Context,
 	type CreateOutput,
@@ -38,7 +38,7 @@ interface Given {
  * {@link Given} is more convenient to work with once the grid has been constructed.
  */
 interface ConstructionGiven {
-	coord: CartesianCoord;
+	coord: Point;
 	value: number;
 }
 
@@ -117,8 +117,8 @@ export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 		}
 
 		return new SudokuPuzzle({
-			width,
-			height,
+			faceWidth: 8,
+			faceHeight: 8,
 			givens,
 		});
 	}
@@ -132,7 +132,7 @@ export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 		});
 
 		const variables = model.variables;
-		const varAt = (coord: CartesianCoord) =>
+		const varAt = (coord: Point) =>
 			variables.get(this.grid.getVertex(coord)) ?? oob(coord);
 
 		const { Distinct } = context;
@@ -145,7 +145,9 @@ export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 			solver.add(
 				Distinct(
 					...ensureNonEmpty(
-						Array.from({ length: 9 }, (_, j) => varAt([i, j]))
+						Array.from({ length: 9 }, (_, j) =>
+							varAt(new Point(i, j))
+						)
 					)
 				)
 			);
@@ -153,7 +155,9 @@ export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 			solver.add(
 				Distinct(
 					...ensureNonEmpty(
-						Array.from({ length: 9 }, (_, j) => varAt([j, i]))
+						Array.from({ length: 9 }, (_, j) =>
+							varAt(new Point(j, i))
+						)
 					)
 				)
 			);
@@ -164,7 +168,9 @@ export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 				const blockVars = [];
 				for (let i = 0; i < 3; i++) {
 					for (let j = 0; j < 3; j++) {
-						blockVars.push(varAt([topIndex + i, leftIndex + j]));
+						blockVars.push(
+							varAt(new Point(topIndex + i, leftIndex + j))
+						);
 					}
 				}
 				// Distinct blocks

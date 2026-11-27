@@ -86,8 +86,8 @@ export class SlitherlinkPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution
 			gridCount: 1,
 		});
 		return new SlitherlinkPuzzle({
-			width: width + 1,
-			height: height + 1,
+			faceWidth: width,
+			faceHeight: height,
 			givens,
 		});
 	}

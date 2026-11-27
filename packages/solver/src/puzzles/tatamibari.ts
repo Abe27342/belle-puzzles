@@ -103,8 +103,8 @@ export class TatamibariPuzzle extends CartesianGridPuzzle<TatamibariSolution> {
 		});
 
 		return new TatamibariPuzzle({
-			width: width + 1,
-			height: height + 1,
+			faceWidth: width,
+			faceHeight: height,
 			givens,
 		});
 	}
@@ -125,8 +125,8 @@ export class TatamibariPuzzle extends CartesianGridPuzzle<TatamibariSolution> {
 
 		const givenFaces = this.#givens.map((g) => g.face);
 		// For each given, variables for its rectangle's sizes and positions.
-		const faceWidth = this.grid.width - 1;
-		const faceHeight = this.grid.height - 1;
+		const faceWidth = this.grid.faceWidth;
+		const faceHeight = this.grid.faceHeight;
 		const widths = context.ints(givenFaces, {
 			min: 1,
 			max: faceWidth,

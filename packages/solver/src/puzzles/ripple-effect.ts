@@ -157,8 +157,8 @@ AAAABBBAA
 			gridCount: 2,
 		});
 		return new RippleEffectPuzzle({
-			width: width + 1,
-			height: height + 1,
+			faceWidth: width,
+			faceHeight: height,
 			givens,
 			polyominoGrid,
 		});
@@ -172,7 +172,7 @@ AAAABBBAA
 		// Number assigned to each face in the grid.
 		const model = createFaceValueModel(context, solver, this, {
 			values: Array.from(
-				{ length: this.grid.width * this.grid.height },
+				{ length: this.grid.faceWidth * this.grid.faceHeight },
 				(_, i) => i + 1
 			),
 		});

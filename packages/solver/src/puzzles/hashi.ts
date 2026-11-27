@@ -109,8 +109,8 @@ export class HashiPuzzle extends CartesianGridPuzzle<HashiSolution> {
 			gridCount: 1,
 		});
 		return new HashiPuzzle({
-			width,
-			height,
+			faceWidth: width - 1,
+			faceHeight: height - 1,
 			givens,
 		});
 	}

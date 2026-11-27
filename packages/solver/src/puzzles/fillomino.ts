@@ -59,13 +59,12 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 	#cellGrid: CartesianGridGraph;
 
 	constructor(props: FillominoPuzzleProps) {
-		super({
-			...props,
-			width: props.width + 1,
-			height: props.height + 1,
-		});
+		super(props);
 
-		this.#cellGrid = new CartesianGridGraph(props);
+		this.#cellGrid = new CartesianGridGraph({
+			width: props.faceWidth,
+			height: props.faceHeight,
+		});
 		this.#givens = props.givens.map((p) => ({
 			vertex: this.#cellGrid.getVertex(p.coord),
 			value: p.value,
@@ -93,8 +92,8 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 		});
 
 		return new FillominoPuzzle({
-			width,
-			height,
+			faceWidth: width,
+			faceHeight: height,
 			givens,
 		});
 	}
@@ -104,7 +103,7 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 		solver: Solver<string>
 	): FillominoModel {
 		const grid = this.#cellGrid;
-		const max = grid.width * grid.height;
+		const max = grid.vertexWidth * grid.vertexHeight;
 		const model = createVertexValueModel(
 			context,
 			solver,

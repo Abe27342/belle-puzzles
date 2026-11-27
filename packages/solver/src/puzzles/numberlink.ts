@@ -98,8 +98,8 @@ export class NumberlinkPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution>
 			gridCount: 1,
 		});
 		return new NumberlinkPuzzle({
-			width: width,
-			height: height,
+			faceWidth: width - 1,
+			faceHeight: height - 1,
 			givens,
 		});
 	}

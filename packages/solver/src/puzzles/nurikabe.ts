@@ -88,8 +88,8 @@ export class NurikabePuzzle extends CartesianGridPuzzle<NurikabeSolution> {
 		});
 
 		return new NurikabePuzzle({
-			width,
-			height,
+			faceWidth: width - 1,
+			faceHeight: height - 1,
 			givens,
 		});
 	}

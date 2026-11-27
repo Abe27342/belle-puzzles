@@ -9,8 +9,8 @@ import {
 import type { BuiltPuzzle, PuzzleDefinition } from './puzzle.js';
 
 export interface CartesianGridPuzzleProps {
-	width: number;
-	height: number;
+	faceWidth: number;
+	faceHeight: number;
 }
 
 export type CreateOutput = (
@@ -68,14 +68,6 @@ export abstract class CartesianGridPuzzle<
 		this.output = createOutput(this.grid);
 	}
 
-	public get width() {
-		return this.grid.width;
-	}
-
-	public get height() {
-		return this.grid.height;
-	}
-
 	public abstract build(
 		context: Context<string>,
 		solver: Solver<string>
@@ -91,20 +83,20 @@ export function renderCartesianGrid(
 	display: GraphDisplay<CartesianGraphTypes>
 ): string {
 	const rows: { values: string[]; horizontalEdges: boolean }[] = [];
-	for (let y = 0; y < grid.height; y++) {
+	for (let y = 0; y < grid.vertexHeight; y++) {
 		const contentLine: string[] = [];
 		const verticalEdgeLine: string[] = [];
-		for (let x = 0; x < grid.width; x++) {
+		for (let x = 0; x < grid.vertexWidth; x++) {
 			const current = grid.getVertex([x, y]);
 			contentLine.push(display.vertices.get(current) ?? cdot);
-			if (x < grid.width - 1) {
+			if (x < grid.vertexWidth - 1) {
 				const edge = grid.getEdge(current, current.right);
 				contentLine.push(display.edges.get(edge) ?? ' ');
 			}
-			if (y < grid.height - 1) {
+			if (y < grid.vertexHeight - 1) {
 				const edge = grid.getEdge(current, current.down);
 				verticalEdgeLine.push(display.edges.get(edge) ?? ' ');
-				if (x < grid.width - 1) {
+				if (x < grid.vertexWidth - 1) {
 					verticalEdgeLine.push(
 						display.faces.get(grid.getFace([x, y])) ?? ' '
 					);

@@ -1,15 +1,16 @@
 import { getOrCreate } from '../utils.js';
 import type { Edge, PlanarGraph, Vertex, Face, DirectedEdge } from './grid.js';
+import { Point, PointLike, Vector, VectorLike } from './point.js';
 
-export type CartesianCoord = [x: number, y: number];
-
-export type Vector = [dx: number, dy: number];
+export type CartesianCoord = Point;
+export { Point, Vector };
+export type { PointLike, VectorLike };
 
 export class Direction {
-	public static readonly Up: Vector = [0, -1];
-	public static readonly Down: Vector = [0, 1];
-	public static readonly Left: Vector = [-1, 0];
-	public static readonly Right: Vector = [1, 0];
+	public static readonly Up = new Vector(0, -1);
+	public static readonly Down = new Vector(0, 1);
+	public static readonly Left = new Vector(-1, 0);
+	public static readonly Right = new Vector(1, 0);
 }
 
 export interface CartesianGraphTypes {
@@ -32,49 +33,57 @@ export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 	#directedEdgeCache = new Map<string, GridDirectedEdge>();
 	#faceCache = new Map<string, GridFace>();
 
-	/**
-	 * Width of the grid in number of vertices
-	 */
-	public readonly width: number;
-	/**
-	 * Height of the grid in number of vertices
-	 */
-	public readonly height: number;
+	public readonly faceWidth: number;
+	public readonly faceHeight: number;
+	public readonly vertexWidth: number;
+	public readonly vertexHeight: number;
 
-	public constructor(dimensions: { width: number; height: number }) {
-		this.width = dimensions.width;
-		this.height = dimensions.height;
+	public constructor(
+		dimensions:
+			| { faceWidth: number; faceHeight: number }
+			| { width: number; height: number }
+	) {
+		if ('faceWidth' in dimensions) {
+			this.faceWidth = dimensions.faceWidth;
+			this.faceHeight = dimensions.faceHeight;
+		} else {
+			this.vertexWidth = dimensions.width;
+			this.vertexHeight = dimensions.height;
+			this.faceWidth = dimensions.width - 1;
+			this.faceHeight = dimensions.height - 1;
+		}
+		this.vertexWidth = this.faceWidth + 1;
+		this.vertexHeight = this.faceHeight + 1;
 	}
 
-	public getFromCenter(
-		coord: CartesianCoord
-	): GridVertex | GridFace | GridEdge {
-		const [x, y] = coord;
+	public getFromCenter(coord: PointLike): GridVertex | GridFace | GridEdge {
+		const point = Point.from(coord);
+		const [x, y] = point;
 		const xOnLattice = Math.floor(x) === x;
 		const yOnLattice = Math.floor(y) === y;
 		if (xOnLattice && yOnLattice) {
-			return this.getVertex([x, y]);
+			return this.getVertex(new Point(x, y));
 		} else if (!xOnLattice && !yOnLattice) {
-			return this.getFace([Math.floor(x), Math.floor(y)]);
+			return this.getFace(new Point(Math.floor(x), Math.floor(y)));
 		} else {
-			const start: CartesianCoord = [Math.floor(x), Math.floor(y)];
-			const end: CartesianCoord = [Math.ceil(x), Math.ceil(y)];
+			const start = new Point(Math.floor(x), Math.floor(y));
+			const end = new Point(Math.ceil(x), Math.ceil(y));
 			return this.getEdge(start, end);
 		}
 	}
 
 	public *vertices(): Iterable<GridVertex> {
-		for (let y = 0; y < this.height; y++) {
-			for (let x = 0; x < this.width; x++) {
-				yield this.getVertex([x, y]);
+		for (let y = 0; y < this.vertexHeight; y++) {
+			for (let x = 0; x < this.vertexWidth; x++) {
+				yield this.getVertex(new Point(x, y));
 			}
 		}
 	}
 
 	public *faces(): Iterable<GridFace> {
-		for (let y = 0; y < this.height - 1; y++) {
-			for (let x = 0; x < this.width - 1; x++) {
-				yield this.getFace([x, y]);
+		for (let y = 0; y < this.faceHeight; y++) {
+			for (let x = 0; x < this.faceWidth; x++) {
+				yield this.getFace(new Point(x, y));
 			}
 		}
 	}
@@ -101,11 +110,12 @@ export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 		}
 	}
 
-	public getVertex(coord: CartesianCoord): GridVertex {
+	public getVertex(coord: PointLike): GridVertex {
+		const point = Point.from(coord);
 		return getOrCreate(
 			this.#vertexCache,
-			coord.toString(),
-			() => new GridVertexImpl(coord, this)
+			point.toString(),
+			() => new GridVertexImpl(point, this)
 		);
 	}
 
@@ -114,11 +124,11 @@ export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 	 * Caches edge objects to allow reuse based on object identity.
 	 */
 	public getEdge(
-		start: CartesianCoord | GridVertex,
-		end: CartesianCoord | GridVertex
+		start: PointLike | GridVertex,
+		end: PointLike | GridVertex
 	): GridEdge {
-		let normalizedStart: CartesianCoord = this.#normalizeToCoord(start);
-		let normalizedEnd: CartesianCoord = this.#normalizeToCoord(end);
+		let normalizedStart = this.#normalizeToCoord(start);
+		let normalizedEnd = this.#normalizeToCoord(end);
 		return getOrCreate(
 			this.#edgeCache,
 			this.#getEdgeKey(normalizedStart, normalizedEnd),
@@ -132,11 +142,11 @@ export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 	}
 
 	public getDirectedEdge(
-		from: CartesianCoord | GridVertex,
-		to: CartesianCoord | GridVertex
+		from: PointLike | GridVertex,
+		to: PointLike | GridVertex
 	): GridDirectedEdge {
-		let normalizedFrom: CartesianCoord = this.#normalizeToCoord(from);
-		let normalizedTo: CartesianCoord = this.#normalizeToCoord(to);
+		let normalizedFrom = this.#normalizeToCoord(from);
+		let normalizedTo = this.#normalizeToCoord(to);
 		return getOrCreate(
 			this.#directedEdgeCache,
 			`${JSON.stringify(normalizedFrom)}->${JSON.stringify(
@@ -154,21 +164,22 @@ export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 	/**
 	 * @returns The face whose top-left corner is at the given coordinate.
 	 */
-	public getFace(coord: CartesianCoord): GridFace {
+	public getFace(coord: PointLike): GridFace {
+		const point = Point.from(coord);
 		return getOrCreate(
 			this.#faceCache,
-			coord.toString(),
-			() => new GridFaceImpl(coord, this)
+			point.toString(),
+			() => new GridFaceImpl(point, this)
 		);
 	}
 
-	#normalizeToCoord(input: CartesianCoord | GridVertex): CartesianCoord {
+	#normalizeToCoord(input: PointLike | GridVertex): Point {
 		return input instanceof GridVertexImpl
 			? input.coord
-			: (input as CartesianCoord);
+			: Point.from(input as PointLike);
 	}
 
-	#getEdgeKey(start: CartesianCoord, end: CartesianCoord) {
+	#getEdgeKey(start: Point, end: Point) {
 		let normalizedStart = start;
 		let normalizedEnd = end;
 		if (compareCoords(normalizedStart, normalizedEnd) < 0) {
@@ -180,7 +191,7 @@ export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 	}
 }
 
-const compareCoords = (start: CartesianCoord, end: CartesianCoord) => {
+const compareCoords = (start: Point, end: Point) => {
 	if (start[0] < end[0]) return -1;
 	if (start[0] > end[0]) return 1;
 	if (start[1] < end[1]) return -1;
@@ -192,7 +203,7 @@ export interface GridVertex extends Vertex<CartesianGraphTypes> {
 	x: number;
 	y: number;
 
-	center: CartesianCoord;
+	center: Point;
 	/**
 	 * The vertex above this vertex. Can return out-of-bounds vertices.
 	 */
@@ -309,13 +320,16 @@ class GridVertexImpl
 	public isInBounds(): boolean {
 		const [x, y] = this.coord;
 		return (
-			x >= 0 && x < this.#grid.width && y >= 0 && y < this.#grid.height
+			x >= 0 &&
+			x < this.#grid.vertexWidth &&
+			y >= 0 &&
+			y < this.#grid.vertexHeight
 		);
 	}
 
 	public translate(vector: Vector): GridVertex {
 		const [dx, dy] = vector;
-		return this.#grid.getVertex([this.x + dx, this.y + dy]);
+		return this.#grid.getVertex(new Point(this.x + dx, this.y + dy));
 	}
 
 	public *incidentFaces(): Iterable<GridFace> {
@@ -330,8 +344,8 @@ class GridVertexImpl
 		}
 	}
 
-	public get center(): CartesianCoord {
-		return [this.x, this.y];
+	public get center(): Point {
+		return this.coord;
 	}
 }
 
@@ -341,7 +355,7 @@ export interface GridFace extends Face<CartesianGraphTypes> {
 	 */
 	coord: CartesianCoord;
 
-	center: CartesianCoord;
+	center: Point;
 	namedEdges: {
 		top: GridEdge;
 		bottom: GridEdge;
@@ -401,8 +415,8 @@ class GridFaceImpl extends CartesianTranslatable<GridFace> implements GridFace {
 		return this.coord[1];
 	}
 
-	public get center(): CartesianCoord {
-		return [this.x + 0.5, this.y + 0.5];
+	public get center(): Point {
+		return new Point(this.x + 0.5, this.y + 0.5);
 	}
 
 	public get namedEdges() {
@@ -456,20 +470,20 @@ class GridFaceImpl extends CartesianTranslatable<GridFace> implements GridFace {
 		const [x, y] = this.coord;
 		return (
 			x >= 0 &&
-			x < this.#grid.width - 1 &&
+			x < this.#grid.faceWidth &&
 			y >= 0 &&
-			y < this.#grid.height - 1
+			y < this.#grid.faceHeight
 		);
 	}
 
 	public translate(vector: Vector): GridFace {
 		const [dx, dy] = vector;
-		return this.#grid.getFace([this.x + dx, this.y + dy]);
+		return this.#grid.getFace(new Point(this.x + dx, this.y + dy));
 	}
 }
 
 export interface GridEdge extends Edge<CartesianGraphTypes> {
-	center: CartesianCoord;
+	center: Point;
 
 	translate(vector: Vector): GridEdge;
 
@@ -509,11 +523,11 @@ class GridEdgeImpl implements GridEdge {
 		}
 	}
 
-	public get center(): CartesianCoord {
-		return [
+	public get center(): Point {
+		return new Point(
 			(this.#start.x + this.#end.x) / 2,
-			(this.#start.y + this.#end.y) / 2,
-		];
+			(this.#start.y + this.#end.y) / 2
+		);
 	}
 
 	public get type(): 'edge' {
@@ -531,11 +545,11 @@ class GridEdgeImpl implements GridEdge {
 	public isOnBoundary(): boolean {
 		if (this.isHorizontal) {
 			return this.vertices.some(
-				(v) => v.y === 0 || v.y === this.#grid.height - 1
+				(v) => v.y === 0 || v.y === this.#grid.vertexHeight - 1
 			);
 		} else {
 			return this.vertices.some(
-				(v) => v.x === 0 || v.x === this.#grid.width - 1
+				(v) => v.x === 0 || v.x === this.#grid.vertexWidth - 1
 			);
 		}
 	}
@@ -589,7 +603,7 @@ class GridEdgeImpl implements GridEdge {
 			const [x1, y1] = incident.coord;
 			const other = this.#start === incident ? this.#end : this.#start;
 			const [x2, y2] = other.coord;
-			return [x2 - x1, y2 - y1];
+			return new Vector(x2 - x1, y2 - y1);
 		} else if (incident instanceof GridFaceImpl) {
 			const { top, bottom, left, right } = incident.namedEdges;
 			if (this === top) return Direction.Up;

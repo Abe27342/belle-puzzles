@@ -12,7 +12,7 @@ import {
 	type Solver,
 	parseDoubledResolutionGrid,
 	TextGridVisitor,
-	CartesianCoord,
+	Point,
 	connectedConstraints,
 	createEdgeIndicatorModel,
 	oob,
@@ -27,13 +27,13 @@ export interface SpiralGalaxiesPuzzleProps extends CartesianGridPuzzleProps {
 
 export interface ConstructionSpiralGalaxyPearl {
 	type: 'face' | 'edge' | 'vertex';
-	coord: CartesianCoord;
+	coord: Point;
 }
 
 export type SpiralGalaxyPearl =
-	| { type: 'face'; face: GridFace; center: CartesianCoord }
-	| { type: 'edge'; edge: GridEdge; center: CartesianCoord }
-	| { type: 'vertex'; vertex: GridVertex; center: CartesianCoord };
+	| { type: 'face'; face: GridFace; center: Point }
+	| { type: 'edge'; edge: GridEdge; center: Point }
+	| { type: 'vertex'; vertex: GridVertex; center: Point };
 
 type SpiralGalaxiesModel = BuiltPuzzle<
 	CartesianGraphTypes,
@@ -88,7 +88,7 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 						(pearl.coord[0] - 1) / 2,
 						(pearl.coord[1] - 1) / 2,
 					]),
-					center: [pearl.coord[0] / 2, pearl.coord[1] / 2],
+					center: new Point(pearl.coord[0] / 2, pearl.coord[1] / 2),
 				};
 			}
 			if (pearl.type === 'edge') {
@@ -101,14 +101,14 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 					return {
 						type: 'edge',
 						edge: this.grid.getEdge(left, left.right),
-						center: [x / 2, y / 2],
+						center: new Point(x / 2, y / 2),
 					};
 				}
 				const top = this.grid.getVertex([x / 2, Math.floor(y / 2)]);
 				return {
 					type: 'edge',
 					edge: this.grid.getEdge(top, top.down),
-					center: [x / 2, y / 2],
+					center: new Point(x / 2, y / 2),
 				};
 			}
 			return {
@@ -117,7 +117,7 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 					pearl.coord[0] / 2,
 					pearl.coord[1] / 2,
 				]),
-				center: [pearl.coord[0] / 2, pearl.coord[1] / 2],
+				center: new Point(pearl.coord[0] / 2, pearl.coord[1] / 2),
 			};
 		});
 	}
@@ -139,23 +139,23 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 			faces: validateChar((_, [x, y]) => {
 				pearls.push({
 					type: 'face',
-					coord: [x, y],
+					coord: new Point(x, y),
 				});
 			}),
 			edges: validateChar((_, [x, y]) => {
-				pearls.push({ type: 'edge', coord: [x, y] });
+				pearls.push({ type: 'edge', coord: new Point(x, y) });
 			}),
 			vertices: validateChar((_, [x, y]) => {
 				pearls.push({
 					type: 'vertex',
-					coord: [x, y],
+					coord: new Point(x, y),
 				});
 			}),
 		});
 
 		return new SpiralGalaxiesPuzzle({
-			width: faceWidth + 1,
-			height: faceHeight + 1,
+			faceWidth,
+			faceHeight,
 			pearls,
 		});
 	}
@@ -228,7 +228,7 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 			const [a, b] = pearl.center;
 			for (const face of this.grid.faces()) {
 				const [x, y] = face.center;
-				const reflected: CartesianCoord = [2 * a - x, 2 * b - y];
+				const reflected = new Point(2 * a - x, 2 * b - y);
 				const reflectedFace = this.grid.getFromCenter(reflected);
 				if (reflectedFace.type !== 'face') {
 					throw new Error(

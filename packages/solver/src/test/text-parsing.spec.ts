@@ -10,8 +10,8 @@ describe('puzzle text parsing', () => {
 		const puzzle = ShingokiPuzzle.fromText(
 			'\n\t\t.W....\n\t\t..B...\n\t\t......\n\t\tB....W\n\t\tWB..B.\n\t\t......\n\n\t\t.3....\n\t\t..2...\n\t\t......\n\t\t6....5\n\t\t22..2.\n\t\t......\n\t\t'
 		);
-		expect(puzzle.width).toBe(6);
-		expect(puzzle.height).toBe(6);
+		expect(puzzle.grid.vertexWidth).toBe(6);
+		expect(puzzle.grid.vertexHeight).toBe(6);
 	});
 
 	it('uses character dimensions for vertex clues', () => {
@@ -19,16 +19,16 @@ describe('puzzle text parsing', () => {
 			MasyuPuzzle.fromText('.b.\r\n..w'),
 			ShingokiPuzzle.fromText('.b.\r\n..w\r\n\r\n.2.\r\n..3'),
 		]) {
-			expect(puzzle.width).toBe(3);
-			expect(puzzle.height).toBe(2);
+			expect(puzzle.grid.vertexWidth).toBe(3);
+			expect(puzzle.grid.vertexHeight).toBe(2);
 		}
 	});
 
 	it('adds one to character dimensions for face clues', () => {
 		for (const Puzzle of [CavePuzzle, SlitherlinkPuzzle]) {
 			const puzzle = Puzzle.fromText('1..\r\n..2');
-			expect(puzzle.width).toBe(4);
-			expect(puzzle.height).toBe(3);
+			expect(puzzle.grid.vertexWidth).toBe(4);
+			expect(puzzle.grid.vertexHeight).toBe(3);
 		}
 	});
 
@@ -103,21 +103,21 @@ describe('puzzle text parsing', () => {
 			const puzzle = FillominoPuzzle.fromText(
 				`...3 .  ...5\n..83${clue}..5.\n.3.. .  44..\n13.3 .  .2..\n.2.. 3  ..2.\n..2.  . 3.13\n..44.   ..3.\n.4..433..\n6....1...`
 			);
-			expect(puzzle.width).toBe(10);
-			expect(puzzle.height).toBe(10);
+			expect(puzzle.grid.vertexWidth).toBe(10);
+			expect(puzzle.grid.vertexHeight).toBe(10);
 		}
 	);
 
 	it('Cave accepts multi-digit cell clues', () => {
 		const puzzle = CavePuzzle.fromText('. [12] .\n. . .');
-		expect(puzzle.width).toBe(4);
-		expect(puzzle.height).toBe(3);
+		expect(puzzle.grid.vertexWidth).toBe(4);
+		expect(puzzle.grid.vertexHeight).toBe(3);
 	});
 
 	it('Shingoki aligns bracketed lengths with single-cell pearl colors', () => {
 		const puzzle = ShingokiPuzzle.fromText('. W .\n\n. {12} .');
-		expect(puzzle.width).toBe(3);
-		expect(puzzle.height).toBe(1);
+		expect(puzzle.grid.vertexWidth).toBe(3);
+		expect(puzzle.grid.vertexHeight).toBe(1);
 	});
 
 	it('Slitherlink still checks its clue range for bracketed integers', () => {

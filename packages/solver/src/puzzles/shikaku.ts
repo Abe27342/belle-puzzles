@@ -98,8 +98,8 @@ export class ShikakuPuzzle extends CartesianGridPuzzle<ShikakuSolution> {
 		});
 
 		return new ShikakuPuzzle({
-			width: width + 1,
-			height: height + 1,
+			faceWidth: width,
+			faceHeight: height,
 			givens,
 		});
 	}
@@ -122,19 +122,19 @@ export class ShikakuPuzzle extends CartesianGridPuzzle<ShikakuSolution> {
 		const givenFaces = this.#givens.map((g) => g.face);
 		const widths = context.ints(givenFaces, {
 			min: 1,
-			max: this.grid.width,
+			max: this.grid.faceWidth,
 		});
 		const heights = context.ints(givenFaces, {
 			min: 1,
-			max: this.grid.height,
+			max: this.grid.faceHeight,
 		});
 		const tops = context.ints(givenFaces, {
 			min: 0,
-			max: this.grid.height - 1,
+			max: this.grid.faceHeight - 1,
 		});
 		const lefts = context.ints(givenFaces, {
 			min: 0,
-			max: this.grid.width - 1,
+			max: this.grid.faceWidth - 1,
 		});
 
 		for (const edge of this.grid.edges()) {

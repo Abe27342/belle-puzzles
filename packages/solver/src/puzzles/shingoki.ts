@@ -110,7 +110,11 @@ export class ShingokiPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 		const { width, height } = parseTextGrids(text, visitor, {
 			gridCount: 2,
 		});
-		return new ShingokiPuzzle({ width, height, pearls });
+		return new ShingokiPuzzle({
+			faceWidth: width - 1,
+			faceHeight: height - 1,
+			pearls,
+		});
 	}
 
 	public override build(

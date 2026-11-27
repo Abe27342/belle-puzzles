@@ -80,8 +80,8 @@ export class CavePuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 			gridCount: 1,
 		});
 		return new CavePuzzle({
-			width: width + 1,
-			height: height + 1,
+			faceWidth: width,
+			faceHeight: height,
 			givens,
 		});
 	}

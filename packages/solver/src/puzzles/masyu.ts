@@ -87,7 +87,11 @@ export class MasyuPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 		const { width, height } = parseTextGrids(text, visitor, {
 			gridCount: 1,
 		});
-		return new MasyuPuzzle({ width, height, pearls });
+		return new MasyuPuzzle({
+			faceWidth: width - 1,
+			faceHeight: height - 1,
+			pearls,
+		});
 	}
 
 	public override build(
