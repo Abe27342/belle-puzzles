@@ -14,6 +14,9 @@ import {
 	type Solver,
 	parseDoubledResolutionGrid,
 	TextGridVisitor,
+	CartesianCoord,
+	connectedConstraints,
+	oob,
 } from '../lib/index.js';
 
 export interface SpiralGalaxiesPuzzleProps extends CartesianGridPuzzleProps {
@@ -22,13 +25,13 @@ export interface SpiralGalaxiesPuzzleProps extends CartesianGridPuzzleProps {
 
 export interface ConstructionSpiralGalaxyPearl {
 	type: 'face' | 'edge' | 'vertex';
-	coord: [number, number];
+	coord: CartesianCoord;
 }
 
 export type SpiralGalaxyPearl =
-	| { type: 'face'; face: GridFace }
-	| { type: 'edge'; edge: GridEdge }
-	| { type: 'vertex'; vertex: GridVertex };
+	| { type: 'face'; face: GridFace; center: CartesianCoord }
+	| { type: 'edge'; edge: GridEdge; center: CartesianCoord }
+	| { type: 'vertex'; vertex: GridVertex; center: CartesianCoord };
 
 type SpiralGalaxiesModel = FaceValueModel<number>;
 type SpiralGalaxiesSolution = FaceValueSolution<number>;
@@ -79,6 +82,7 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 						(pearl.coord[0] - 1) / 2,
 						(pearl.coord[1] - 1) / 2,
 					]),
+					center: pearl.coord,
 				};
 			}
 			if (pearl.type === 'edge') {
@@ -91,12 +95,14 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 					return {
 						type: 'edge',
 						edge: this.grid.getEdge(left, left.right),
+						center: pearl.coord,
 					};
 				}
 				const top = this.grid.getVertex([x / 2, Math.floor(y / 2)]);
 				return {
 					type: 'edge',
 					edge: this.grid.getEdge(top, top.down),
+					center: pearl.coord,
 				};
 			}
 			return {
@@ -105,16 +111,17 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 					pearl.coord[0] / 2,
 					pearl.coord[1] / 2,
 				]),
+				center: pearl.coord,
 			};
 		});
 
 		for (const pearl of this.#pearls) {
-			if (pearl.type === 'face') {
-				this.output.faces.set(pearl.face, constant('o'));
-			} else if (pearl.type === 'edge') {
+			if (pearl.type === 'edge') {
 				this.output.edges.set(pearl.edge, constant('o'));
-			} else {
+			} else if (pearl.type === 'vertex') {
 				this.output.vertices.set(pearl.vertex, constant('o'));
+			} else {
+				this.output.faces.set(pearl.face, constant('o'));
 			}
 		}
 	}
@@ -161,28 +168,62 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 		context: ContextExtended<string>,
 		solver: Solver<string>
 	): SpiralGalaxiesModel {
-		const facePearls = this.#pearls.filter(
-			(pearl): pearl is Extract<SpiralGalaxyPearl, { type: 'face' }> =>
-				pearl.type === 'face'
-		);
-		const values = facePearls.map((_, index) => index);
 		const model = createFaceValueModel(context, solver, this, {
-			values: values.length > 0 ? values : [0],
+			values: Array.from({ length: this.#pearls.length }, (_, i) => i),
 		});
 
-		for (const [index, pearl] of facePearls.entries()) {
-			solver.add(model.variables.forceGet(pearl.face).eq(index));
-			this.output.faces.set(pearl.face, constant('o'));
-		}
-		for (const pearl of this.#pearls) {
-			if (pearl.type === 'edge') {
-				this.output.edges.set(pearl.edge, constant('o'));
+		const faceAssignments = model.variables;
+
+		for (const [i, pearl] of this.#pearls.entries()) {
+			const minimalEnabled: GridFace[] = [];
+			if (pearl.type === 'face') {
+				minimalEnabled.push(pearl.face);
+				solver.add(faceAssignments.forceGet(pearl.face).eq(i));
+			} else if (pearl.type === 'edge') {
+				minimalEnabled.push(...pearl.edge.incidentFaces());
+				for (const face of pearl.edge.incidentFaces()) {
+					solver.add(faceAssignments.forceGet(face).eq(i));
+				}
 			} else if (pearl.type === 'vertex') {
-				this.output.vertices.set(pearl.vertex, constant('o'));
+				minimalEnabled.push(...pearl.vertex.incidentFaces());
+				for (const face of pearl.vertex.incidentFaces()) {
+					solver.add(faceAssignments.forceGet(face).eq(i));
+				}
+			}
+			// Faces assigned to this pearl must be connected
+			solver.add(
+				...connectedConstraints(
+					context,
+					faceAssignments,
+					minimalEnabled,
+					(variable) => variable.eq(i)
+				)
+			);
+
+			const [a, b] = pearl.center;
+			for (const face of this.grid.faces()) {
+				const [x, y] = face.center;
+				const reflected: CartesianCoord = [2 * a - x, 2 * b - y];
+				const reflectedFace = this.grid.getFromCenter(reflected);
+				if (reflectedFace.type !== 'face') {
+					throw new Error(
+						`Reflected coordinate ${reflected} does not correspond to a face`
+					);
+				}
+
+				if (reflectedFace.isInBounds()) {
+					solver.add(
+						context.Iff(
+							faceAssignments.forceGet(face).eq(i),
+							faceAssignments.forceGet(reflectedFace).eq(i)
+						)
+					);
+				} else {
+					solver.add(faceAssignments.forceGet(face).neq(i));
+				}
 			}
 		}
 
-		// TODO: Enforce connected regions and reflection symmetry around each pearl.
 		return model;
 	}
 }

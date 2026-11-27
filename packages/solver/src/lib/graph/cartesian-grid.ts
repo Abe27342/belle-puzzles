@@ -46,6 +46,23 @@ export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 		this.height = dimensions.height;
 	}
 
+	public getFromCenter(
+		coord: CartesianCoord
+	): GridVertex | GridFace | GridEdge {
+		const [x, y] = coord;
+		const xOnLattice = Math.floor(x) === x;
+		const yOnLattice = Math.floor(y) === y;
+		if (xOnLattice && yOnLattice) {
+			return this.getVertex([x, y]);
+		} else if (!xOnLattice && !yOnLattice) {
+			return this.getFace([Math.floor(x), Math.floor(y)]);
+		} else {
+			const start: CartesianCoord = [Math.floor(x), Math.floor(y)];
+			const end: CartesianCoord = [Math.ceil(x), Math.ceil(y)];
+			return this.getEdge(start, end);
+		}
+	}
+
 	public *vertices(): Iterable<GridVertex> {
 		for (let y = 0; y < this.height; y++) {
 			for (let x = 0; x < this.width; x++) {
@@ -174,6 +191,8 @@ const compareCoords = (start: CartesianCoord, end: CartesianCoord) => {
 export interface GridVertex extends Vertex<CartesianGraphTypes> {
 	x: number;
 	y: number;
+
+	center: CartesianCoord;
 	/**
 	 * The vertex above this vertex. Can return out-of-bounds vertices.
 	 */
@@ -310,6 +329,10 @@ class GridVertexImpl
 			yield face;
 		}
 	}
+
+	public get center(): CartesianCoord {
+		return [this.x, this.y];
+	}
 }
 
 export interface GridFace extends Face<CartesianGraphTypes> {
@@ -317,6 +340,8 @@ export interface GridFace extends Face<CartesianGraphTypes> {
 	 * The top-left coordinate of this face.
 	 */
 	coord: CartesianCoord;
+
+	center: CartesianCoord;
 	namedEdges: {
 		top: GridEdge;
 		bottom: GridEdge;
@@ -374,6 +399,10 @@ class GridFaceImpl extends CartesianTranslatable<GridFace> implements GridFace {
 	}
 	public get y() {
 		return this.coord[1];
+	}
+
+	public get center(): CartesianCoord {
+		return [this.x + 0.5, this.y + 0.5];
 	}
 
 	public get namedEdges() {
@@ -440,6 +469,8 @@ class GridFaceImpl extends CartesianTranslatable<GridFace> implements GridFace {
 }
 
 export interface GridEdge extends Edge<CartesianGraphTypes> {
+	center: CartesianCoord;
+
 	translate(vector: Vector): GridEdge;
 
 	isHorizontal: boolean;
@@ -476,6 +507,13 @@ class GridEdgeImpl implements GridEdge {
 				}`
 			);
 		}
+	}
+
+	public get center(): CartesianCoord {
+		return [
+			(this.#start.x + this.#end.x) / 2,
+			(this.#start.y + this.#end.y) / 2,
+		];
 	}
 
 	public get type(): 'edge' {
