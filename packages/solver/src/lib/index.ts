@@ -1,6 +1,7 @@
 export * from './cartesian-grid-puzzle.js';
 export * from './constraint-utils.js';
 export * from './edge-value-model.js';
+export * from './face-value-model.js';
 export * from './graph/index.js';
 export * from './graph-output.js';
 export * from './puzzle.js';

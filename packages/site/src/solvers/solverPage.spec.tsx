@@ -3,7 +3,12 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { createSolverClient, prepareSolverWorker } from './client';
-import { SolverNavigation, SolverPage, SolverRoute } from './solverPage';
+import {
+	createEmptySpiralGalaxiesGrid,
+	SolverNavigation,
+	SolverPage,
+	SolverRoute,
+} from './solverPage';
 import { puzzleTypes } from '@belle-puzzles/solver';
 import type { SolverResponse } from './protocol';
 import { SolverPageSkeleton } from './solverSkeleton';
@@ -46,6 +51,28 @@ function send(response: SolverResponse) {
 }
 
 describe('solver page', () => {
+	it('copies an empty doubled-resolution Spiral Galaxies grid', async () => {
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		Object.defineProperty(navigator, 'clipboard', {
+			configurable: true,
+			value: { writeText },
+		});
+		render(<SolverPage puzzleType="Spiral Galaxies" />);
+
+		fireEvent.change(screen.getByLabelText('Width'), {
+			target: { value: '2' },
+		});
+		fireEvent.change(screen.getByLabelText('Height'), {
+			target: { value: '1' },
+		});
+		fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+
+		expect(
+			await screen.findByText('Empty grid copied')
+		).toBeInTheDocument();
+		expect(writeText).toHaveBeenCalledWith('·-·-·\n|#|#|\n·-·-·');
+	});
+
 	it('uses the pane layout while loading and leaves Solutions empty until a result arrives', () => {
 		const placeholder = render(<SolverPageSkeleton />);
 		expect(screen.getByRole('main')).toHaveAttribute('aria-busy', 'true');

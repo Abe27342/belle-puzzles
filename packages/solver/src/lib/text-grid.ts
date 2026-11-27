@@ -137,3 +137,86 @@ export function parseTextGrids(
 	}
 	return { width, height };
 }
+
+/**
+ * Parse a doubled-resolution grid in which vertices, edges, and faces occupy
+ * even/even, odd/even or even/odd, and odd/odd coordinates respectively.
+ *
+ * The visitor receives `o` pearl positions in row-major order at their
+ * doubled-resolution coordinates. Empty positions must use the matching
+ * doubled-grid character: # for faces, - for horizontal edges, | for vertical
+ * edges, and . or · for vertices.
+ */
+export function parseDoubledResolutionGrid(
+	text: string,
+	visitor: TextGridVisitor
+): { width: number; height: number } {
+	const normalized = text
+		.replace(/\r\n?/g, '\n')
+		.replace(/[^\S\n]/g, '')
+		.replace(/^\n+|\n+$/g, '');
+	if (!normalized) {
+		throw new Error(
+			'Expected at least one non-empty doubled-resolution text grid'
+		);
+	}
+
+	const lines = normalized.split('\n');
+	const doubledWidth = lines[0].length;
+	if (doubledWidth === 0 || doubledWidth % 2 === 0) {
+		throw new Error('Doubled-resolution grid width must be odd');
+	}
+	if (lines.length === 0 || lines.length % 2 === 0) {
+		throw new Error('Doubled-resolution grid height must be odd');
+	}
+	for (const [row, line] of lines.entries()) {
+		if (line.length !== doubledWidth) {
+			throw new Error(
+				`Doubled-resolution grid must have ${doubledWidth} columns in every row`
+			);
+		}
+		for (let x = 0; x < doubledWidth; x++) {
+			const value = line[x];
+			if (x % 2 === 1 && row % 2 === 1) {
+				if (value !== '#' && value !== 'o') {
+					throw new Error(
+						`Invalid face position at ${x},${row}: ${JSON.stringify(
+							value
+						)}`
+					);
+				}
+			} else if (x % 2 === 1) {
+				if (value !== '-' && value !== 'o') {
+					throw new Error(
+						`Invalid horizontal-edge position at ${x},${row}: ${JSON.stringify(
+							value
+						)}`
+					);
+				}
+			} else if (row % 2 === 1) {
+				if (value !== '|' && value !== 'o') {
+					throw new Error(
+						`Invalid vertical-edge position at ${x},${row}: ${JSON.stringify(
+							value
+						)}`
+					);
+				}
+			} else if (value !== '.' && value !== '·' && value !== 'o') {
+				throw new Error(
+					`Invalid vertex position at ${x},${row}: ${JSON.stringify(
+						value
+					)}`
+				);
+			}
+
+			if (value === 'o') {
+				visitor(['o'], [x, row]);
+			}
+		}
+	}
+
+	return {
+		width: (doubledWidth - 1) / 2,
+		height: (lines.length - 1) / 2,
+	};
+}

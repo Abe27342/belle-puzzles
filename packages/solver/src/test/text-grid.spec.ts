@@ -3,6 +3,7 @@ import {
 	isEmptyGridCharacter,
 	parseNumber,
 	parsePearlColor,
+	parseDoubledResolutionGrid,
 	parseTextGrids,
 } from '../lib/text-grid.js';
 
@@ -266,5 +267,33 @@ describe('parseTextGrids', () => {
 				throw new Error('Invalid clue');
 			})
 		).toThrow('Invalid clue');
+	});
+});
+
+describe('parseDoubledResolutionGrid', () => {
+	it('visits pearls at doubled-resolution coordinates', () => {
+		const visitor = vi.fn();
+		expect(
+			parseDoubledResolutionGrid(
+				'·-·-·\n|o|#|\n·-o-·\n|#|o|\n·-·-·',
+				visitor
+			)
+		).toEqual({ width: 2, height: 2 });
+		expect(visitor.mock.calls).toEqual([
+			[['o'], [1, 1]],
+			[['o'], [2, 2]],
+			[['o'], [3, 3]],
+		]);
+	});
+
+	it.each([
+		['··--\n|#|\n·-·', 'width must be odd'],
+		['·-·\n|#|\n', 'height must be odd'],
+		['·-·\nx#|\n·-·', 'Invalid vertical-edge position'],
+		['·-·\n|#|\n·x·', 'Invalid horizontal-edge position'],
+	])('rejects invalid input %j', (text, message) => {
+		expect(() => parseDoubledResolutionGrid(text, vi.fn())).toThrow(
+			message
+		);
 	});
 });
