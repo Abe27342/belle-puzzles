@@ -37,15 +37,26 @@ export interface CartesianGraphTypes {
 }
 
 export class Direction {
-	public static readonly Up = new Vector(0, -2);
-	public static readonly Down = new Vector(0, 2);
-	public static readonly Left = new Vector(-2, 0);
-	public static readonly Right = new Vector(2, 0);
+	public static readonly N = new Vector(0, -2);
+	public static readonly S = new Vector(0, 2);
+	public static readonly E = new Vector(2, 0);
+	public static readonly W = new Vector(-2, 0);
+	public static readonly NE = new Vector(2, -2);
+	public static readonly NW = new Vector(-2, -2);
+	public static readonly SE = new Vector(2, 2);
+	public static readonly SW = new Vector(-2, 2);
+
 	public static readonly cardinals = [
-		Direction.Up,
-		Direction.Down,
-		Direction.Left,
-		Direction.Right,
+		Direction.N,
+		Direction.S,
+		Direction.E,
+		Direction.W,
+	];
+	public static readonly interCardinals = [
+		Direction.NE,
+		Direction.NW,
+		Direction.SE,
+		Direction.SW,
 	];
 }
 
@@ -303,16 +314,16 @@ abstract class CartesianTranslatable<T> {
 	abstract translate(vector: Vector): T;
 
 	public get up() {
-		return this.translate(Direction.Up);
+		return this.translate(Direction.N);
 	}
 	public get down() {
-		return this.translate(Direction.Down);
+		return this.translate(Direction.S);
 	}
 	public get left() {
-		return this.translate(Direction.Left);
+		return this.translate(Direction.E);
 	}
 	public get right() {
-		return this.translate(Direction.Right);
+		return this.translate(Direction.W);
 	}
 }
 
