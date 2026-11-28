@@ -15,8 +15,6 @@ import {
 	Point,
 	connectedConstraints,
 	createEdgeIndicatorModel,
-	oob,
-	variable,
 	type BuiltPuzzle,
 	type CartesianGraphTypes,
 } from '../lib/index.js';
@@ -85,29 +83,17 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 		const { width: faceWidth, height: faceHeight } =
 			parseDoubledResolutionGrid(text, {});
 		const pearls: ConstructionSpiralGalaxyPearl[] = [];
-		const validateChar = (visitor: TextGridVisitor): TextGridVisitor => {
-			return (values, coord) => {
-				const [value] = values;
-				if (value.toLowerCase() !== 'o') {
-					throw new Error(`Invalid character at ${coord}: ${value}`);
-				}
-				return visitor(values, coord);
-			};
+		const pushPearl: TextGridVisitor = (values, coord) => {
+			const [value] = values;
+			if (value.toLowerCase() !== 'o') {
+				throw new Error(`Invalid character at ${coord}: ${value}`);
+			}
+			pearls.push({ coord });
 		};
 		parseDoubledResolutionGrid(text, {
-			faces: validateChar((_, [x, y]) => {
-				pearls.push({
-					coord: new Point(x, y),
-				});
-			}),
-			edges: validateChar((_, [x, y]) => {
-				pearls.push({ coord: new Point(x, y) });
-			}),
-			vertices: validateChar((_, [x, y]) => {
-				pearls.push({
-					coord: new Point(x, y),
-				});
-			}),
+			faces: pushPearl,
+			edges: pushPearl,
+			vertices: pushPearl,
 		});
 
 		return new SpiralGalaxiesPuzzle({
