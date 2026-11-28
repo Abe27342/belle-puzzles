@@ -33,7 +33,12 @@ it('aligns face columns independently and extends their horizontal edges', () =>
 	};
 	for (const edge of grid.edges()) {
 		const [start, end] = edge.vertices;
-		display.edges.set(edge, start.y === end.y ? '-' : '|');
+		display.edges.set(
+			edge,
+			start.coord('singleGrid').y === end.coord('singleGrid').y
+				? '-'
+				: '|'
+		);
 	}
 	display.faces.set(grid.getFace([0, 0]), '1');
 	display.faces.set(grid.getFace([1, 0]), '123');
@@ -55,7 +60,12 @@ it('aligns multi-digit vertex values with vertical edges', () => {
 	};
 	for (const edge of grid.edges()) {
 		const [start, end] = edge.vertices;
-		display.edges.set(edge, start.y === end.y ? '-' : '|');
+		display.edges.set(
+			edge,
+			start.coord('singleGrid').y === end.coord('singleGrid').y
+				? '-'
+				: '|'
+		);
 	}
 	display.vertices.set(grid.getVertex([0, 0]), '1');
 	display.vertices.set(grid.getVertex([1, 0]), '22');
@@ -137,7 +147,13 @@ it('supports sparse integer edge domains with orientation-specific glyphs', asyn
 	solver.pop();
 	for (const [edge, expression] of model.variables) {
 		const [start, end] = edge.vertices;
-		solver.add(expression.eq(start.y === end.y ? -2 : 2));
+		solver.add(
+			expression.eq(
+				start.coord('singleGrid').y === end.coord('singleGrid').y
+					? -2
+					: 2
+			)
+		);
 	}
 	expect(await solver.check()).toBe('sat');
 	const assignment = solver.model();
@@ -145,7 +161,9 @@ it('supports sparse integer edge domains with orientation-specific glyphs', asyn
 	const solution = model.decodeSolution(assignment, display);
 	for (const [edge, value] of solution) {
 		const [start, end] = edge.vertices;
-		expect(value).toBe(start.y === end.y ? -2 : 2);
+		expect(value).toBe(
+			start.coord('singleGrid').y === end.coord('singleGrid').y ? -2 : 2
+		);
 	}
 	expect(renderCartesianGrid(grid, display)).toBe('V-·\n#F#\n·-·\n');
 	expect(model.keyAssignments).toEqual([...model.variables.values()]);

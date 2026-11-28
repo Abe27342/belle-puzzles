@@ -48,7 +48,6 @@ export interface HasNeighbors<T> {
 export interface Vertex<TConcrete extends ConcreteGraphTypes<TConcrete>>
 	extends HasNeighbors<TConcrete['vertex']> {
 	type: 'vertex';
-	coord: TConcrete['coord'];
 
 	incidentEdges(): Iterable<TConcrete['edge']>;
 

@@ -7,7 +7,7 @@ import {
 	createEdgeIndicatorModel,
 	parsePearlColor,
 	parseTextGrids,
-	type CartesianCoord,
+	Point,
 	type VertexGridSizeProps,
 	type EdgeIndicatorModel,
 	type EdgeIndicatorSolution,
@@ -33,7 +33,7 @@ interface Pearl {
  * {@link Pearl} is more convenient to work with once the grid has been constructed.
  */
 interface ConstructionPearl {
-	coord: CartesianCoord;
+	coord: Point;
 	color: 'black' | 'white';
 }
 

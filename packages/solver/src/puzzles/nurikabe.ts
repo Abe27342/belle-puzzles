@@ -9,7 +9,7 @@ import {
 	outputFactories,
 	parseNumber,
 	parseTextGrids,
-	type CartesianCoord,
+	Point,
 	type VertexGridSizeProps,
 	type GridVertex,
 	type Solver,
@@ -37,7 +37,7 @@ interface Given {
  * {@link Given} is more convenient to work with once the grid has been constructed.
  */
 interface ConstructionGiven {
-	coord: CartesianCoord;
+	coord: Point;
 	value: number;
 }
 

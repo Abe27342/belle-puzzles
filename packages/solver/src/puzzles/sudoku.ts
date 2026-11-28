@@ -53,8 +53,10 @@ const sudokuOutput: CreateOutput = (grid) => {
 	const needsSeparator = (position: number) => (position + 1) % 3 === 0;
 	for (const edge of grid.edges()) {
 		const [start, end] = edge.vertices;
-		const horizontal = start.y === end.y;
-		const position = horizontal ? start.x : start.y;
+		const startCoord = start.coord('singleGrid');
+		const endCoord = end.coord('singleGrid');
+		const horizontal = startCoord.y === endCoord.y;
+		const position = horizontal ? startCoord.x : startCoord.y;
 		const separator = horizontal ? '|' : '-';
 		output.edges.set(
 			edge,
@@ -62,7 +64,7 @@ const sudokuOutput: CreateOutput = (grid) => {
 		);
 	}
 	for (const face of grid.faces()) {
-		const [x, y] = face.coord;
+		const [x, y] = face.coord('singleGrid');
 		const intersection = needsSeparator(x) && needsSeparator(y);
 		output.faces.set(face, constant(intersection ? '+' : ''));
 	}
@@ -137,7 +139,7 @@ export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 
 		const { Distinct } = context;
 		for (const given of this.#givens) {
-			solver.add(varAt(given.vertex.coord).eq(given.value));
+			solver.add(varAt(given.vertex.coord('singleGrid')).eq(given.value));
 		}
 
 		for (let i = 0; i < 9; i++) {

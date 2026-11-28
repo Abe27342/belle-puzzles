@@ -11,7 +11,7 @@ import {
 	parseNumber,
 	parsePearlColor,
 	parseTextGrids,
-	type CartesianCoord,
+	Point,
 	type FaceGridSizeProps,
 	type Solver,
 	type TextGridVisitor,
@@ -41,7 +41,7 @@ interface Given {
  * {@link Given} is more convenient to work with once the grid has been constructed.
  */
 interface ConstructionGiven {
-	coord: CartesianCoord;
+	coord: Point;
 	value: number;
 }
 
@@ -105,15 +105,18 @@ AAAABBBAA
 			value: p.value,
 		}));
 
-		const readCharacterGrid = (coord: CartesianCoord) => {
+		const readCharacterGrid = (coord: Point) => {
 			return props.polyominoGrid.get(JSON.stringify(coord))!;
 		};
 
 		this.#polyominos = new UnionFind<GridFace>(this.grid.faces());
 		for (const face of this.grid.faces()) {
-			const thisChar = readCharacterGrid(face.coord);
+			const faceCoord = face.coord('singleGrid');
+			const thisChar = readCharacterGrid(faceCoord);
 			for (const neighbor of face.neighbors()) {
-				const neighboringChar = readCharacterGrid(neighbor.coord);
+				const neighboringChar = readCharacterGrid(
+					neighbor.coord('singleGrid')
+				);
 				const neighboringEdges = new Set(
 					face.incidentEdges()
 				).intersection(new Set(neighbor.incidentEdges()));

@@ -84,40 +84,37 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 			if (pearl.type === 'face') {
 				return {
 					type: 'face',
-					face: this.grid.getFace([
-						(pearl.coord[0] - 1) / 2,
-						(pearl.coord[1] - 1) / 2,
-					]),
-					center: new Point(pearl.coord[0] / 2, pearl.coord[1] / 2),
+					face: this.grid.getFace(pearl.coord, 'doubleGrid'),
+					center: pearl.coord,
 				};
 			}
 			if (pearl.type === 'edge') {
 				const [x, y] = pearl.coord;
 				if (x % 2 === 1) {
-					const left = this.grid.getVertex([
-						Math.floor(x / 2),
-						y / 2,
-					]);
+					const left = this.grid.getVertex(
+						new Point(x - 1, y),
+						'doubleGrid'
+					);
 					return {
 						type: 'edge',
 						edge: this.grid.getEdge(left, left.right),
-						center: new Point(x / 2, y / 2),
+						center: pearl.coord,
 					};
 				}
-				const top = this.grid.getVertex([x / 2, Math.floor(y / 2)]);
+				const top = this.grid.getVertex(
+					new Point(x, y - 1),
+					'doubleGrid'
+				);
 				return {
 					type: 'edge',
 					edge: this.grid.getEdge(top, top.down),
-					center: new Point(x / 2, y / 2),
+					center: pearl.coord,
 				};
 			}
 			return {
 				type: 'vertex',
-				vertex: this.grid.getVertex([
-					pearl.coord[0] / 2,
-					pearl.coord[1] / 2,
-				]),
-				center: new Point(pearl.coord[0] / 2, pearl.coord[1] / 2),
+				vertex: this.grid.getVertex(pearl.coord, 'doubleGrid'),
+				center: pearl.coord,
 			};
 		});
 	}

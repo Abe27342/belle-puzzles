@@ -7,7 +7,7 @@ import {
 	parseNumber,
 	parseTextGrids,
 	sightLineSumConstraints,
-	type CartesianCoord,
+	Point,
 	type FaceGridSizeProps,
 	type EdgeIndicatorModel,
 	type EdgeIndicatorSolution,
@@ -36,7 +36,7 @@ interface Given {
  * {@link Given} is more convenient to work with once the grid has been constructed.
  */
 interface ConstructionGivens {
-	coord: CartesianCoord;
+	coord: Point;
 	/**
 	 * Number of visible faces in cardinal directions, including this face.
 	 */

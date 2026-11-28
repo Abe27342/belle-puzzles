@@ -2,7 +2,6 @@ import { getOrCreate } from '../utils.js';
 import type { Edge, PlanarGraph, Vertex, Face, DirectedEdge } from './grid.js';
 import { Point, PointLike, Vector, VectorLike } from './point.js';
 
-export type CartesianCoord = Point;
 export { Point, Vector };
 export type { PointLike, VectorLike };
 
@@ -18,26 +17,41 @@ export interface VertexGridSizeProps {
 
 export type GridSizeProps = FaceGridSizeProps | VertexGridSizeProps;
 
-export class Direction {
-	public static readonly Up = new Vector(0, -1);
-	public static readonly Down = new Vector(0, 1);
-	public static readonly Left = new Vector(-1, 0);
-	public static readonly Right = new Vector(1, 0);
-}
+/**
+ * How grid coordinates are interpreted.
+ *
+ * `singleGrid` coordinates index one grid: vertices have integer coordinates,
+ * faces have integer coordinates, and edge coordinates may use half-integers.
+ * `doubleGrid` coordinates use the expanded coordinate system, where vertices
+ * use even/even centers, faces use odd/odd centers, and edges use a
+ * singly-odd center.
+ */
+export type GridInterpretation = 'singleGrid' | 'doubleGrid';
 
 export interface CartesianGraphTypes {
-	coord: CartesianCoord;
+	coord: Point;
 	vertex: GridVertex;
 	edge: GridEdge;
 	directedEdge: GridDirectedEdge;
 	face: GridFace;
 }
 
+export class Direction {
+	public static readonly Up = new Vector(0, -2);
+	public static readonly Down = new Vector(0, 2);
+	public static readonly Left = new Vector(-2, 0);
+	public static readonly Right = new Vector(2, 0);
+}
+
 /**
  * A {@link PlanarGraph} representation of a 2D cartesian grid.
  *
- * Width/height is expressed in terms of number of vertices, which is in line with an m-by-n grid
- * representing the cartesian product of two paths P_m and P_n (see https://en.wikipedia.org/wiki/Path_graph)
+ * Centers use an expanded coordinate system from (0,0) through
+ * (2*faceWidth,2*faceHeight), inclusive.
+ *
+ * - Vertices are at even/even centers.
+ * - Horizontal/vertical edges are at even/odd or odd/even centers.
+ * - Faces are at odd/odd centers.
  */
 export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 	#vertexCache = new Map<string, GridVertex>();
@@ -67,23 +81,23 @@ export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 	public getFromCenter(coord: PointLike): GridVertex | GridFace | GridEdge {
 		const point = Point.from(coord);
 		const [x, y] = point;
-		const xOnLattice = Math.floor(x) === x;
-		const yOnLattice = Math.floor(y) === y;
-		if (xOnLattice && yOnLattice) {
-			return this.getVertex(new Point(x, y));
-		} else if (!xOnLattice && !yOnLattice) {
-			return this.getFace(new Point(Math.floor(x), Math.floor(y)));
+		const xEven = x % 2 === 0;
+		const yEven = y % 2 === 0;
+		if (xEven && yEven) {
+			return this.getExpandedVertex(point);
+		} else if (!xEven && !yEven) {
+			return this.getExpandedFace(point);
 		} else {
-			const start = new Point(Math.floor(x), Math.floor(y));
-			const end = new Point(Math.ceil(x), Math.ceil(y));
-			return this.getEdge(start, end);
+			const start = xEven ? new Point(x, y - 1) : new Point(x - 1, y);
+			const end = xEven ? new Point(x, y + 1) : new Point(x + 1, y);
+			return this.getExpandedEdge(start, end);
 		}
 	}
 
 	public *vertices(): Iterable<GridVertex> {
 		for (let y = 0; y < this.vertexHeight; y++) {
 			for (let x = 0; x < this.vertexWidth; x++) {
-				yield this.getVertex(new Point(x, y));
+				yield this.getVertex(new Point(x, y), 'singleGrid');
 			}
 		}
 	}
@@ -91,7 +105,7 @@ export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 	public *faces(): Iterable<GridFace> {
 		for (let y = 0; y < this.faceHeight; y++) {
 			for (let x = 0; x < this.faceWidth; x++) {
-				yield this.getFace(new Point(x, y));
+				yield this.getFace(new Point(x, y), 'singleGrid');
 			}
 		}
 	}
@@ -112,14 +126,25 @@ export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 		for (const vertex of this.vertices()) {
 			for (const neighbor of vertex.neighbors()) {
 				if (neighbor.isInBounds()) {
-					yield this.getDirectedEdge(vertex.coord, neighbor.coord);
+					yield this.getDirectedEdge(vertex, neighbor);
 				}
 			}
 		}
 	}
 
-	public getVertex(coord: PointLike): GridVertex {
+	public getVertex(
+		coord: PointLike,
+		interpretation: GridInterpretation = 'singleGrid'
+	): GridVertex {
 		const point = Point.from(coord);
+		const center =
+			interpretation === 'singleGrid'
+				? new Point(point.x * 2, point.y * 2)
+				: point;
+		return this.getExpandedVertex(center);
+	}
+
+	private getExpandedVertex(point: Point): GridVertex {
 		return getOrCreate(
 			this.#vertexCache,
 			point.toString(),
@@ -133,17 +158,22 @@ export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 	 */
 	public getEdge(
 		start: PointLike | GridVertex,
-		end: PointLike | GridVertex
+		end: PointLike | GridVertex,
+		interpretation: GridInterpretation = 'singleGrid'
 	): GridEdge {
-		let normalizedStart = this.#normalizeToCoord(start);
-		let normalizedEnd = this.#normalizeToCoord(end);
+		let normalizedStart = this.#normalizeToCoord(start, interpretation);
+		let normalizedEnd = this.#normalizeToCoord(end, interpretation);
+		return this.getExpandedEdge(normalizedStart, normalizedEnd);
+	}
+
+	private getExpandedEdge(start: Point, end: Point): GridEdge {
 		return getOrCreate(
 			this.#edgeCache,
-			this.#getEdgeKey(normalizedStart, normalizedEnd),
+			this.#getEdgeKey(start, end),
 			() =>
 				new GridEdgeImpl(
-					this.getVertex(normalizedStart),
-					this.getVertex(normalizedEnd),
+					this.getExpandedVertex(start),
+					this.getExpandedVertex(end),
 					this
 				)
 		);
@@ -151,19 +181,22 @@ export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 
 	public getDirectedEdge(
 		from: PointLike | GridVertex,
-		to: PointLike | GridVertex
+		to: PointLike | GridVertex,
+		interpretation: GridInterpretation = 'singleGrid'
 	): GridDirectedEdge {
-		let normalizedFrom = this.#normalizeToCoord(from);
-		let normalizedTo = this.#normalizeToCoord(to);
+		let normalizedFrom = this.#normalizeToCoord(from, interpretation);
+		let normalizedTo = this.#normalizeToCoord(to, interpretation);
+		return this.getExpandedDirectedEdge(normalizedFrom, normalizedTo);
+	}
+
+	private getExpandedDirectedEdge(from: Point, to: Point): GridDirectedEdge {
 		return getOrCreate(
 			this.#directedEdgeCache,
-			`${JSON.stringify(normalizedFrom)}->${JSON.stringify(
-				normalizedTo
-			)}`,
+			`${JSON.stringify(from)}->${JSON.stringify(to)}`,
 			() =>
 				new GridDirectedEdgeImpl(
-					this.getVertex(normalizedFrom),
-					this.getVertex(normalizedTo),
+					this.getExpandedVertex(from),
+					this.getExpandedVertex(to),
 					this
 				)
 		);
@@ -172,8 +205,19 @@ export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 	/**
 	 * @returns The face whose top-left corner is at the given coordinate.
 	 */
-	public getFace(coord: PointLike): GridFace {
+	public getFace(
+		coord: PointLike,
+		interpretation: GridInterpretation = 'singleGrid'
+	): GridFace {
 		const point = Point.from(coord);
+		const center =
+			interpretation === 'singleGrid'
+				? new Point(point.x * 2 + 1, point.y * 2 + 1)
+				: point;
+		return this.getExpandedFace(center);
+	}
+
+	private getExpandedFace(point: Point): GridFace {
 		return getOrCreate(
 			this.#faceCache,
 			point.toString(),
@@ -181,10 +225,15 @@ export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 		);
 	}
 
-	#normalizeToCoord(input: PointLike | GridVertex): Point {
-		return input instanceof GridVertexImpl
-			? input.coord
-			: Point.from(input as PointLike);
+	#normalizeToCoord(
+		input: PointLike | GridVertex,
+		interpretation: GridInterpretation
+	): Point {
+		if (input instanceof GridVertexImpl) return input.center;
+		const point = Point.from(input as PointLike);
+		return interpretation === 'singleGrid'
+			? new Point(point.x * 2, point.y * 2)
+			: point;
 	}
 
 	#getEdgeKey(start: Point, end: Point) {
@@ -208,10 +257,8 @@ const compareCoords = (start: Point, end: Point) => {
 };
 
 export interface GridVertex extends Vertex<CartesianGraphTypes> {
-	x: number;
-	y: number;
-
 	center: Point;
+	coord(interpretation?: GridInterpretation): Point;
 	/**
 	 * The vertex above this vertex. Can return out-of-bounds vertices.
 	 */
@@ -252,15 +299,12 @@ abstract class CartesianTranslatable<T> {
 	public get up() {
 		return this.translate(Direction.Up);
 	}
-
 	public get down() {
 		return this.translate(Direction.Down);
 	}
-
 	public get left() {
 		return this.translate(Direction.Left);
 	}
-
 	public get right() {
 		return this.translate(Direction.Right);
 	}
@@ -271,23 +315,13 @@ class GridVertexImpl
 	implements GridVertex
 {
 	#grid: CartesianGridGraph;
-	constructor(
-		public readonly coord: CartesianCoord,
-		grid: CartesianGridGraph
-	) {
+	constructor(public readonly center: Point, grid: CartesianGridGraph) {
 		super();
 		this.#grid = grid;
 	}
 
 	public get type(): 'vertex' {
 		return 'vertex';
-	}
-
-	public get x() {
-		return this.coord[0];
-	}
-	public get y() {
-		return this.coord[1];
 	}
 
 	public *neighbors(): Iterable<GridVertex> {
@@ -317,27 +351,37 @@ class GridVertexImpl
 		}
 	}
 
+	public coord(interpretation: GridInterpretation = 'singleGrid'): Point {
+		return interpretation === 'singleGrid'
+			? new Point(this.center.x / 2, this.center.y / 2)
+			: this.center;
+	}
+
 	public toString(): string {
-		return `(${this.x}, ${this.y})`;
+		return `(${this.center.x},${this.center.y})`;
 	}
 
 	public compare(other: GridVertex): number {
-		return compareCoords(this.coord, other.coord);
+		return compareCoords(this.center, other.center);
 	}
 
 	public isInBounds(): boolean {
-		const [x, y] = this.coord;
+		const indices = this.coord('singleGrid');
 		return (
-			x >= 0 &&
-			x < this.#grid.vertexWidth &&
-			y >= 0 &&
-			y < this.#grid.vertexHeight
+			indices.x >= 0 &&
+			indices.x < this.#grid.vertexWidth &&
+			indices.y >= 0 &&
+			indices.y < this.#grid.vertexHeight
 		);
 	}
 
 	public translate(vector: Vector): GridVertex {
-		const [dx, dy] = vector;
-		return this.#grid.getVertex(new Point(this.x + dx, this.y + dy));
+		const point = this.center.add(vector);
+		const vertex = this.#grid.getFromCenter(point);
+		if (vertex.type !== 'vertex') {
+			throw new Error(`Expected vertex at ${point}`);
+		}
+		return vertex;
 	}
 
 	public *incidentFaces(): Iterable<GridFace> {
@@ -351,19 +395,11 @@ class GridVertexImpl
 			yield face;
 		}
 	}
-
-	public get center(): Point {
-		return this.coord;
-	}
 }
 
 export interface GridFace extends Face<CartesianGraphTypes> {
-	/**
-	 * The top-left coordinate of this face.
-	 */
-	coord: CartesianCoord;
-
 	center: Point;
+	coord(interpretation?: GridInterpretation): Point;
 	namedEdges: {
 		top: GridEdge;
 		bottom: GridEdge;
@@ -404,10 +440,7 @@ export interface GridFace extends Face<CartesianGraphTypes> {
 
 class GridFaceImpl extends CartesianTranslatable<GridFace> implements GridFace {
 	#grid: CartesianGridGraph;
-	constructor(
-		public readonly coord: CartesianCoord,
-		grid: CartesianGridGraph
-	) {
+	constructor(public readonly center: Point, grid: CartesianGridGraph) {
 		super();
 		this.#grid = grid;
 	}
@@ -416,19 +449,15 @@ class GridFaceImpl extends CartesianTranslatable<GridFace> implements GridFace {
 		return 'face';
 	}
 
-	public get x() {
-		return this.coord[0];
-	}
-	public get y() {
-		return this.coord[1];
-	}
-
-	public get center(): Point {
-		return new Point(this.x + 0.5, this.y + 0.5);
+	public coord(interpretation: GridInterpretation = 'singleGrid'): Point {
+		return interpretation === 'singleGrid'
+			? new Point((this.center.x - 1) / 2, (this.center.y - 1) / 2)
+			: this.center;
 	}
 
 	public get namedEdges() {
-		const topLeft = this.#grid.getVertex(this.coord);
+		const indices = this.coord('singleGrid');
+		const topLeft = this.#grid.getVertex(indices, 'singleGrid');
 		const topRight = topLeft.right;
 		const bottomLeft = topLeft.down;
 		const bottomRight = topRight.down;
@@ -451,7 +480,8 @@ class GridFaceImpl extends CartesianTranslatable<GridFace> implements GridFace {
 	}
 
 	public *incidentVertices(): Iterable<GridVertex> {
-		const topLeft = this.#grid.getVertex(this.coord);
+		const indices = this.coord('singleGrid');
+		const topLeft = this.#grid.getVertex(indices, 'singleGrid');
 		const topRight = topLeft.right;
 		const bottomLeft = topLeft.down;
 		const bottomRight = topRight.down;
@@ -467,31 +497,37 @@ class GridFaceImpl extends CartesianTranslatable<GridFace> implements GridFace {
 	}
 
 	public toString(): string {
-		return `(${this.x}, ${this.y})`;
+		const indices = this.coord('singleGrid');
+		return `(${indices.x}, ${indices.y})`;
 	}
 
 	public compare(other: GridFace): number {
-		return compareCoords(this.coord, other.coord);
+		return compareCoords(this.center, other.center);
 	}
 
 	public isInBounds(): boolean {
-		const [x, y] = this.coord;
+		const indices = this.coord('singleGrid');
 		return (
-			x >= 0 &&
-			x < this.#grid.faceWidth &&
-			y >= 0 &&
-			y < this.#grid.faceHeight
+			indices.x >= 0 &&
+			indices.x < this.#grid.faceWidth &&
+			indices.y >= 0 &&
+			indices.y < this.#grid.faceHeight
 		);
 	}
 
 	public translate(vector: Vector): GridFace {
-		const [dx, dy] = vector;
-		return this.#grid.getFace(new Point(this.x + dx, this.y + dy));
+		const point = this.center.add(vector);
+		const face = this.#grid.getFromCenter(point);
+		if (face.type !== 'face') {
+			throw new Error(`Expected face at ${point}`);
+		}
+		return face;
 	}
 }
 
 export interface GridEdge extends Edge<CartesianGraphTypes> {
 	center: Point;
+	coord(interpretation?: GridInterpretation): Point;
 
 	translate(vector: Vector): GridEdge;
 
@@ -517,25 +553,21 @@ class GridEdgeImpl implements GridEdge {
 			this.#end = start;
 		}
 		this.#grid = grid;
-
-		// Cannot use neighbors() as it does not yield out-of-bounds neighbors,
-		// and we generally allow constructing out-of-bounds edges/vertices as it allows
-		// simpler handling of boundary conditions
-		const { up, left, down, right } = this.#start;
-		if (![up, down, left, right].some((v) => v === this.#end)) {
-			throw new Error(
-				`Invalid edge: vertices are not neighbors: ${this.#start} - ${
-					this.#end
-				}`
-			);
-		}
 	}
 
 	public get center(): Point {
 		return new Point(
-			(this.#start.x + this.#end.x) / 2,
-			(this.#start.y + this.#end.y) / 2
+			(this.#start.center.x + this.#end.center.x) / 2,
+			(this.#start.center.y + this.#end.center.y) / 2
 		);
+	}
+
+	public coord(interpretation: GridInterpretation = 'singleGrid'): Point {
+		if (interpretation === 'doubleGrid') return this.center;
+		if (this.isHorizontal) {
+			return new Point(this.center.x / 2, this.center.y / 2);
+		}
+		return new Point(this.center.x / 2, this.center.y / 2);
 	}
 
 	public get type(): 'edge' {
@@ -547,33 +579,41 @@ class GridEdgeImpl implements GridEdge {
 	}
 
 	public get isHorizontal(): boolean {
-		return this.#start.y === this.#end.y;
+		return this.#start.center.y === this.#end.center.y;
 	}
 
 	public isOnBoundary(): boolean {
 		if (this.isHorizontal) {
-			return this.vertices.some(
-				(v) => v.y === 0 || v.y === this.#grid.vertexHeight - 1
-			);
+			return this.vertices.some((v) => {
+				const coord = v.coord('singleGrid');
+				return coord.y === 0 || coord.y === this.#grid.vertexHeight - 1;
+			});
 		} else {
-			return this.vertices.some(
-				(v) => v.x === 0 || v.x === this.#grid.vertexWidth - 1
-			);
+			return this.vertices.some((v) => {
+				const coord = v.coord('singleGrid');
+				return coord.x === 0 || coord.x === this.#grid.vertexWidth - 1;
+			});
 		}
 	}
 
 	public *incidentFaces(): Iterable<GridFace> {
 		const [a, b] = this.vertices;
-		const minX = Math.min(a.x, b.x);
-		const minY = Math.min(a.y, b.y);
-		const afterFace = this.#grid.getFace([minX, minY]);
+		const aIndex = a.coord('singleGrid');
+		const bIndex = b.coord('singleGrid');
+		const minX = Math.min(aIndex.x, bIndex.x);
+		const minY = Math.min(aIndex.y, bIndex.y);
+		const afterFace = this.#grid.getFace(
+			new Point(minX, minY),
+			'singleGrid'
+		);
 		if (afterFace.isInBounds()) {
 			yield afterFace;
 		}
 
-		const beforeFace = this.isHorizontal
-			? this.#grid.getFace([minX, minY - 1])
-			: this.#grid.getFace([minX - 1, minY]);
+		const beforeIndex = this.isHorizontal
+			? new Point(minX, minY - 1)
+			: new Point(minX - 1, minY);
+		const beforeFace = this.#grid.getFace(beforeIndex, 'singleGrid');
 		if (beforeFace.isInBounds()) {
 			yield beforeFace;
 		}
@@ -590,7 +630,7 @@ class GridEdgeImpl implements GridEdge {
 		]) {
 			for (const neighbor of current.neighbors()) {
 				if (neighbor !== other) {
-					yield this.#grid.getEdge(current.coord, neighbor.coord);
+					yield this.#grid.getEdge(current, neighbor);
 				}
 			}
 		}
@@ -598,7 +638,7 @@ class GridEdgeImpl implements GridEdge {
 	public translate(vector: Vector): GridEdge {
 		const newStart = this.#start.translate(vector);
 		const newEnd = this.#end.translate(vector);
-		return this.#grid.getEdge(newStart.coord, newEnd.coord);
+		return this.#grid.getEdge(newStart, newEnd);
 	}
 
 	public bearingFrom(incident: GridVertex | GridFace): Vector {
@@ -608,9 +648,9 @@ class GridEdgeImpl implements GridEdge {
 			);
 		}
 		if (incident instanceof GridVertexImpl) {
-			const [x1, y1] = incident.coord;
+			const [x1, y1] = incident.coord('doubleGrid');
 			const other = this.#start === incident ? this.#end : this.#start;
-			const [x2, y2] = other.coord;
+			const [x2, y2] = other.coord('doubleGrid');
 			return new Vector(x2 - x1, y2 - y1);
 		} else if (incident instanceof GridFaceImpl) {
 			const { top, bottom, left, right } = incident.namedEdges;
@@ -639,18 +679,6 @@ class GridDirectedEdgeImpl implements GridDirectedEdge {
 		this.#from = from;
 		this.#to = to;
 		this.#grid = grid;
-
-		// Cannot use neighbors() as it does not yield out-of-bounds neighbors,
-		// and we generally allow constructing out-of-bounds edges/vertices as it allows
-		// simpler handling of boundary conditions
-		const { up, left, down, right } = this.#from;
-		if (![up, down, left, right].some((v) => v === this.#to)) {
-			throw new Error(
-				`Invalid edge: vertices are not neighbors: ${this.#from} - ${
-					this.#to
-				}`
-			);
-		}
 	}
 
 	public get from(): GridVertex {
@@ -680,23 +708,23 @@ class GridDirectedEdgeImpl implements GridDirectedEdge {
 
 	public *successors(): Iterable<GridDirectedEdge> {
 		for (const neighbor of this.#to.neighbors()) {
-			yield this.#grid.getDirectedEdge(this.#to.coord, neighbor.coord);
+			yield this.#grid.getDirectedEdge(this.#to, neighbor);
 		}
 	}
 
 	public *predecessors(): Iterable<GridDirectedEdge> {
 		for (const neighbor of this.#from.neighbors()) {
-			yield this.#grid.getDirectedEdge(neighbor.coord, this.#from.coord);
+			yield this.#grid.getDirectedEdge(neighbor, this.#from);
 		}
 	}
 
 	public translate(vector: Vector): GridDirectedEdge {
 		const newStart = this.#from.translate(vector);
 		const newEnd = this.#to.translate(vector);
-		return this.#grid.getDirectedEdge(newStart.coord, newEnd.coord);
+		return this.#grid.getDirectedEdge(newStart, newEnd);
 	}
 
 	public invert(): GridDirectedEdge {
-		return this.#grid.getDirectedEdge(this.#to.coord, this.#from.coord);
+		return this.#grid.getDirectedEdge(this.#to, this.#from);
 	}
 }
