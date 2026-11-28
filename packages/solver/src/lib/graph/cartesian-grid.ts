@@ -38,13 +38,13 @@ export class DoubledGrid {
 		const point = Point.from(vertexCoord);
 		return new Point(point.x * 2, point.y * 2 + 1);
 	}
-}
 
-export class Direction {
-	public static readonly Up = new Vector(0, -2);
-	public static readonly Down = new Vector(0, 2);
-	public static readonly Left = new Vector(-2, 0);
-	public static readonly Right = new Vector(2, 0);
+	public static Direction = {
+		Up: new Vector(0, -2),
+		Down: new Vector(0, 2),
+		Left: new Vector(-2, 0),
+		Right: new Vector(2, 0),
+	};
 }
 
 export interface CartesianGraphTypes {
@@ -291,19 +291,19 @@ abstract class CartesianTranslatable<T> {
 	abstract translate(vector: Vector): T;
 
 	public get up() {
-		return this.translate(Direction.Up);
+		return this.translate(DoubledGrid.Direction.Up);
 	}
 
 	public get down() {
-		return this.translate(Direction.Down);
+		return this.translate(DoubledGrid.Direction.Down);
 	}
 
 	public get left() {
-		return this.translate(Direction.Left);
+		return this.translate(DoubledGrid.Direction.Left);
 	}
 
 	public get right() {
-		return this.translate(Direction.Right);
+		return this.translate(DoubledGrid.Direction.Right);
 	}
 }
 
