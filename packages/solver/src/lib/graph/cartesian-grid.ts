@@ -638,7 +638,11 @@ class GridEdgeImpl implements GridEdge {
 	public translate(vector: Vector): GridEdge {
 		const newStart = this.#start.translate(vector);
 		const newEnd = this.#end.translate(vector);
-		return this.#grid.getEdge(newStart, newEnd);
+		const translated = this.#grid.getFromCenter(this.center.add(vector));
+		if (translated.type !== 'edge') {
+			throw new Error(`Expected edge at ${translated.center}`);
+		}
+		return translated;
 	}
 
 	public bearingFrom(incident: GridVertex | GridFace): Vector {
@@ -647,22 +651,7 @@ class GridEdgeImpl implements GridEdge {
 				`Edge is not incident to the given vertex/face: ${incident}`
 			);
 		}
-		if (incident instanceof GridVertexImpl) {
-			const [x1, y1] = incident.coord('doubleGrid');
-			const other = this.#start === incident ? this.#end : this.#start;
-			const [x2, y2] = other.coord('doubleGrid');
-			return new Vector(x2 - x1, y2 - y1);
-		} else if (incident instanceof GridFaceImpl) {
-			const { top, bottom, left, right } = incident.namedEdges;
-			if (this === top) return Direction.Up;
-			if (this === bottom) return Direction.Down;
-			if (this === left) return Direction.Left;
-			if (this === right) return Direction.Right;
-			throw new Error(
-				`Edge is not incident to the given face: ${incident}`
-			);
-		}
-		throw new Error(`Unsupported incident type: ${incident}`);
+		return this.center.subtract(incident.center).scale(2);
 	}
 }
 
