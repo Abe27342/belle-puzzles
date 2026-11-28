@@ -306,7 +306,7 @@ export class ShakashakaPuzzle extends CartesianGridPuzzle<ShakashakaSolution> {
 
 			solver.add(
 				Implies(
-					Exactly(neighborsAreWhite, 3),
+					AtLeast(ensureNonEmpty(neighborsAreWhite), 3),
 					Exactly(neighborsAreWhite, 4)
 				)
 			);
