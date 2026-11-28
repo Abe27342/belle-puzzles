@@ -9,7 +9,6 @@ import {
 	constant,
 	isEmptyGridCharacter,
 	parseNumber,
-	parsePearlColor,
 	parseTextGrids,
 	Point,
 	type FaceGridSizeProps,
@@ -20,8 +19,7 @@ import {
 	GridFace,
 	DefaultMap,
 	UnionFind,
-	ConcreteGraphTypes,
-	HasNeighbors,
+	Direction,
 } from '../lib/index.js';
 
 export interface RippleEffectPuzzleProps extends FaceGridSizeProps {
@@ -232,11 +230,10 @@ function* nearestStraightLineNeighbors(
 	face: GridFace,
 	steps: number
 ): Iterable<GridFace> {
-	for (const edge of face.incidentEdges()) {
-		const bearing = edge.bearingFrom(face);
+	for (const direction of Direction.cardinals) {
 		let currentFace = face;
 		for (let step = 0; step < steps; step++) {
-			const nextFace = currentFace.translate(bearing);
+			const nextFace = currentFace.translate(direction);
 			if (!nextFace.isInBounds()) {
 				break;
 			}

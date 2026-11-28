@@ -41,6 +41,12 @@ export class Direction {
 	public static readonly Down = new Vector(0, 2);
 	public static readonly Left = new Vector(-2, 0);
 	public static readonly Right = new Vector(2, 0);
+	public static readonly cardinals = [
+		Direction.Up,
+		Direction.Down,
+		Direction.Left,
+		Direction.Right,
+	];
 }
 
 /**
@@ -649,7 +655,7 @@ class GridEdgeImpl implements GridEdge {
 				`Edge is not incident to the given vertex/face: ${incident}`
 			);
 		}
-		return this.center.subtract(incident.center).scale(2);
+		return this.center.subtract(incident.center);
 	}
 }
 

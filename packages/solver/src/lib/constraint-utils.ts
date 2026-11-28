@@ -277,7 +277,7 @@ export function* sightLineSumConstraints(
 	// Variables in each direction representing the number of straight-line vertices or faces visible from this position,
 	// including the starting vertex or face.
 	for (const edge of v.incidentEdges()) {
-		const bearing = edge.bearingFrom(v);
+		const bearing = edge.bearingFrom(v).scale(2);
 		const variable = Int.const(`F${v}_B${bearing}`);
 		yield variable.ge(1).and(variable.le(count));
 		variables.push(variable);
