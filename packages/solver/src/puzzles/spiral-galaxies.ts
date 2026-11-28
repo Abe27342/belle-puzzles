@@ -15,8 +15,6 @@ import {
 	Point,
 	connectedConstraints,
 	createEdgeIndicatorModel,
-	oob,
-	variable,
 	type BuiltPuzzle,
 	type CartesianGraphTypes,
 } from '../lib/index.js';
@@ -26,14 +24,10 @@ export interface SpiralGalaxiesPuzzleProps extends FaceGridSizeProps {
 }
 
 export interface ConstructionSpiralGalaxyPearl {
-	type: 'face' | 'edge' | 'vertex';
 	coord: Point;
 }
 
-export type SpiralGalaxyPearl =
-	| { type: 'face'; face: GridFace; center: Point }
-	| { type: 'edge'; edge: GridEdge; center: Point }
-	| { type: 'vertex'; vertex: GridVertex; center: Point };
+export type SpiralGalaxyPearl = GridFace | GridEdge | GridVertex;
 
 type SpiralGalaxiesModel = BuiltPuzzle<
 	CartesianGraphTypes,
@@ -81,41 +75,7 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 		super(props, outputFactories.linedGrid);
 
 		this.#pearls = props.pearls.map((pearl) => {
-			if (pearl.type === 'face') {
-				return {
-					type: 'face',
-					face: this.grid.getFace(pearl.coord, 'doubleGrid'),
-					center: pearl.coord,
-				};
-			}
-			if (pearl.type === 'edge') {
-				const [x, y] = pearl.coord;
-				if (x % 2 === 1) {
-					const left = this.grid.getVertex(
-						new Point(x - 1, y),
-						'doubleGrid'
-					);
-					return {
-						type: 'edge',
-						edge: this.grid.getEdge(left, left.right),
-						center: pearl.coord,
-					};
-				}
-				const top = this.grid.getVertex(
-					new Point(x, y - 1),
-					'doubleGrid'
-				);
-				return {
-					type: 'edge',
-					edge: this.grid.getEdge(top, top.down),
-					center: pearl.coord,
-				};
-			}
-			return {
-				type: 'vertex',
-				vertex: this.grid.getVertex(pearl.coord, 'doubleGrid'),
-				center: pearl.coord,
-			};
+			return this.grid.getFromCenter(pearl.coord);
 		});
 	}
 
@@ -123,31 +83,17 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 		const { width: faceWidth, height: faceHeight } =
 			parseDoubledResolutionGrid(text, {});
 		const pearls: ConstructionSpiralGalaxyPearl[] = [];
-		const validateChar = (visitor: TextGridVisitor): TextGridVisitor => {
-			return (values, coord) => {
-				const [value] = values;
-				if (value.toLowerCase() !== 'o') {
-					throw new Error(`Invalid character at ${coord}: ${value}`);
-				}
-				return visitor(values, coord);
-			};
+		const pushPearl: TextGridVisitor = (values, coord) => {
+			const [value] = values;
+			if (value.toLowerCase() !== 'o') {
+				throw new Error(`Invalid character at ${coord}: ${value}`);
+			}
+			pearls.push({ coord });
 		};
 		parseDoubledResolutionGrid(text, {
-			faces: validateChar((_, [x, y]) => {
-				pearls.push({
-					type: 'face',
-					coord: new Point(x, y),
-				});
-			}),
-			edges: validateChar((_, [x, y]) => {
-				pearls.push({ type: 'edge', coord: new Point(x, y) });
-			}),
-			vertices: validateChar((_, [x, y]) => {
-				pearls.push({
-					type: 'vertex',
-					coord: new Point(x, y),
-				});
-			}),
+			faces: pushPearl,
+			edges: pushPearl,
+			vertices: pushPearl,
 		});
 
 		return new SpiralGalaxiesPuzzle({
@@ -188,30 +134,26 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 		// Do this after creating the model so that rendering pearls takes precedence over edge indicators.
 		for (const pearl of this.#pearls) {
 			if (pearl.type === 'edge') {
-				model.output.edges.set(pearl.edge, constant('o'));
+				model.output.edges.set(pearl, constant('o'));
 			} else if (pearl.type === 'vertex') {
-				model.output.vertices.set(pearl.vertex, constant('o'));
+				model.output.vertices.set(pearl, constant('o'));
 			} else {
-				model.output.faces.set(pearl.face, constant('o'));
+				model.output.faces.set(pearl, constant('o'));
 			}
 		}
 
 		for (const [i, pearl] of this.#pearls.entries()) {
 			const minimalEnabled: GridFace[] = [];
 			if (pearl.type === 'face') {
-				minimalEnabled.push(pearl.face);
-				solver.add(faceAssignments.forceGet(pearl.face).eq(i));
-			} else if (pearl.type === 'edge') {
-				minimalEnabled.push(...pearl.edge.incidentFaces());
-				for (const face of pearl.edge.incidentFaces()) {
-					solver.add(faceAssignments.forceGet(face).eq(i));
-				}
-			} else if (pearl.type === 'vertex') {
-				minimalEnabled.push(...pearl.vertex.incidentFaces());
-				for (const face of pearl.vertex.incidentFaces()) {
-					solver.add(faceAssignments.forceGet(face).eq(i));
-				}
+				minimalEnabled.push(pearl);
+			} else if (pearl.type === 'edge' || pearl.type === 'vertex') {
+				minimalEnabled.push(...pearl.incidentFaces());
 			}
+
+			for (const face of minimalEnabled) {
+				solver.add(faceAssignments.forceGet(face).eq(i));
+			}
+
 			// Faces assigned to this pearl must be connected
 			solver.add(
 				...connectedConstraints(
@@ -222,10 +164,8 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 				)
 			);
 
-			const [a, b] = pearl.center;
 			for (const face of this.grid.faces()) {
-				const [x, y] = face.center;
-				const reflected = new Point(2 * a - x, 2 * b - y);
+				const reflected = face.center.reflectAcross(pearl.center);
 				const reflectedFace = this.grid.getFromCenter(reflected);
 				if (reflectedFace.type !== 'face') {
 					throw new Error(
