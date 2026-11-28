@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { Point, Vector } from '../lib/graph/point.js';
+import { DoubledGrid, Point, Vector } from '../lib/graph/cartesian-grid.js';
 import { CartesianGridGraph } from '../lib/graph/cartesian-grid.js';
 
 it('provides named point and vector components', () => {
@@ -43,11 +43,13 @@ it('uses expanded centers for vertices, edges, and faces', () => {
 		faceHeight: 2,
 	});
 
-	const topLeftVertex = grid.getVertex([0, 0]);
-	const bottomRightVertex = grid.getVertex([2, 2]);
-	const topEdge = grid.getEdge([0, 0], [1, 0]);
-	const leftEdge = grid.getEdge([0, 0], [0, 1]);
-	const face = grid.getFace([0, 0]);
+	const topLeftVertex = grid.getVertex(DoubledGrid.fromVertexIndices([0, 0]));
+	const bottomRightVertex = grid.getVertex(
+		DoubledGrid.fromVertexIndices([2, 2])
+	);
+	const topEdge = grid.getEdge(topLeftVertex, topLeftVertex.right);
+	const leftEdge = grid.getEdge(topLeftVertex, topLeftVertex.down);
+	const face = grid.getFace(DoubledGrid.fromFaceIndices([0, 0]));
 
 	expect(topLeftVertex.center).toEqual(new Point(0, 0));
 	expect(bottomRightVertex.center).toEqual(new Point(4, 4));

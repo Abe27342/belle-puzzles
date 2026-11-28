@@ -11,6 +11,7 @@ import {
 	type EdgeIndicatorSolution,
 	type Solver,
 	type TextGridVisitor,
+	DoubledGrid,
 	ContextExtended,
 	GridVertex,
 	createForceGetMap,
@@ -64,7 +65,7 @@ export class NumberlinkPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution>
 		super(props);
 
 		this.#givens = props.givens.map((p) => ({
-			vertex: this.grid.getVertex(p.coord),
+			vertex: this.grid.getVertex(DoubledGrid.fromVertexIndices(p.coord)),
 			assignment: p.assignment,
 		}));
 		const assignmentCounts = new Counter<number>();

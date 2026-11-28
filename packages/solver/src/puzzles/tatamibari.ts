@@ -14,6 +14,7 @@ import {
 	type FaceGridSizeProps,
 	type Solver,
 	type TextGridVisitor,
+	DoubledGrid,
 } from '../lib/index.js';
 
 export interface TatamibariPuzzleProps extends FaceGridSizeProps {
@@ -69,7 +70,7 @@ export class TatamibariPuzzle extends CartesianGridPuzzle<TatamibariSolution> {
 		super(props, outputFactories.vertexOnlyGrid);
 
 		this.#givens = props.givens.map((p) => ({
-			face: this.grid.getFace(p.coord),
+			face: this.grid.getFace(DoubledGrid.fromFaceIndices(p.coord)),
 			value: p.value,
 		}));
 		const glyphs = {

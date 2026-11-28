@@ -2,6 +2,7 @@ import type { Context, Solver } from 'z3-solver';
 import {
 	CartesianGraphTypes,
 	CartesianGridGraph,
+	DoubledGrid,
 	type GridSizeProps,
 } from './graph/index.js';
 import {
@@ -88,7 +89,9 @@ export function renderCartesianGrid(
 		const contentLine: string[] = [];
 		const verticalEdgeLine: string[] = [];
 		for (let x = 0; x < grid.vertexWidth; x++) {
-			const current = grid.getVertex([x, y]);
+			const current = grid.getVertex(
+				DoubledGrid.fromVertexIndices([x, y])
+			);
 			contentLine.push(display.vertices.get(current) ?? cdot);
 			if (x < grid.vertexWidth - 1) {
 				const edge = grid.getEdge(current, current.right);
@@ -99,7 +102,9 @@ export function renderCartesianGrid(
 				verticalEdgeLine.push(display.edges.get(edge) ?? ' ');
 				if (x < grid.vertexWidth - 1) {
 					verticalEdgeLine.push(
-						display.faces.get(grid.getFace([x, y])) ?? ' '
+						display.faces.get(
+							grid.getFace(DoubledGrid.fromFaceIndices([x, y]))
+						) ?? ' '
 					);
 				}
 			}

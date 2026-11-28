@@ -14,6 +14,7 @@ import {
 	type GridVertex,
 	type Solver,
 	type TextGridVisitor,
+	DoubledGrid,
 	type VertexValueModel,
 	type VertexValueSolution,
 } from '../lib/index.js';
@@ -67,7 +68,9 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 			vertexHeight: props.faceHeight,
 		});
 		this.#givens = props.givens.map((p) => ({
-			vertex: this.#cellGrid.getVertex(p.coord),
+			vertex: this.#cellGrid.getVertex(
+				DoubledGrid.fromVertexIndices(p.coord)
+			),
 			value: p.value,
 		}));
 		for (const given of this.#givens) {
@@ -113,7 +116,11 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 				values: Array.from({ length: max }, (_, i) => i + 1),
 				bind: (output, vertex, binding) => {
 					output.faces.set(
-						this.grid.getFace(new Point(vertex.x, vertex.y)),
+						this.grid.getFace(
+							DoubledGrid.fromFaceIndices(
+								new Point(vertex.x, vertex.y)
+							)
+						),
 						binding
 					);
 				},
@@ -178,11 +185,17 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 			const glyph = horizontal ? '-' : '|';
 			const first = vertexNumbers.get(
 				grid.getVertex(
-					horizontal ? [start.x, start.y - 1] : [start.x - 1, start.y]
+					DoubledGrid.fromVertexIndices(
+						horizontal
+							? new Point(start.x, start.y - 1)
+							: new Point(start.x - 1, start.y)
+					)
 				)
 			);
 			const second = vertexNumbers.get(
-				grid.getVertex(new Point(start.x, start.y))
+				grid.getVertex(
+					DoubledGrid.fromVertexIndices(new Point(start.x, start.y))
+				)
 			);
 			if (first === undefined || second === undefined) {
 				continue;

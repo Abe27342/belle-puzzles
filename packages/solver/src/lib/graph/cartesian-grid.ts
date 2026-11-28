@@ -18,6 +18,28 @@ export interface VertexGridSizeProps {
 
 export type GridSizeProps = FaceGridSizeProps | VertexGridSizeProps;
 
+export class DoubledGrid {
+	public static fromVertexIndices(coord: PointLike): Point {
+		const point = Point.from(coord);
+		return new Point(point.x * 2, point.y * 2);
+	}
+
+	public static fromFaceIndices(coord: PointLike): Point {
+		const point = Point.from(coord);
+		return new Point(point.x * 2 + 1, point.y * 2 + 1);
+	}
+
+	public static fromHorizontalEdgeIndices(vertexCoord: PointLike): Point {
+		const point = Point.from(vertexCoord);
+		return new Point(point.x * 2 + 1, point.y * 2);
+	}
+
+	public static fromVerticalEdgeIndices(vertexCoord: PointLike): Point {
+		const point = Point.from(vertexCoord);
+		return new Point(point.x * 2, point.y * 2 + 1);
+	}
+}
+
 export class Direction {
 	public static readonly Up = new Vector(0, -2);
 	public static readonly Down = new Vector(0, 2);
@@ -87,7 +109,9 @@ export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 	public *vertices(): Iterable<GridVertex> {
 		for (let y = 0; y < this.vertexHeight; y++) {
 			for (let x = 0; x < this.vertexWidth; x++) {
-				yield this.getVertex(new Point(x, y));
+				yield this.getExpandedVertex(
+					DoubledGrid.fromVertexIndices(new Point(x, y))
+				);
 			}
 		}
 	}
@@ -95,7 +119,9 @@ export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 	public *faces(): Iterable<GridFace> {
 		for (let y = 0; y < this.faceHeight; y++) {
 			for (let x = 0; x < this.faceWidth; x++) {
-				yield this.getFace(new Point(x, y));
+				yield this.getExpandedFace(
+					DoubledGrid.fromFaceIndices(new Point(x, y))
+				);
 			}
 		}
 	}
@@ -123,8 +149,7 @@ export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 	}
 
 	public getVertex(coord: PointLike): GridVertex {
-		const logical = Point.from(coord);
-		return this.getExpandedVertex(new Point(logical.x * 2, logical.y * 2));
+		return this.getExpandedVertex(Point.from(coord));
 	}
 
 	private getExpandedVertex(point: Point): GridVertex {
@@ -187,10 +212,7 @@ export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 	 * @returns The face whose top-left corner is at the given coordinate.
 	 */
 	public getFace(coord: PointLike): GridFace {
-		const logical = Point.from(coord);
-		return this.getExpandedFace(
-			new Point(logical.x * 2 + 1, logical.y * 2 + 1)
-		);
+		return this.getExpandedFace(Point.from(coord));
 	}
 
 	private getExpandedFace(point: Point): GridFace {
@@ -203,8 +225,7 @@ export class CartesianGridGraph implements PlanarGraph<CartesianGraphTypes> {
 
 	#normalizeToCoord(input: PointLike | GridVertex): Point {
 		if (input instanceof GridVertexImpl) return input.coord;
-		const logical = Point.from(input as PointLike);
-		return new Point(logical.x * 2, logical.y * 2);
+		return Point.from(input as PointLike);
 	}
 
 	#getEdgeKey(start: Point, end: Point) {
@@ -453,7 +474,9 @@ class GridFaceImpl extends CartesianTranslatable<GridFace> implements GridFace {
 	}
 
 	public get namedEdges() {
-		const topLeft = this.#grid.getVertex(new Point(this.x, this.y));
+		const topLeft = this.#grid.getVertex(
+			DoubledGrid.fromVertexIndices(new Point(this.x, this.y))
+		);
 		const topRight = topLeft.right;
 		const bottomLeft = topLeft.down;
 		const bottomRight = topRight.down;
@@ -476,7 +499,9 @@ class GridFaceImpl extends CartesianTranslatable<GridFace> implements GridFace {
 	}
 
 	public *incidentVertices(): Iterable<GridVertex> {
-		const topLeft = this.#grid.getVertex(new Point(this.x, this.y));
+		const topLeft = this.#grid.getVertex(
+			DoubledGrid.fromVertexIndices(new Point(this.x, this.y))
+		);
 		const topRight = topLeft.right;
 		const bottomLeft = topLeft.down;
 		const bottomRight = topRight.down;
@@ -582,14 +607,19 @@ class GridEdgeImpl implements GridEdge {
 		const [a, b] = this.vertices;
 		const minX = Math.min(a.x, b.x);
 		const minY = Math.min(a.y, b.y);
-		const afterFace = this.#grid.getFace([minX, minY]);
+		const afterFace = this.#grid.getFace(
+			DoubledGrid.fromFaceIndices(new Point(minX, minY))
+		);
 		if (afterFace.isInBounds()) {
 			yield afterFace;
 		}
 
-		const beforeFace = this.isHorizontal
-			? this.#grid.getFace([minX, minY - 1])
-			: this.#grid.getFace([minX - 1, minY]);
+		const beforeIndex = this.isHorizontal
+			? new Point(minX, minY - 1)
+			: new Point(minX - 1, minY);
+		const beforeFace = this.#grid.getFace(
+			DoubledGrid.fromFaceIndices(beforeIndex)
+		);
 		if (beforeFace.isInBounds()) {
 			yield beforeFace;
 		}

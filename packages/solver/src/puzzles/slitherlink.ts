@@ -15,6 +15,7 @@ import {
 	type GridFace,
 	type Solver,
 	type TextGridVisitor,
+	DoubledGrid,
 	ContextExtended,
 } from '../lib/index.js';
 
@@ -62,7 +63,7 @@ export class SlitherlinkPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution
 		super(props);
 
 		this.#givens = props.givens.map((p) => ({
-			face: this.grid.getFace(p.coord),
+			face: this.grid.getFace(DoubledGrid.fromFaceIndices(p.coord)),
 			count: p.count,
 		}));
 		for (const given of this.#givens) {

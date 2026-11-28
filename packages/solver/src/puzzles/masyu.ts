@@ -14,6 +14,7 @@ import {
 	type GridVertex,
 	type Solver,
 	type TextGridVisitor,
+	DoubledGrid,
 	ContextExtended,
 } from '../lib/index.js';
 
@@ -63,7 +64,7 @@ export class MasyuPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 		super(props);
 
 		this.#pearls = props.pearls.map((p) => ({
-			coord: this.grid.getVertex(p.coord),
+			coord: this.grid.getVertex(DoubledGrid.fromVertexIndices(p.coord)),
 			color: p.color,
 		}));
 		for (const pearl of this.#pearls) {

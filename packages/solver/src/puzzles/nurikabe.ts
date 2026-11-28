@@ -14,6 +14,7 @@ import {
 	type GridVertex,
 	type Solver,
 	type TextGridVisitor,
+	DoubledGrid,
 	type VertexValueModel,
 	type VertexValueSolution,
 } from '../lib/index.js';
@@ -62,7 +63,7 @@ export class NurikabePuzzle extends CartesianGridPuzzle<NurikabeSolution> {
 		super(props, outputFactories.vertexOnlyGrid);
 
 		this.#givens = props.givens.map((p) => ({
-			vertex: this.grid.getVertex(p.coord),
+			vertex: this.grid.getVertex(DoubledGrid.fromVertexIndices(p.coord)),
 			value: p.value,
 		}));
 		for (const given of this.#givens) {

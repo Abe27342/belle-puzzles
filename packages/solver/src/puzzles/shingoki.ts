@@ -17,6 +17,7 @@ import {
 	type GridVertex,
 	type Solver,
 	type TextGridVisitor,
+	DoubledGrid,
 	ContextExtended,
 } from '../lib/index.js';
 
@@ -69,7 +70,7 @@ export class ShingokiPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 		super(props);
 
 		this.#pearls = props.pearls.map((p) => ({
-			vertex: this.grid.getVertex(p.coord),
+			vertex: this.grid.getVertex(DoubledGrid.fromVertexIndices(p.coord)),
 			color: p.color,
 			length: p.length,
 		}));

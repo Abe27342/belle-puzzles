@@ -14,6 +14,7 @@ import {
 	type FaceGridSizeProps,
 	type Solver,
 	type TextGridVisitor,
+	DoubledGrid,
 } from '../lib/index.js';
 
 export interface ShikakuPuzzleProps extends FaceGridSizeProps {
@@ -71,7 +72,7 @@ export class ShikakuPuzzle extends CartesianGridPuzzle<ShikakuSolution> {
 		super(props, outputFactories.vertexOnlyGrid);
 
 		this.#givens = props.givens.map((p) => ({
-			face: this.grid.getFace(p.coord),
+			face: this.grid.getFace(DoubledGrid.fromFaceIndices(p.coord)),
 			value: p.value,
 		}));
 		for (const { face, value } of this.#givens) {

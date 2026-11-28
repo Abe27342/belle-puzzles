@@ -11,6 +11,7 @@ import {
 	renderCartesianGrid,
 	resolveGraphOutput,
 	variable,
+	DoubledGrid,
 } from '../index.js';
 import type {
 	GridEdge,
@@ -35,11 +36,11 @@ it('aligns face columns independently and extends their horizontal edges', () =>
 		const [start, end] = edge.vertices;
 		display.edges.set(edge, start.y === end.y ? '-' : '|');
 	}
-	display.faces.set(grid.getFace([0, 0]), '1');
-	display.faces.set(grid.getFace([1, 0]), '123');
-	display.faces.set(grid.getFace([0, 1]), '10');
-	display.faces.set(grid.getFace([1, 1]), '2');
-	const middle = grid.getVertex([1, 1]);
+	display.faces.set(grid.getFace(DoubledGrid.fromFaceIndices([0, 0])), '1');
+	display.faces.set(grid.getFace(DoubledGrid.fromFaceIndices([1, 0])), '123');
+	display.faces.set(grid.getFace(DoubledGrid.fromFaceIndices([0, 1])), '10');
+	display.faces.set(grid.getFace(DoubledGrid.fromFaceIndices([1, 1])), '2');
+	const middle = grid.getVertex(DoubledGrid.fromVertexIndices([1, 1]));
 	display.edges.set(grid.getEdge(middle, middle.right), ' ');
 	expect(renderCartesianGrid(grid, display)).toBe(
 		'·--·---·\n|1 |123|\n·--·   ·\n|10|2  |\n·--·---·\n'
@@ -57,11 +58,23 @@ it('aligns multi-digit vertex values with vertical edges', () => {
 		const [start, end] = edge.vertices;
 		display.edges.set(edge, start.y === end.y ? '-' : '|');
 	}
-	display.vertices.set(grid.getVertex([0, 0]), '1');
-	display.vertices.set(grid.getVertex([1, 0]), '22');
-	display.vertices.set(grid.getVertex([0, 1]), '333');
-	display.vertices.set(grid.getVertex([1, 1]), '4');
-	display.faces.set(grid.getFace([0, 0]), '');
+	display.vertices.set(
+		grid.getVertex(DoubledGrid.fromVertexIndices([0, 0])),
+		'1'
+	);
+	display.vertices.set(
+		grid.getVertex(DoubledGrid.fromVertexIndices([1, 0])),
+		'22'
+	);
+	display.vertices.set(
+		grid.getVertex(DoubledGrid.fromVertexIndices([0, 1])),
+		'333'
+	);
+	display.vertices.set(
+		grid.getVertex(DoubledGrid.fromVertexIndices([1, 1])),
+		'4'
+	);
+	display.faces.set(grid.getFace(DoubledGrid.fromFaceIndices([0, 0])), '');
 	expect(renderCartesianGrid(grid, display)).toBe('1  -22\n|   | \n333-4 \n');
 });
 
@@ -78,11 +91,23 @@ it('keeps explicitly empty separator rows and columns collapsed', () => {
 	for (const edge of grid.edges()) {
 		display.edges.set(edge, '');
 	}
-	display.vertices.set(grid.getVertex([0, 0]), '10');
-	display.vertices.set(grid.getVertex([1, 0]), '2');
-	display.vertices.set(grid.getVertex([0, 1]), '3');
-	display.vertices.set(grid.getVertex([1, 1]), '4');
-	display.faces.set(grid.getFace([0, 0]), '');
+	display.vertices.set(
+		grid.getVertex(DoubledGrid.fromVertexIndices([0, 0])),
+		'10'
+	);
+	display.vertices.set(
+		grid.getVertex(DoubledGrid.fromVertexIndices([1, 0])),
+		'2'
+	);
+	display.vertices.set(
+		grid.getVertex(DoubledGrid.fromVertexIndices([0, 1])),
+		'3'
+	);
+	display.vertices.set(
+		grid.getVertex(DoubledGrid.fromVertexIndices([1, 1])),
+		'4'
+	);
+	display.faces.set(grid.getFace(DoubledGrid.fromFaceIndices([0, 0])), '');
 	expect(renderCartesianGrid(grid, display)).toBe('102\n3 4\n');
 });
 
@@ -113,8 +138,8 @@ it('supports sparse integer edge domains with orientation-specific glyphs', asyn
 		vertexWidth: 2,
 		vertexHeight: 2,
 	});
-	const vertex = grid.getVertex([0, 0]);
-	const face = grid.getFace([0, 0]);
+	const vertex = grid.getVertex(DoubledGrid.fromVertexIndices([0, 0]));
+	const face = grid.getFace(DoubledGrid.fromFaceIndices([0, 0]));
 	const output = createGraphOutput();
 	output.vertices.set(vertex, constant('V'));
 	output.faces.set(face, constant('F'));
@@ -201,10 +226,10 @@ it('renders mixed graph bindings and enumerates only solution-defining assignmen
 		vertexWidth: 2,
 		vertexHeight: 2,
 	});
-	const vertex = grid.getVertex([0, 0]);
+	const vertex = grid.getVertex(DoubledGrid.fromVertexIndices([0, 0]));
 	const top = grid.getEdge(vertex, vertex.right);
 	const left = grid.getEdge(vertex, vertex.down);
-	const face = grid.getFace([0, 0]);
+	const face = grid.getFace(DoubledGrid.fromFaceIndices([0, 0]));
 	let builds = 0;
 	const puzzle: PuzzleDefinition<number> = {
 		build(context, solver) {
@@ -261,14 +286,17 @@ it('supports display-only models and treats empty keys as one solution', async (
 		vertexWidth: 2,
 		vertexHeight: 2,
 	});
-	const face = grid.getFace([0, 0]);
+	const face = grid.getFace(DoubledGrid.fromFaceIndices([0, 0]));
 	const session = new SolverSession({
 		build(context, solver) {
 			const value = context.Int.const('value');
 			solver.add(value.eq(7));
 			const output = createGraphOutput();
 			output.faces.set(face, constant(7, String));
-			output.vertices.set(grid.getVertex([0, 0]), variable(value));
+			output.vertices.set(
+				grid.getVertex(DoubledGrid.fromVertexIndices([0, 0])),
+				variable(value)
+			);
 			return createGraphModel(output, []);
 		},
 	});
@@ -278,7 +306,11 @@ it('supports display-only models and treats empty keys as one solution', async (
 	}
 	expect(result.solution).toBe(result.output);
 	expect(result.output.faces.get(face)).toBe('7');
-	expect(result.output.vertices.get(grid.getVertex([0, 0]))).toBe('7');
+	expect(
+		result.output.vertices.get(
+			grid.getVertex(DoubledGrid.fromVertexIndices([0, 0]))
+		)
+	).toBe('7');
 	expect(await session.nextSolution()).toEqual({ status: 'unsat' });
 }, 15000);
 
@@ -287,10 +319,13 @@ it('renders and enumerates vertex values while preserving other output bindings'
 		vertexWidth: 2,
 		vertexHeight: 2,
 	});
-	const vertex = grid.getVertex([0, 0]);
+	const vertex = grid.getVertex(DoubledGrid.fromVertexIndices([0, 0]));
 	const output = createGraphOutput();
 	output.edges.set(grid.getEdge(vertex, vertex.right), constant('-'));
-	output.faces.set(grid.getFace([0, 0]), constant('F'));
+	output.faces.set(
+		grid.getFace(DoubledGrid.fromFaceIndices([0, 0])),
+		constant('F')
+	);
 	const puzzle: PuzzleDefinition<VertexValueSolution<1 | 2>> = {
 		build(context, solver) {
 			const model = createVertexValueModel(

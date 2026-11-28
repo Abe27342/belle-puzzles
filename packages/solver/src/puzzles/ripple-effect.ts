@@ -15,6 +15,7 @@ import {
 	type FaceGridSizeProps,
 	type Solver,
 	type TextGridVisitor,
+	DoubledGrid,
 	ContextExtended,
 	createForceGetMap,
 	GridFace,
@@ -102,7 +103,7 @@ AAAABBBAA
 		super(props);
 
 		this.#givens = props.givens.map((p) => ({
-			face: this.grid.getFace(p.coord),
+			face: this.grid.getFace(DoubledGrid.fromFaceIndices(p.coord)),
 			value: p.value,
 		}));
 

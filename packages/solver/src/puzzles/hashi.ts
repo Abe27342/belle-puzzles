@@ -17,6 +17,7 @@ import {
 	type GridVertex,
 	type Solver,
 	type TextGridVisitor,
+	DoubledGrid,
 	ContextExtended,
 } from '../lib/index.js';
 
@@ -80,7 +81,7 @@ export class HashiPuzzle extends CartesianGridPuzzle<HashiSolution> {
 		super(props);
 
 		this.#givens = props.givens.map((p) => ({
-			vertex: this.grid.getVertex(p.coord),
+			vertex: this.grid.getVertex(DoubledGrid.fromVertexIndices(p.coord)),
 			count: p.count,
 		}));
 		for (const given of this.#givens) {
