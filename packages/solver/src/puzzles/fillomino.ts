@@ -9,6 +9,7 @@ import {
 	parseTextGrids,
 	variable,
 	Point,
+	Vector,
 	type FaceGridSizeProps,
 	type GridVertex,
 	type Solver,
@@ -111,10 +112,11 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 			{
 				values: Array.from({ length: max }, (_, i) => i + 1),
 				bind: (output, vertex, binding) => {
-					output.faces.set(
-						this.grid.getFace(vertex.coord('singleGrid')),
-						binding
-					);
+					const faceCenter = vertex.center.add(new Vector(1, 1));
+					const face = this.grid.getFromCenter(faceCenter);
+					if (face.type === 'face') {
+						output.faces.set(face, binding);
+					}
 				},
 			}
 		);
@@ -171,25 +173,18 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 			);
 		}
 
-		for (const edge of this.grid.edges()) {
+		for (const edge of grid.edges()) {
 			const [start, end] = edge.vertices;
-			const startCoord = start.coord('singleGrid');
-			const endCoord = end.coord('singleGrid');
-			const horizontal = startCoord.y === endCoord.y;
-			const glyph = horizontal ? '-' : '|';
-			const first = vertexNumbers.get(
-				grid.getVertex(
-					horizontal
-						? new Point(startCoord.x, startCoord.y - 1)
-						: new Point(startCoord.x - 1, startCoord.y)
-				)
-			);
-			const second = vertexNumbers.get(grid.getVertex(startCoord));
-			if (first === undefined || second === undefined) {
+			const first = vertexNumbers.forceGet(start);
+			const second = vertexNumbers.forceGet(end);
+			const outputCenter = edge.center.add(new Vector(1, 1));
+			const outputObject = this.grid.getFromCenter(outputCenter);
+			if (outputObject.type !== 'edge') {
 				continue;
 			}
+			const glyph = edge.isHorizontal ? '|' : '-';
 			model.output.edges.set(
-				edge,
+				outputObject,
 				variable(
 					first.neq(second),
 					(assignment) => context.isTrue(assignment),

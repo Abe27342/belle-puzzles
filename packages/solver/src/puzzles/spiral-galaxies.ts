@@ -222,10 +222,8 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 				)
 			);
 
-			const [a, b] = pearl.center;
 			for (const face of this.grid.faces()) {
-				const [x, y] = face.center;
-				const reflected = new Point(2 * a - x, 2 * b - y);
+				const reflected = face.center.reflectAcross(pearl.center);
 				const reflectedFace = this.grid.getFromCenter(reflected);
 				if (reflectedFace.type !== 'face') {
 					throw new Error(

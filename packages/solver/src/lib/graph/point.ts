@@ -30,6 +30,11 @@ export class Point extends Array<number> implements Iterable<number> {
 		return new Vector(this.x - point.x, this.y - point.y);
 	}
 
+	public reflectAcross(center: PointLike): Point {
+		const point = Point.from(center);
+		return point.add(point.subtract(this));
+	}
+
 	public equals(other: PointLike): boolean {
 		const point = Point.from(other);
 		return this.x === point.x && this.y === point.y;
