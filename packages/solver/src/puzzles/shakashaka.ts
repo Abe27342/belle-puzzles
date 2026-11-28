@@ -341,7 +341,10 @@ export class ShakashakaPuzzle extends CartesianGridPuzzle<ShakashakaSolution> {
 				for (const cardinalPortion of cardinalPortions) {
 					const horizontallyAdjacentFace =
 						face.translate(cardinalPortion);
-					const diagonallyAdjacentFace = face.translate(direction);
+					const whiteFace = face.translate(cardinalPortion);
+					const nextTriangle = whiteFace.translate(
+						cardinalPortion.subtract(direction)
+					);
 					solver.add(
 						Implies(
 							getFaceVar(face).eq(
@@ -359,10 +362,8 @@ export class ShakashakaPuzzle extends CartesianGridPuzzle<ShakashakaSolution> {
 								),
 								// The edge continues straight through this square.
 								And(
-									getFaceVar(diagonallyAdjacentFace).eq(
-										white
-									),
-									getFaceVar(horizontallyAdjacentFace).eq(
+									getFaceVar(whiteFace).eq(white),
+									getFaceVar(nextTriangle).eq(
 										assignmentFromDirection(direction)
 									)
 								)
