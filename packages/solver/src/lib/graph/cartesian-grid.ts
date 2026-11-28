@@ -636,8 +636,6 @@ class GridEdgeImpl implements GridEdge {
 		}
 	}
 	public translate(vector: Vector): GridEdge {
-		const newStart = this.#start.translate(vector);
-		const newEnd = this.#end.translate(vector);
 		const translated = this.#grid.getFromCenter(this.center.add(vector));
 		if (translated.type !== 'edge') {
 			throw new Error(`Expected edge at ${translated.center}`);
