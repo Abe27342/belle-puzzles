@@ -220,8 +220,7 @@ export class ShakashakaPuzzle extends CartesianGridPuzzle<ShakashakaSolution> {
 		context: ContextExtended<string>,
 		solver: Solver<string>
 	): ShakashakaModel {
-		const { In, SumArray, If, Exactly, Implies, AtLeast, Or, And } =
-			context;
+		const { In, SumArray, If, Implies, Or, And, All } = context;
 		context.AtLeast;
 		// Each cell in the grid is assigned one of these face types.
 		// Vertical and diagonal white faces have slightly different constraints, so they are given different assignments.
@@ -296,22 +295,6 @@ export class ShakashakaPuzzle extends CartesianGridPuzzle<ShakashakaSolution> {
 			}
 		}
 
-		for (const vertex of this.grid.vertices()) {
-			const neighborsAreWhite = [...vertex.incidentFaces()].map(
-				(neighbor) => {
-					const neighborVariable = faceAssignments.forceGet(neighbor);
-					return neighborVariable.eq(white);
-				}
-			);
-
-			solver.add(
-				Implies(
-					AtLeast(ensureNonEmpty(neighborsAreWhite), 3),
-					Exactly(neighborsAreWhite, 4)
-				)
-			);
-		}
-
 		const neverVar = context.Int.const('-1');
 		solver.add(context.Bound(neverVar, -1, -1));
 
@@ -325,11 +308,6 @@ export class ShakashakaPuzzle extends CartesianGridPuzzle<ShakashakaSolution> {
 			// or it turns (implying a corner)
 
 			for (const direction of Direction.interCardinals) {
-				// TODO: Enforce that triangles with white corner in this direction satisfy correct properties
-				const cardinalPortions = Direction.cardinals.filter(
-					(c) => c.dot(direction) > 0
-				);
-
 				const assignmentFromDirection = (direction: Vector) => {
 					return assignmentSatisfying(
 						(cell) =>
@@ -337,6 +315,31 @@ export class ShakashakaPuzzle extends CartesianGridPuzzle<ShakashakaSolution> {
 							new CornerFace(direction).asCharacter()
 					);
 				};
+				const cardinalPortions = Direction.cardinals.filter(
+					(c) => c.dot(direction) > 0
+				);
+
+				{
+					// Look at the faces adjacent to the white corner of this direction.
+					// If they are all white, then the current face must either be white or have a corner in this direction.
+					const whiteSharingFaces = [
+						direction,
+						...cardinalPortions,
+					].map((v) => face.translate(v));
+					solver.add(
+						Implies(
+							All(
+								whiteSharingFaces.map((f) =>
+									getFaceVar(f).eq(white)
+								)
+							),
+							In(getFaceVar(face), [
+								white,
+								assignmentFromDirection(direction),
+							])
+						)
+					);
+				}
 
 				for (const cardinalPortion of cardinalPortions) {
 					const horizontallyAdjacentFace =
