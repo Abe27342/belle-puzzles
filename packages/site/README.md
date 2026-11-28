@@ -4,6 +4,8 @@
 
 The public `/solvers/:puzzle` route provides a client-side logic puzzle solver
 powered by Z3. Puzzle input and solving stay in the browser.
+Solver input and output use a self-hosted copy of [Monaspace Neon Regular](https://github.com/githubnext/monaspace/tree/f31794b6e9e65698a062262e2f826f679dcb7070)
+to align grid symbols, with a system monospace fallback. The [font license](./public/fonts/monaspace/LICENSE.txt) ships alongside the webfont.
 
 ## Running against a local belle-bot
 
