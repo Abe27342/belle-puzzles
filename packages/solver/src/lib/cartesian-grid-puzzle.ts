@@ -40,6 +40,14 @@ const vertexOnlyGrid: CreateOutput = (grid) =>
 		edges: '',
 		faces: '',
 	});
+
+const faceOnlyGrid: CreateOutput = (grid) =>
+	constantGraphOutput<CartesianGraphTypes>(grid, {
+		vertices: '',
+		edges: '',
+		faces: cdot,
+	});
+
 export const outputFactories = {
 	/**
 	 * @returns A factory for rendering vertices, edges, and faces.
@@ -49,6 +57,10 @@ export const outputFactories = {
 	 * @returns A factory for rendering output only for vertices.
 	 */
 	vertexOnlyGrid,
+	/**
+	 * @returns A factory for rendering output only for vertices.
+	 */
+	faceOnlyGrid,
 } as const;
 
 /**
@@ -77,7 +89,7 @@ export abstract class CartesianGridPuzzle<
 
 /**
  * Lay out resolved bindings without interpreting their values or Z3 sorts.
- * Explicitly empty interstitial rows are omitted. This allows compact rendering when edges aren't important.
+ * Omit whitespace-only vertex rows and explicitly empty face/edge rows.
  */
 export function renderCartesianGrid(
 	grid: CartesianGridGraph,
@@ -104,7 +116,9 @@ export function renderCartesianGrid(
 				}
 			}
 		}
-		rows.push({ values: contentLine, horizontalEdges: true });
+		if (contentLine.some((value) => value.trim().length > 0)) {
+			rows.push({ values: contentLine, horizontalEdges: true });
+		}
 		if (verticalEdgeLine.some((value) => value.length > 0)) {
 			rows.push({ values: verticalEdgeLine, horizontalEdges: false });
 		}

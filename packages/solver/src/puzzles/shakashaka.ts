@@ -138,29 +138,6 @@ type ShakashakaModel = FaceValueModel<number>;
 
 type ShakashakaSolution = FaceValueSolution<number>;
 
-// const sudokuOutput: CreateOutput = (grid) => {
-// 	const output = outputFactories.vertexOnlyGrid(grid);
-// 	const needsSeparator = (position: number) => (position + 1) % 3 === 0;
-// 	for (const edge of grid.edges()) {
-// 		const [start, end] = edge.vertices;
-// 		const startCoord = start.coord('singleGrid');
-// 		const endCoord = end.coord('singleGrid');
-// 		const horizontal = startCoord.y === endCoord.y;
-// 		const position = horizontal ? startCoord.x : startCoord.y;
-// 		const separator = horizontal ? '|' : '-';
-// 		output.edges.set(
-// 			edge,
-// 			constant(needsSeparator(position) ? separator : '')
-// 		);
-// 	}
-// 	for (const face of grid.faces()) {
-// 		const [x, y] = face.coord('singleGrid');
-// 		const intersection = needsSeparator(x) && needsSeparator(y);
-// 		output.faces.set(face, constant(intersection ? '+' : ''));
-// 	}
-// 	return output;
-// };
-
 export class ShakashakaPuzzle extends CartesianGridPuzzle<ShakashakaSolution> {
 	static {
 		registerPuzzle({
@@ -181,7 +158,7 @@ export class ShakashakaPuzzle extends CartesianGridPuzzle<ShakashakaSolution> {
 	#givens: Given[];
 
 	constructor(props: ShakashakaPuzzleProps) {
-		super(props);
+		super(props, outputFactories.faceOnlyGrid);
 
 		this.#givens = props.givens.map((p) => ({
 			face: this.grid.getFace(p.coord),
