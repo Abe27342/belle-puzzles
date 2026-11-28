@@ -25,11 +25,16 @@ export function createConstraintExtensions<Name extends string>(
 	context: Context<Name>,
 	solver: Solver<Name>
 ): ContextExtended<Name> {
-	const { And, Sum } = context;
+	const { And, Sum, Or } = context;
 	const bound = (a: Arith<Name>, b: number, c: number) =>
 		And(a.ge(b), a.le(c));
 
 	const All: (arr: Bool<Name>[]) => Bool<Name> = (arr) => And(...arr);
+
+	const In: (a: Arith<Name>, arr: Iterable<number>) => Bool<Name> = (
+		a,
+		arr
+	) => Or(...Array.from(arr, (x) => a.eq(x)));
 
 	const None: (arr: Bool<Name>[]) => Bool<Name> = (arr) =>
 		And(...arr.map((x) => x.not()));
@@ -76,6 +81,7 @@ export function createConstraintExtensions<Name extends string>(
 		Bound: bound,
 		SumArray: (arr: Arith<Name>[]) =>
 			Sum(...ensureNonEmpty(arr.length > 0 ? arr : [zero])),
+		In,
 		zero,
 		ints,
 		indicators,

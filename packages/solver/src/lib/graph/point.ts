@@ -85,6 +85,11 @@ export class Vector extends Array<number> implements Iterable<number> {
 		return new Vector(this.dx * factor, this.dy * factor);
 	}
 
+	public equals(other: VectorLike): boolean {
+		const vector = Vector.from(other);
+		return this.dx === vector.dx && this.dy === vector.dy;
+	}
+
 	public toString(): string {
 		return `[${this.dx}, ${this.dy}]`;
 	}

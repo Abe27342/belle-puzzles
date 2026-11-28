@@ -46,6 +46,8 @@ export interface ContextExtended<Name extends string> extends Context<Name> {
 	 */
 	SumArray: (arr: Arith<Name>[]) => Arith<Name>;
 
+	In: (a: Arith<Name>, arr: Iterable<number>) => Bool<Name>;
+
 	/**
 	 * Constant expression representing the numeric value zero.
 	 */
