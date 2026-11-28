@@ -10,11 +10,10 @@ import {
 	oob,
 	outputFactories,
 	parseTextGrids,
-	type CartesianCoord,
+	Point,
 	type FaceGridSizeProps,
 	type Solver,
 	type TextGridVisitor,
-	DoubledGrid,
 } from '../lib/index.js';
 
 export interface TatamibariPuzzleProps extends FaceGridSizeProps {
@@ -38,7 +37,7 @@ interface Given {
  * {@link Given} is more convenient to work with once the grid has been constructed.
  */
 interface ConstructionGiven {
-	coord: CartesianCoord;
+	coord: Point;
 	value: TatamiChar;
 }
 
@@ -70,7 +69,7 @@ export class TatamibariPuzzle extends CartesianGridPuzzle<TatamibariSolution> {
 		super(props, outputFactories.vertexOnlyGrid);
 
 		this.#givens = props.givens.map((p) => ({
-			face: this.grid.getFace(DoubledGrid.fromFaceIndices(p.coord)),
+			face: this.grid.getFace(p.coord),
 			value: p.value,
 		}));
 		const glyphs = {
@@ -178,8 +177,7 @@ export class TatamibariPuzzle extends CartesianGridPuzzle<TatamibariSolution> {
 
 			// Whatever we assign to top/left/width/height for this rectangle, indicator variables for contained faces must reflect it.
 			for (const containedFace of this.grid.faces()) {
-				const x = containedFace.x;
-				const y = containedFace.y;
+				const [x, y] = containedFace.coord('singleGrid');
 				solver.add(
 					Iff(
 						faceAssignments.forceGet(containedFace).eq(i),

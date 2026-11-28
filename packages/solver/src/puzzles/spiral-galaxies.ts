@@ -84,21 +84,27 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 			if (pearl.type === 'face') {
 				return {
 					type: 'face',
-					face: this.grid.getFace(pearl.coord),
+					face: this.grid.getFace(pearl.coord, 'doubleGrid'),
 					center: pearl.coord,
 				};
 			}
 			if (pearl.type === 'edge') {
 				const [x, y] = pearl.coord;
 				if (x % 2 === 1) {
-					const left = this.grid.getVertex(new Point(x - 1, y));
+					const left = this.grid.getVertex(
+						new Point(x - 1, y),
+						'doubleGrid'
+					);
 					return {
 						type: 'edge',
 						edge: this.grid.getEdge(left, left.right),
 						center: pearl.coord,
 					};
 				}
-				const top = this.grid.getVertex(new Point(x, y - 1));
+				const top = this.grid.getVertex(
+					new Point(x, y - 1),
+					'doubleGrid'
+				);
 				return {
 					type: 'edge',
 					edge: this.grid.getEdge(top, top.down),
@@ -107,7 +113,7 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 			}
 			return {
 				type: 'vertex',
-				vertex: this.grid.getVertex(pearl.coord),
+				vertex: this.grid.getVertex(pearl.coord, 'doubleGrid'),
 				center: pearl.coord,
 			};
 		});

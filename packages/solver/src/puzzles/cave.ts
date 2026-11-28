@@ -7,14 +7,13 @@ import {
 	parseNumber,
 	parseTextGrids,
 	sightLineSumConstraints,
-	type CartesianCoord,
+	Point,
 	type FaceGridSizeProps,
 	type EdgeIndicatorModel,
 	type EdgeIndicatorSolution,
 	type GridFace,
 	type Solver,
 	type TextGridVisitor,
-	DoubledGrid,
 	ContextExtended,
 } from '../lib/index.js';
 
@@ -37,7 +36,7 @@ interface Given {
  * {@link Given} is more convenient to work with once the grid has been constructed.
  */
 interface ConstructionGivens {
-	coord: CartesianCoord;
+	coord: Point;
 	/**
 	 * Number of visible faces in cardinal directions, including this face.
 	 */
@@ -61,7 +60,7 @@ export class CavePuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 		super(props);
 
 		this.#givens = props.givens.map((p) => ({
-			face: this.grid.getFace(DoubledGrid.fromFaceIndices(p.coord)),
+			face: this.grid.getFace(p.coord),
 			count: p.count,
 		}));
 		for (const given of this.#givens) {

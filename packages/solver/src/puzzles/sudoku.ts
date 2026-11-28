@@ -15,7 +15,6 @@ import {
 	type GridVertex,
 	type Solver,
 	type TextGridVisitor,
-	DoubledGrid,
 	type VertexValueModel,
 	type VertexValueSolution,
 } from '../lib/index.js';
@@ -54,8 +53,10 @@ const sudokuOutput: CreateOutput = (grid) => {
 	const needsSeparator = (position: number) => (position + 1) % 3 === 0;
 	for (const edge of grid.edges()) {
 		const [start, end] = edge.vertices;
-		const horizontal = start.y === end.y;
-		const position = horizontal ? start.x : start.y;
+		const startCoord = start.coord('singleGrid');
+		const endCoord = end.coord('singleGrid');
+		const horizontal = startCoord.y === endCoord.y;
+		const position = horizontal ? startCoord.x : startCoord.y;
 		const separator = horizontal ? '|' : '-';
 		output.edges.set(
 			edge,
@@ -63,8 +64,7 @@ const sudokuOutput: CreateOutput = (grid) => {
 		);
 	}
 	for (const face of grid.faces()) {
-		const x = face.x;
-		const y = face.y;
+		const [x, y] = face.coord('singleGrid');
 		const intersection = needsSeparator(x) && needsSeparator(y);
 		output.faces.set(face, constant(intersection ? '+' : ''));
 	}
@@ -89,7 +89,7 @@ export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 		super(props, sudokuOutput);
 
 		this.#givens = props.givens.map((p) => ({
-			vertex: this.grid.getVertex(DoubledGrid.fromVertexIndices(p.coord)),
+			vertex: this.grid.getVertex(p.coord),
 			value: p.value,
 		}));
 		for (const given of this.#givens) {
@@ -135,15 +135,11 @@ export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 
 		const variables = model.variables;
 		const varAt = (coord: Point) =>
-			variables.get(
-				this.grid.getVertex(DoubledGrid.fromVertexIndices(coord))
-			) ?? oob(coord);
+			variables.get(this.grid.getVertex(coord)) ?? oob(coord);
 
 		const { Distinct } = context;
 		for (const given of this.#givens) {
-			solver.add(
-				varAt(new Point(given.vertex.x, given.vertex.y)).eq(given.value)
-			);
+			solver.add(varAt(given.vertex.coord('singleGrid')).eq(given.value));
 		}
 
 		for (let i = 0; i < 9; i++) {

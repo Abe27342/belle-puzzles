@@ -5,13 +5,12 @@ import {
 	createEdgeIndicatorModel,
 	parseNumber,
 	parseTextGrids,
-	type CartesianCoord,
+	Point,
 	type VertexGridSizeProps,
 	type EdgeIndicatorModel,
 	type EdgeIndicatorSolution,
 	type Solver,
 	type TextGridVisitor,
-	DoubledGrid,
 	ContextExtended,
 	GridVertex,
 	createForceGetMap,
@@ -39,7 +38,7 @@ interface Given {
  * {@link Given} is more convenient to work with once the grid has been constructed.
  */
 interface ConstructionGivens {
-	coord: CartesianCoord;
+	coord: Point;
 	/**
 	 * The number assigned to this vertex.
 	 */
@@ -65,7 +64,7 @@ export class NumberlinkPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution>
 		super(props);
 
 		this.#givens = props.givens.map((p) => ({
-			vertex: this.grid.getVertex(DoubledGrid.fromVertexIndices(p.coord)),
+			vertex: this.grid.getVertex(p.coord),
 			assignment: p.assignment,
 		}));
 		const assignmentCounts = new Counter<number>();

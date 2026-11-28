@@ -8,7 +8,7 @@ import {
 	ensureNonEmpty,
 	parseNumber,
 	parseTextGrids,
-	type CartesianCoord,
+	Point,
 	type VertexGridSizeProps,
 	type Context,
 	type EdgeValueModel,
@@ -17,7 +17,6 @@ import {
 	type GridVertex,
 	type Solver,
 	type TextGridVisitor,
-	DoubledGrid,
 	ContextExtended,
 } from '../lib/index.js';
 
@@ -40,7 +39,7 @@ interface Given {
  * {@link Given} is more convenient to work with once the grid has been constructed.
  */
 interface ConstructionGiven {
-	coord: CartesianCoord;
+	coord: Point;
 	count: number;
 }
 
@@ -81,7 +80,7 @@ export class HashiPuzzle extends CartesianGridPuzzle<HashiSolution> {
 		super(props);
 
 		this.#givens = props.givens.map((p) => ({
-			vertex: this.grid.getVertex(DoubledGrid.fromVertexIndices(p.coord)),
+			vertex: this.grid.getVertex(p.coord),
 			count: p.count,
 		}));
 		for (const given of this.#givens) {

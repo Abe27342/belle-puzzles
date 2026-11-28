@@ -11,15 +11,13 @@ import {
 	parseNumber,
 	parsePearlColor,
 	parseTextGrids,
-	type CartesianCoord,
+	Point,
 	type FaceGridSizeProps,
 	type Solver,
 	type TextGridVisitor,
-	DoubledGrid,
 	ContextExtended,
 	createForceGetMap,
 	GridFace,
-	Point,
 	DefaultMap,
 	UnionFind,
 	ConcreteGraphTypes,
@@ -43,7 +41,7 @@ interface Given {
  * {@link Given} is more convenient to work with once the grid has been constructed.
  */
 interface ConstructionGiven {
-	coord: CartesianCoord;
+	coord: Point;
 	value: number;
 }
 
@@ -103,20 +101,21 @@ AAAABBBAA
 		super(props);
 
 		this.#givens = props.givens.map((p) => ({
-			face: this.grid.getFace(DoubledGrid.fromFaceIndices(p.coord)),
+			face: this.grid.getFace(p.coord),
 			value: p.value,
 		}));
 
-		const readCharacterGrid = (coord: CartesianCoord) => {
+		const readCharacterGrid = (coord: Point) => {
 			return props.polyominoGrid.get(JSON.stringify(coord))!;
 		};
 
 		this.#polyominos = new UnionFind<GridFace>(this.grid.faces());
 		for (const face of this.grid.faces()) {
-			const thisChar = readCharacterGrid(new Point(face.x, face.y));
+			const faceCoord = face.coord('singleGrid');
+			const thisChar = readCharacterGrid(faceCoord);
 			for (const neighbor of face.neighbors()) {
 				const neighboringChar = readCharacterGrid(
-					new Point(neighbor.x, neighbor.y)
+					neighbor.coord('singleGrid')
 				);
 				const neighboringEdges = new Set(
 					face.incidentEdges()

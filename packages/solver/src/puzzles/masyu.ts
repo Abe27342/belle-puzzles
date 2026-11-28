@@ -7,14 +7,13 @@ import {
 	createEdgeIndicatorModel,
 	parsePearlColor,
 	parseTextGrids,
-	type CartesianCoord,
+	Point,
 	type VertexGridSizeProps,
 	type EdgeIndicatorModel,
 	type EdgeIndicatorSolution,
 	type GridVertex,
 	type Solver,
 	type TextGridVisitor,
-	DoubledGrid,
 	ContextExtended,
 } from '../lib/index.js';
 
@@ -34,7 +33,7 @@ interface Pearl {
  * {@link Pearl} is more convenient to work with once the grid has been constructed.
  */
 interface ConstructionPearl {
-	coord: CartesianCoord;
+	coord: Point;
 	color: 'black' | 'white';
 }
 
@@ -64,7 +63,7 @@ export class MasyuPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 		super(props);
 
 		this.#pearls = props.pearls.map((p) => ({
-			coord: this.grid.getVertex(DoubledGrid.fromVertexIndices(p.coord)),
+			coord: this.grid.getVertex(p.coord),
 			color: p.color,
 		}));
 		for (const pearl of this.#pearls) {

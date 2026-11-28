@@ -10,14 +10,13 @@ import {
 	parsePearlColor,
 	parseTextGrids,
 	sightLineSumConstraints,
-	type CartesianCoord,
+	Point,
 	type VertexGridSizeProps,
 	type EdgeIndicatorModel,
 	type EdgeIndicatorSolution,
 	type GridVertex,
 	type Solver,
 	type TextGridVisitor,
-	DoubledGrid,
 	ContextExtended,
 } from '../lib/index.js';
 
@@ -38,7 +37,7 @@ interface Pearl {
  * {@link Pearl} is more convenient to work with once the grid has been constructed.
  */
 interface ConstructionPearl {
-	coord: CartesianCoord;
+	coord: Point;
 	length: number;
 	color: 'black' | 'white';
 }
@@ -70,7 +69,7 @@ export class ShingokiPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 		super(props);
 
 		this.#pearls = props.pearls.map((p) => ({
-			vertex: this.grid.getVertex(DoubledGrid.fromVertexIndices(p.coord)),
+			vertex: this.grid.getVertex(p.coord),
 			color: p.color,
 			length: p.length,
 		}));

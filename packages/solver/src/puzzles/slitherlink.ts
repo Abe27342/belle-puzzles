@@ -8,14 +8,13 @@ import {
 	oob,
 	parseNumber,
 	parseTextGrids,
-	type CartesianCoord,
+	Point,
 	type FaceGridSizeProps,
 	type EdgeIndicatorModel,
 	type EdgeIndicatorSolution,
 	type GridFace,
 	type Solver,
 	type TextGridVisitor,
-	DoubledGrid,
 	ContextExtended,
 } from '../lib/index.js';
 
@@ -38,7 +37,7 @@ interface Given {
  * {@link Given} is more convenient to work with once the grid has been constructed.
  */
 interface ConstructionGivens {
-	coord: CartesianCoord;
+	coord: Point;
 	/**
 	 * Number of enabled edges bordering this face.
 	 */
@@ -63,7 +62,7 @@ export class SlitherlinkPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution
 		super(props);
 
 		this.#givens = props.givens.map((p) => ({
-			face: this.grid.getFace(DoubledGrid.fromFaceIndices(p.coord)),
+			face: this.grid.getFace(p.coord),
 			count: p.count,
 		}));
 		for (const given of this.#givens) {

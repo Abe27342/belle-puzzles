@@ -9,12 +9,10 @@ import {
 	parseTextGrids,
 	variable,
 	Point,
-	type CartesianCoord,
 	type FaceGridSizeProps,
 	type GridVertex,
 	type Solver,
 	type TextGridVisitor,
-	DoubledGrid,
 	type VertexValueModel,
 	type VertexValueSolution,
 } from '../lib/index.js';
@@ -38,7 +36,7 @@ interface Given {
  * {@link Given} is more convenient to work with once the grid has been constructed.
  */
 interface ConstructionGiven {
-	coord: CartesianCoord;
+	coord: Point;
 	value: number;
 }
 
@@ -68,9 +66,7 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 			vertexHeight: props.faceHeight,
 		});
 		this.#givens = props.givens.map((p) => ({
-			vertex: this.#cellGrid.getVertex(
-				DoubledGrid.fromVertexIndices(p.coord)
-			),
+			vertex: this.#cellGrid.getVertex(p.coord),
 			value: p.value,
 		}));
 		for (const given of this.#givens) {
@@ -116,11 +112,7 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 				values: Array.from({ length: max }, (_, i) => i + 1),
 				bind: (output, vertex, binding) => {
 					output.faces.set(
-						this.grid.getFace(
-							DoubledGrid.fromFaceIndices(
-								new Point(vertex.x, vertex.y)
-							)
-						),
+						this.grid.getFace(vertex.coord('singleGrid')),
 						binding
 					);
 				},
@@ -181,22 +173,18 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 
 		for (const edge of this.grid.edges()) {
 			const [start, end] = edge.vertices;
-			const horizontal = start.y === end.y;
+			const startCoord = start.coord('singleGrid');
+			const endCoord = end.coord('singleGrid');
+			const horizontal = startCoord.y === endCoord.y;
 			const glyph = horizontal ? '-' : '|';
 			const first = vertexNumbers.get(
 				grid.getVertex(
-					DoubledGrid.fromVertexIndices(
-						horizontal
-							? new Point(start.x, start.y - 1)
-							: new Point(start.x - 1, start.y)
-					)
+					horizontal
+						? new Point(startCoord.x, startCoord.y - 1)
+						: new Point(startCoord.x - 1, startCoord.y)
 				)
 			);
-			const second = vertexNumbers.get(
-				grid.getVertex(
-					DoubledGrid.fromVertexIndices(new Point(start.x, start.y))
-				)
-			);
+			const second = vertexNumbers.get(grid.getVertex(startCoord));
 			if (first === undefined || second === undefined) {
 				continue;
 			}
