@@ -42,6 +42,11 @@ export interface ContextExtended<Name extends string> extends Context<Name> {
 	Bound: (a: Arith<Name>, b: number, c: number) => Bool<Name>;
 
 	/**
+	 * Shorthand for enforcing that exactly `k` of the boolean expressions in `args` are true.
+	 */
+	Exactly: (args: Bool<Name>[], k: number) => Bool<Name>;
+
+	/**
 	 * Like `Sum`, but doesn't require spreading or a nonempty first argument type.
 	 */
 	SumArray: (arr: Arith<Name>[]) => Arith<Name>;
@@ -52,6 +57,11 @@ export interface ContextExtended<Name extends string> extends Context<Name> {
 	 * Constant expression representing the numeric value zero.
 	 */
 	zero: Arith<Name>;
+
+	/**
+	 * Constant expression representing the boolean value false.
+	 */
+	falseVar: Bool<Name>;
 
 	/**
 	 * Create an integer variable for each key in some iterable, and return a {@link ForceGetMap} for the result.

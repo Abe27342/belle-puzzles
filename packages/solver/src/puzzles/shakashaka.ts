@@ -220,11 +220,13 @@ export class ShakashakaPuzzle extends CartesianGridPuzzle<ShakashakaSolution> {
 		context: ContextExtended<string>,
 		solver: Solver<string>
 	): ShakashakaModel {
-		const { In, SumArray, If } = context;
+		const { In, SumArray, If, Exactly, Implies, AtLeast, Or, And } =
+			context;
+		context.AtLeast;
 		// Each cell in the grid is assigned one of these face types.
 		// Vertical and diagonal white faces have slightly different constraints, so they are given different assignments.
 		const shakashakaCellOptions: ShakashakaFaceType[] = [
-			new WhiteFace('vertical'),
+			// new WhiteFace('vertical'),
 			new WhiteFace('diagonal'),
 			new BlackFace('either'),
 			new CornerFace(Direction.NW),
@@ -235,19 +237,27 @@ export class ShakashakaPuzzle extends CartesianGridPuzzle<ShakashakaSolution> {
 
 		const assignmentsSatisfying = (
 			predicate: (cell: ShakashakaFaceType) => boolean
-		): Iterable<number> => {
-			return shakashakaCellOptions
-				.entries()
-				.flatMap(([index, cell]) => (predicate(cell) ? [index] : []));
+		): number[] => {
+			return Array.from(shakashakaCellOptions.entries()).flatMap(
+				([index, cell]) => (predicate(cell) ? [index] : [])
+			);
 		};
 
-		const allWhiteAssignments = assignmentsSatisfying(
-			(cell) => cell instanceof WhiteFace
-		);
+		const assignmentSatisfying = (
+			predicate: (cell: ShakashakaFaceType) => boolean
+		): number => {
+			const allValues = assignmentsSatisfying(predicate);
+			if (allValues.length > 1) {
+				throw new Error('Multiple assignments satisfy the predicate');
+			}
+			if (allValues.length === 0) {
+				throw new Error('No assignment satisfies the predicate');
+			}
+			return allValues[0];
+		};
 
-		const allBlackAssignments = assignmentsSatisfying(
-			(cell) => cell instanceof BlackFace
-		);
+		const white = assignmentSatisfying((cell) => cell instanceof WhiteFace);
+		const black = assignmentSatisfying((cell) => cell instanceof BlackFace);
 
 		const model = createFaceValueModel(context, solver, this, {
 			values: shakashakaCellOptions.map((_, i) => i),
@@ -256,8 +266,10 @@ export class ShakashakaPuzzle extends CartesianGridPuzzle<ShakashakaSolution> {
 
 		const faceAssignments = model.variables;
 
+		const blackFaces = new Set<GridFace>();
 		for (const { face, value } of this.#givens) {
-			solver.add(In(faceAssignments.forceGet(face), allBlackAssignments));
+			solver.add(faceAssignments.forceGet(face).eq(black));
+			blackFaces.add(face);
 
 			if (value !== undefined) {
 				const neighbors = [...face.neighbors()];
@@ -284,8 +296,82 @@ export class ShakashakaPuzzle extends CartesianGridPuzzle<ShakashakaSolution> {
 			}
 		}
 
-		// TODO: Enforce all white regions form rectangles.
+		for (const vertex of this.grid.vertices()) {
+			const neighborsAreWhite = [...vertex.incidentFaces()].map(
+				(neighbor) => {
+					const neighborVariable = faceAssignments.forceGet(neighbor);
+					return neighborVariable.eq(white);
+				}
+			);
 
+			solver.add(
+				Implies(
+					Exactly(neighborsAreWhite, 3),
+					Exactly(neighborsAreWhite, 4)
+				)
+			);
+		}
+
+		const neverVar = context.Int.const('-1');
+		solver.add(context.Bound(neverVar, -1, -1));
+
+		const getFaceVar = (face: GridFace) =>
+			faceAssignments.get(face) ?? neverVar;
+		for (const face of this.grid.faces()) {
+			if (!blackFaces.has(face)) {
+				solver.add(faceAssignments.forceGet(face).neq(black));
+			}
+			// Locally enforce that when you "follow past the corners" on triangular edges, it either continues in the same direction (implying a fully white face)
+			// or it turns (implying a corner)
+
+			for (const direction of Direction.interCardinals) {
+				// TODO: Enforce that triangles with white corner in this direction satisfy correct properties
+				const cardinalPortions = Direction.cardinals.filter(
+					(c) => c.dot(direction) > 0
+				);
+
+				const assignmentFromDirection = (direction: Vector) => {
+					return assignmentSatisfying(
+						(cell) =>
+							cell.asCharacter() ===
+							new CornerFace(direction).asCharacter()
+					);
+				};
+
+				for (const cardinalPortion of cardinalPortions) {
+					const horizontallyAdjacentFace =
+						face.translate(cardinalPortion);
+					const diagonallyAdjacentFace = face.translate(direction);
+					solver.add(
+						Implies(
+							getFaceVar(face).eq(
+								assignmentFromDirection(direction)
+							),
+							Or(
+								// The edge turns on this square.
+								getFaceVar(horizontallyAdjacentFace).eq(
+									assignmentFromDirection(
+										direction.subtract(
+											// intercardinals are sqrt(2) factor larger than cardinals, this normalizes
+											cardinalPortion.scale(2)
+										)
+									)
+								),
+								// The edge continues straight through this square.
+								And(
+									getFaceVar(diagonallyAdjacentFace).eq(
+										white
+									),
+									getFaceVar(horizontallyAdjacentFace).eq(
+										assignmentFromDirection(direction)
+									)
+								)
+							)
+						)
+					);
+				}
+			}
+		}
 		return model;
 	}
 }

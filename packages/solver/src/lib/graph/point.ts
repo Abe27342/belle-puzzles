@@ -72,6 +72,11 @@ export class Vector extends Array<number> implements Iterable<number> {
 		return new Vector(this.dx + vector.dx, this.dy + vector.dy);
 	}
 
+	public subtract(other: VectorLike): Vector {
+		const vector = Vector.from(other);
+		return new Vector(this.dx - vector.dx, this.dy - vector.dy);
+	}
+
 	public dot(other: VectorLike): number {
 		const vector = Vector.from(other);
 		return this.dx * vector.dx + this.dy * vector.dy;
