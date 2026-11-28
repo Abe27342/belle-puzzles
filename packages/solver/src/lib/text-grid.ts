@@ -1,9 +1,6 @@
-import type { CartesianCoord } from './graph/index.js';
+import { Point } from './graph/point.js';
 
-export type TextGridVisitor = (
-	values: readonly string[],
-	coord: CartesianCoord
-) => void;
+export type TextGridVisitor = (values: readonly string[], coord: Point) => void;
 
 export interface TextGridParseOptions {
 	/** Require this number of grids, for puzzle formats with a fixed layout. */
@@ -48,7 +45,7 @@ export function isEmptyGridCharacter(value: string): boolean {
 }
 
 /** Parse a nonnegative decimal integer, throwing with its grid coordinate otherwise. */
-export function parseNumber(value: string, coord: CartesianCoord): number {
+export function parseNumber(value: string, coord: Point): number {
 	if (!/^[0-9]+$/.test(value) || !Number.isSafeInteger(Number(value))) {
 		throw new Error(`Invalid number at ${coord}: ${JSON.stringify(value)}`);
 	}
@@ -58,7 +55,7 @@ export function parseNumber(value: string, coord: CartesianCoord): number {
 /** Parse a B/W pearl color, case-insensitively, or throw with its coordinate. */
 export function parsePearlColor(
 	value: string,
-	coord: CartesianCoord
+	coord: Point
 ): 'black' | 'white' {
 	switch (value) {
 		case 'B':
@@ -131,7 +128,7 @@ export function parseTextGrids(
 		for (let x = 0; x < width; x++) {
 			const values = grids.map((grid) => grid[y][x]);
 			if (values.some((value) => !isEmptyGridCharacter(value))) {
-				visitor(values, [x, y]);
+				visitor(values, new Point(x, y));
 			}
 		}
 	}
@@ -182,7 +179,7 @@ export function parseDoubledResolutionGrid(
 		}
 		for (let x = 0; x < line.length; x++) {
 			const value = line[x];
-			const coord: [number, number] = [x, row];
+			const coord = new Point(x, row);
 			if (x % 2 === 1 && row % 2 === 1) {
 				if (value !== '#') {
 					visitors.faces?.([value], coord);

@@ -8,7 +8,7 @@ import {
 	parsePearlColor,
 	parseTextGrids,
 	type CartesianCoord,
-	type CartesianGridPuzzleProps,
+	type VertexGridSizeProps,
 	type EdgeIndicatorModel,
 	type EdgeIndicatorSolution,
 	type GridVertex,
@@ -17,7 +17,7 @@ import {
 	ContextExtended,
 } from '../lib/index.js';
 
-export interface MasyuPuzzleProps extends CartesianGridPuzzleProps {
+export interface MasyuPuzzleProps extends VertexGridSizeProps {
 	pearls: ConstructionPearl[];
 }
 
@@ -87,7 +87,11 @@ export class MasyuPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 		const { width, height } = parseTextGrids(text, visitor, {
 			gridCount: 1,
 		});
-		return new MasyuPuzzle({ width, height, pearls });
+		return new MasyuPuzzle({
+			vertexWidth: width,
+			vertexHeight: height,
+			pearls,
+		});
 	}
 
 	public override build(

@@ -18,8 +18,8 @@ it('imports and parses all registered examples without loading the Z3 runtime', 
 		expect(definition.name).not.toBe('');
 		expect(definition.instructions).not.toBe('');
 		const puzzle = definition.parser.fromText(definition.example);
-		expect(puzzle.width).toBeGreaterThan(2);
-		expect(puzzle.height).toBeGreaterThan(2);
+		expect(puzzle.grid.faceWidth).toBeGreaterThan(2);
+		expect(puzzle.grid.faceHeight).toBeGreaterThan(2);
 	}
 	expect(isPuzzleType('missing')).toBe(false);
 	expect(isPuzzleType('toString')).toBe(false);

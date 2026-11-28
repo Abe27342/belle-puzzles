@@ -11,7 +11,7 @@ import {
 	parseTextGrids,
 	sightLineSumConstraints,
 	type CartesianCoord,
-	type CartesianGridPuzzleProps,
+	type VertexGridSizeProps,
 	type EdgeIndicatorModel,
 	type EdgeIndicatorSolution,
 	type GridVertex,
@@ -20,7 +20,7 @@ import {
 	ContextExtended,
 } from '../lib/index.js';
 
-export interface ShingokiPuzzleProps extends CartesianGridPuzzleProps {
+export interface ShingokiPuzzleProps extends VertexGridSizeProps {
 	pearls: ConstructionPearl[];
 }
 
@@ -110,7 +110,11 @@ export class ShingokiPuzzle extends CartesianGridPuzzle<EdgeIndicatorSolution> {
 		const { width, height } = parseTextGrids(text, visitor, {
 			gridCount: 2,
 		});
-		return new ShingokiPuzzle({ width, height, pearls });
+		return new ShingokiPuzzle({
+			vertexWidth: width,
+			vertexHeight: height,
+			pearls,
+		});
 	}
 
 	public override build(
