@@ -160,18 +160,14 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 			const minimalEnabled: GridFace[] = [];
 			if (pearl.type === 'face') {
 				minimalEnabled.push(pearl);
-				solver.add(faceAssignments.forceGet(pearl).eq(i));
-			} else if (pearl.type === 'edge') {
+			} else if (pearl.type === 'edge' || pearl.type === 'vertex') {
 				minimalEnabled.push(...pearl.incidentFaces());
-				for (const face of pearl.incidentFaces()) {
-					solver.add(faceAssignments.forceGet(face).eq(i));
-				}
-			} else if (pearl.type === 'vertex') {
-				minimalEnabled.push(...pearl.incidentFaces());
-				for (const face of pearl.incidentFaces()) {
-					solver.add(faceAssignments.forceGet(face).eq(i));
-				}
 			}
+
+			for (const face of minimalEnabled) {
+				solver.add(faceAssignments.forceGet(face).eq(i));
+			}
+
 			// Faces assigned to this pearl must be connected
 			solver.add(
 				...connectedConstraints(
