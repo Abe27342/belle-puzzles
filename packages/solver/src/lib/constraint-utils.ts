@@ -25,17 +25,27 @@ export function createConstraintExtensions<Name extends string>(
 	context: Context<Name>,
 	solver: Solver<Name>
 ): ContextExtended<Name> {
-	const { And, Sum } = context;
+	const { And, Sum, Or, AtLeast, AtMost } = context;
 	const bound = (a: Arith<Name>, b: number, c: number) =>
 		And(a.ge(b), a.le(c));
 
 	const All: (arr: Bool<Name>[]) => Bool<Name> = (arr) => And(...arr);
+
+	const In: (a: Arith<Name>, arr: Iterable<number>) => Bool<Name> = (
+		a,
+		arr
+	) => Or(...Array.from(arr, (x) => a.eq(x)));
+
+	const Exactly: (args: Bool<Name>[], k: number) => Bool<Name> = (args, k) =>
+		AtLeast(ensureNonEmpty(args), k).and(AtMost(ensureNonEmpty(args), k));
 
 	const None: (arr: Bool<Name>[]) => Bool<Name> = (arr) =>
 		And(...arr.map((x) => x.not()));
 
 	const zero = context.Int.const('zero');
 	solver.add(zero.eq(0));
+	const falseVar = context.Bool.const('falseVar');
+	solver.add(falseVar.eq(false));
 
 	const ints = <TKey>(
 		keys: Iterable<TKey>,
@@ -74,9 +84,12 @@ export function createConstraintExtensions<Name extends string>(
 		All,
 		None,
 		Bound: bound,
+		Exactly,
 		SumArray: (arr: Arith<Name>[]) =>
 			Sum(...ensureNonEmpty(arr.length > 0 ? arr : [zero])),
+		In,
 		zero,
+		falseVar,
 		ints,
 		indicators,
 	};

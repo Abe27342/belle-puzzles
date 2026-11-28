@@ -96,6 +96,24 @@ it('keeps explicitly empty separator rows and columns collapsed', () => {
 	expect(renderCartesianGrid(grid, display)).toBe('102\n3 4\n');
 });
 
+it('omits whitespace-only vertex rows but keeps visible horizontal edges', () => {
+	const grid = new CartesianGridGraph({ faceWidth: 1, faceHeight: 2 });
+	const display = {
+		vertices: new Map<GridVertex, string>(),
+		edges: new Map<GridEdge, string>(),
+		faces: new Map<GridFace, string>(),
+	};
+	for (const vertex of grid.vertices()) display.vertices.set(vertex, '');
+	for (const edge of grid.edges()) display.edges.set(edge, '');
+	const top = grid.getVertex([0, 0]);
+	const middle = grid.getVertex([0, 1]);
+	display.edges.set(grid.getEdge(top, top.right), ' ');
+	display.edges.set(grid.getEdge(middle, middle.right), '-');
+	display.faces.set(grid.getFace([0, 0]), '10');
+	display.faces.set(grid.getFace([0, 1]), '2');
+	expect(renderCartesianGrid(grid, display)).toBe('10\n--\n2 \n');
+});
+
 it('loads the shared Z3 runtime and solves constraints', async () => {
 	const { Solver, Int, Distinct } = new z3.Context('test');
 	const solver = new Solver();

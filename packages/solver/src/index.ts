@@ -21,3 +21,4 @@ export * from './puzzles/ripple-effect.js';
 export * from './puzzles/shikaku.js';
 export * from './puzzles/tatamibari.js';
 export * from './puzzles/spiral-galaxies.js';
+export * from './puzzles/shakashaka.js';

@@ -1,0 +1,51 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`ShakashakaPuzzle solver > should solve for input: complex 1 1`] = `
+"
+#....
+.....
+#1.#.
+.....
+.....
+"
+`;
+
+exports[`ShakashakaPuzzle solver > should solve for input: complex 1 2`] = `
+"
+■◤◥◤◥
+□◣◢◣◢
+■■□■□
+□□◤◥□
+□□◣◢□
+"
+`;
+
+exports[`ShakashakaPuzzle solver > should solve for input: complex 2 1`] = `
+"
+....#.....
+.....2....
+2.......#.
+..........
+.....#...2
+..3#......
+#...#.....
+.......4..
+....2.....
+2........2
+"
+`;
+
+exports[`ShakashakaPuzzle solver > should solve for input: complex 2 2`] = `
+"
+◤◥□□■□◤◥◤◥
+◣□◥◤◥■◣◢◣◢
+■◣◢◣◢□◤◥■□
+□◤◥◤◥□◣□◥□
+◤□◢◣◢■□◣◢■
+◣◢■■□□◤◥◤◥
+■◤◥□■◤□◢◣◢
+◤□□◥□◣◢■◤◥
+◣□□◢■◤◥◤□◢
+■◣◢□□◣◢◣◢■
+"
+`;
