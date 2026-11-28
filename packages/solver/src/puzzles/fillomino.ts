@@ -8,6 +8,7 @@ import {
 	parseNumber,
 	parseTextGrids,
 	variable,
+	Point,
 	type CartesianCoord,
 	type FaceGridSizeProps,
 	type GridVertex,
@@ -111,7 +112,10 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 			{
 				values: Array.from({ length: max }, (_, i) => i + 1),
 				bind: (output, vertex, binding) => {
-					output.faces.set(this.grid.getFace(vertex.coord), binding);
+					output.faces.set(
+						this.grid.getFace(new Point(vertex.x, vertex.y)),
+						binding
+					);
 				},
 			}
 		);
@@ -177,7 +181,9 @@ export class FillominoPuzzle extends CartesianGridPuzzle<FillominoSolution> {
 					horizontal ? [start.x, start.y - 1] : [start.x - 1, start.y]
 				)
 			);
-			const second = vertexNumbers.get(grid.getVertex(start.coord));
+			const second = vertexNumbers.get(
+				grid.getVertex(new Point(start.x, start.y))
+			);
 			if (first === undefined || second === undefined) {
 				continue;
 			}

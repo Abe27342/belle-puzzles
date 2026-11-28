@@ -170,7 +170,8 @@ export class ShikakuPuzzle extends CartesianGridPuzzle<ShikakuSolution> {
 
 			// Whatever we assign to top/left/width/height for this rectangle, indicator variables for contained faces must reflect it.
 			for (const containedFace of this.grid.faces()) {
-				const [x, y] = containedFace.coord;
+				const x = containedFace.x;
+				const y = containedFace.y;
 				solver.add(
 					Iff(
 						faceAssignments.forceGet(containedFace).eq(i),

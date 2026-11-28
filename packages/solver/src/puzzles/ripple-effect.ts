@@ -18,6 +18,7 @@ import {
 	ContextExtended,
 	createForceGetMap,
 	GridFace,
+	Point,
 	DefaultMap,
 	UnionFind,
 	ConcreteGraphTypes,
@@ -111,9 +112,11 @@ AAAABBBAA
 
 		this.#polyominos = new UnionFind<GridFace>(this.grid.faces());
 		for (const face of this.grid.faces()) {
-			const thisChar = readCharacterGrid(face.coord);
+			const thisChar = readCharacterGrid(new Point(face.x, face.y));
 			for (const neighbor of face.neighbors()) {
-				const neighboringChar = readCharacterGrid(neighbor.coord);
+				const neighboringChar = readCharacterGrid(
+					new Point(neighbor.x, neighbor.y)
+				);
 				const neighboringEdges = new Set(
 					face.incidentEdges()
 				).intersection(new Set(neighbor.incidentEdges()));

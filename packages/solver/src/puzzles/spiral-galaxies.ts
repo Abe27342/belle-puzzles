@@ -88,7 +88,7 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 						(pearl.coord[0] - 1) / 2,
 						(pearl.coord[1] - 1) / 2,
 					]),
-					center: new Point(pearl.coord[0] / 2, pearl.coord[1] / 2),
+					center: pearl.coord,
 				};
 			}
 			if (pearl.type === 'edge') {
@@ -101,14 +101,14 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 					return {
 						type: 'edge',
 						edge: this.grid.getEdge(left, left.right),
-						center: new Point(x / 2, y / 2),
+						center: pearl.coord,
 					};
 				}
 				const top = this.grid.getVertex([x / 2, Math.floor(y / 2)]);
 				return {
 					type: 'edge',
 					edge: this.grid.getEdge(top, top.down),
-					center: new Point(x / 2, y / 2),
+					center: pearl.coord,
 				};
 			}
 			return {
@@ -117,7 +117,7 @@ export class SpiralGalaxiesPuzzle extends CartesianGridPuzzle<SpiralGalaxiesSolu
 					pearl.coord[0] / 2,
 					pearl.coord[1] / 2,
 				]),
-				center: new Point(pearl.coord[0] / 2, pearl.coord[1] / 2),
+				center: pearl.coord,
 			};
 		});
 	}

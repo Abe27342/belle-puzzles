@@ -36,3 +36,25 @@ it('reports face and vertex dimensions separately', () => {
 	expect(vertexGrid.faceWidth).toBe(4);
 	expect(vertexGrid.faceHeight).toBe(3);
 });
+
+it('uses expanded centers for vertices, edges, and faces', () => {
+	const grid = new CartesianGridGraph({
+		faceWidth: 2,
+		faceHeight: 2,
+	});
+
+	const topLeftVertex = grid.getVertex([0, 0]);
+	const bottomRightVertex = grid.getVertex([2, 2]);
+	const topEdge = grid.getEdge([0, 0], [1, 0]);
+	const leftEdge = grid.getEdge([0, 0], [0, 1]);
+	const face = grid.getFace([0, 0]);
+
+	expect(topLeftVertex.center).toEqual(new Point(0, 0));
+	expect(bottomRightVertex.center).toEqual(new Point(4, 4));
+	expect(topEdge.center).toEqual(new Point(1, 0));
+	expect(leftEdge.center).toEqual(new Point(0, 1));
+	expect(face.center).toEqual(new Point(1, 1));
+	expect(grid.getFromCenter(new Point(0, 0))).toBe(topLeftVertex);
+	expect(grid.getFromCenter(new Point(1, 0))).toBe(topEdge);
+	expect(grid.getFromCenter(new Point(1, 1))).toBe(face);
+});

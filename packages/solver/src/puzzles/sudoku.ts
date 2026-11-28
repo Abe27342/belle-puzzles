@@ -62,7 +62,8 @@ const sudokuOutput: CreateOutput = (grid) => {
 		);
 	}
 	for (const face of grid.faces()) {
-		const [x, y] = face.coord;
+		const x = face.x;
+		const y = face.y;
 		const intersection = needsSeparator(x) && needsSeparator(y);
 		output.faces.set(face, constant(intersection ? '+' : ''));
 	}
@@ -137,7 +138,9 @@ export class SudokuPuzzle extends CartesianGridPuzzle<SudokuSolution> {
 
 		const { Distinct } = context;
 		for (const given of this.#givens) {
-			solver.add(varAt(given.vertex.coord).eq(given.value));
+			solver.add(
+				varAt(new Point(given.vertex.x, given.vertex.y)).eq(given.value)
+			);
 		}
 
 		for (let i = 0; i < 9; i++) {
