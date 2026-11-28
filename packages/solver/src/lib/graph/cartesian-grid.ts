@@ -320,10 +320,10 @@ abstract class CartesianTranslatable<T> {
 		return this.translate(Direction.S);
 	}
 	public get left() {
-		return this.translate(Direction.E);
+		return this.translate(Direction.W);
 	}
 	public get right() {
-		return this.translate(Direction.W);
+		return this.translate(Direction.E);
 	}
 }
 
