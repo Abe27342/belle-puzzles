@@ -220,8 +220,7 @@ export class ShakashakaPuzzle extends CartesianGridPuzzle<ShakashakaSolution> {
 		context: ContextExtended<string>,
 		solver: Solver<string>
 	): ShakashakaModel {
-		const { In, SumArray, If, Implies, Or, And, All } = context;
-		context.AtLeast;
+		const { In, SumArray, If, Implies, Or, And, Not } = context;
 		// Each cell in the grid is assigned one of these face types.
 		// Vertical and diagonal white faces have slightly different constraints, so they are given different assignments.
 		const shakashakaCellOptions: ShakashakaFaceType[] = [
@@ -255,7 +254,6 @@ export class ShakashakaPuzzle extends CartesianGridPuzzle<ShakashakaSolution> {
 			return allValues[0];
 		};
 
-		const white = assignmentSatisfying((cell) => cell instanceof WhiteFace);
 		const black = assignmentSatisfying((cell) => cell instanceof BlackFace);
 
 		const model = createFaceValueModel(context, solver, this, {
@@ -295,85 +293,59 @@ export class ShakashakaPuzzle extends CartesianGridPuzzle<ShakashakaSolution> {
 			}
 		}
 
-		const neverVar = context.Int.const('-1');
-		solver.add(context.Bound(neverVar, -1, -1));
-
-		const getFaceVar = (face: GridFace) =>
-			faceAssignments.get(face) ?? neverVar;
 		for (const face of this.grid.faces()) {
 			if (!blackFaces.has(face)) {
 				solver.add(faceAssignments.forceGet(face).neq(black));
 			}
-			// Locally enforce that when you "follow past the corners" on triangular edges, it either continues in the same direction (implying a fully white face)
-			// or it turns (implying a corner)
+		}
 
-			for (const direction of Direction.interCardinals) {
-				const assignmentFromDirection = (direction: Vector) => {
-					return assignmentSatisfying(
-						(cell) =>
-							cell.asCharacter() ===
-							new CornerFace(direction).asCharacter()
-					);
-				};
-				const cardinalPortions = Direction.cardinals.filter(
-					(c) => c.dot(direction) > 0
-				);
-
-				{
-					// Look at the faces adjacent to the white corner of this direction.
-					// If they are all white, then the current face must either be white or have a corner in this direction.
-					const whiteSharingFaces = [
-						direction,
-						...cardinalPortions,
-					].map((v) => face.translate(v));
-					solver.add(
-						Implies(
-							All(
-								whiteSharingFaces.map((f) =>
-									getFaceVar(f).eq(white)
-								)
-							),
-							In(getFaceVar(face), [
-								white,
-								assignmentFromDirection(direction),
-							])
-						)
-					);
-				}
-
-				for (const cardinalPortion of cardinalPortions) {
-					const horizontallyAdjacentFace =
-						face.translate(cardinalPortion);
-					const whiteFace = face.translate(cardinalPortion);
-					const nextTriangle = whiteFace.translate(
-						cardinalPortion.subtract(direction)
-					);
-					solver.add(
-						Implies(
-							getFaceVar(face).eq(
-								assignmentFromDirection(direction)
-							),
+		// Each 45-degree sector at a vertex has the color of the cell edge
+		// alongside it. Outside the board every sector is black.
+		const whiteSector = (x: number, y: number, edge: Vector) => {
+			const face = this.grid.getFace([x, y]);
+			return face.isInBounds()
+				? In(
+						faceAssignments.forceGet(face),
+						assignmentsSatisfying((cell) => cell.hasWhiteEdge(edge))
+				  )
+				: context.falseVar;
+		};
+		const { N, E, S, W } = Direction;
+		for (const vertex of this.grid.vertices()) {
+			const [x, y] = vertex.coord('singleGrid');
+			// From the given vertex, each sector in compass direction
+			// (clockwise, starting at due north)
+			const sectors = [
+				whiteSector(x, y - 1, W),
+				whiteSector(x, y - 1, S),
+				whiteSector(x, y, N),
+				whiteSector(x, y, W),
+				whiteSector(x - 1, y, E),
+				whiteSector(x - 1, y, N),
+				whiteSector(x - 1, y - 1, S),
+				whiteSector(x - 1, y - 1, E),
+			];
+			const sectorIsWhite = (i: number) => sectors[i % sectors.length];
+			for (let i = 0; i < sectors.length; i++) {
+				// After black, a white run must end at 90 or 180 degrees.
+				// A full 360-degree white interior has no such transition.
+				solver.add(
+					Implies(
+						And(Not(sectorIsWhite(i)), sectorIsWhite(i + 1)),
+						And(
+							sectorIsWhite(i + 2),
 							Or(
-								// The edge turns on this square.
-								getFaceVar(horizontallyAdjacentFace).eq(
-									assignmentFromDirection(
-										direction.subtract(
-											// intercardinals are sqrt(2) factor larger than cardinals, this normalizes
-											cardinalPortion.scale(2)
-										)
-									)
-								),
-								// The edge continues straight through this square.
+								// 90 degrees
+								Not(sectorIsWhite(i + 3)),
 								And(
-									getFaceVar(whiteFace).eq(white),
-									getFaceVar(nextTriangle).eq(
-										assignmentFromDirection(direction)
-									)
+									sectorIsWhite(i + 4),
+									// 180 degrees
+									Not(sectorIsWhite(i + 5))
 								)
 							)
 						)
-					);
-				}
+					)
+				);
 			}
 		}
 		return model;
